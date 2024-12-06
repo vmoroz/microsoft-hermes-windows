@@ -279,6 +279,22 @@ class RuntimeDecorator : public Base, private jsi::Instrumentation {
   }
 #endif
 
+  void getStringData(
+      const jsi::String& str,
+      void* ctx,
+      void (
+          *cb)(void* ctx, bool ascii, const void* data, size_t num)) override {
+    plain_.getStringData(str, ctx, cb);
+  }
+
+  void getPropNameIdData(
+      const jsi::PropNameID& sym,
+      void* ctx,
+      void (
+          *cb)(void* ctx, bool ascii, const void* data, size_t num)) override {
+    plain_.getPropNameIdData(sym, ctx, cb);
+  }
+
   Object createObject() override {
     return plain_.createObject();
   };
@@ -813,6 +829,24 @@ class WithRuntimeDecorator : public RuntimeDecorator<Plain, Base> {
     RD::getPropNameIdData(sym, ctx, cb);
   }
 #endif
+
+  void getStringData(
+      const jsi::String& str,
+      void* ctx,
+      void (
+          *cb)(void* ctx, bool ascii, const void* data, size_t num)) override {
+    Around around{with_};
+    RD::getStringData(str, ctx, cb);
+  }
+
+  void getPropNameIdData(
+      const jsi::PropNameID& sym,
+      void* ctx,
+      void (
+          *cb)(void* ctx, bool ascii, const void* data, size_t num)) override {
+    Around around{with_};
+    RD::getPropNameIdData(sym, ctx, cb);
+  }
 
   Value createValueFromJsonUtf8(const uint8_t* json, size_t length) override {
     Around around{with_};
