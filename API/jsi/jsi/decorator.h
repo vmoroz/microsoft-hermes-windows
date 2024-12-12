@@ -295,6 +295,10 @@ class RuntimeDecorator : public Base, private jsi::Instrumentation {
     plain_.getPropNameIdData(sym, ctx, cb);
   }
 
+  Object createObjectWithPrototype(const Value& prototype) override {
+    return plain_.createObjectWithPrototype(prototype);
+  }
+
   Object createObject() override {
     return plain_.createObject();
   };
@@ -860,6 +864,11 @@ class WithRuntimeDecorator : public RuntimeDecorator<Plain, Base> {
     Around around{with_};
     return RD::createValueFromJsonUtf8(json, length);
   };
+
+  Object createObjectWithPrototype(const Value& prototype) override {
+    Around around{with_};
+    return RD::createObjectWithPrototype(prototype);
+  }
 
 #if JSI_VERSION >= 18
   Object createObjectWithPrototype(const Value& prototype) override {

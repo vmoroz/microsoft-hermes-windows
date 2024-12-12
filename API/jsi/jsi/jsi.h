@@ -947,6 +947,11 @@ class JSI_EXPORT Object : public Pointer {
     return runtime.createObject(ho);
   }
 
+  /// Creates a new Object with the custom prototype
+  static Object create(Runtime& runtime, const Value& prototype) {
+    return runtime.createObjectWithPrototype(prototype);
+  }
+
 #if JSI_VERSION >= 18
   /// Creates a new Object with the custom prototype
   static Object create(Runtime& runtime, const Value& prototype) {
