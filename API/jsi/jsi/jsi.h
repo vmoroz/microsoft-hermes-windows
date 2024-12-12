@@ -413,6 +413,9 @@ class JSI_EXPORT Runtime {
   virtual Value getPrototypeOf(const Object& object);
 #endif
 
+  virtual void setPrototypeOf(const Object& object, const Value& prototype);
+  virtual Value getPrototypeOf(const Object& object);
+
   virtual Value getProperty(const Object&, const PropNameID& name) = 0;
   virtual Value getProperty(const Object&, const String& name) = 0;
   virtual bool hasProperty(const Object&, const PropNameID& name) = 0;
@@ -960,6 +963,16 @@ class JSI_EXPORT Object : public Pointer {
   bool instanceOf(Runtime& rt, const Function& ctor) JSI_CONST_10 {
     return rt.instanceOf(*this, ctor);
   }
+
+  /// Sets \p prototype as the prototype of the object. The prototype must be
+  /// either an Object or null. If the prototype was not set successfully, this
+  /// method will throw.
+  void setPrototype(Runtime& runtime, const Value& prototype) const {
+    return runtime.setPrototypeOf(*this, prototype);
+  }
+
+  /// \return the prototype of the object
+  inline Value getPrototype(Runtime& runtime) const;
 
 #if JSI_VERSION >= 17
   /// Sets \p prototype as the prototype of the object. The prototype must be
