@@ -55,6 +55,7 @@
 #include <unordered_map>
 
 #include <jsi/instrumentation.h>
+#include <jsi/jsi.h>
 #include <jsi/threadsafe.h>
 
 #ifdef HERMESVM_LLVM_PROFILE_DUMP
@@ -62,6 +63,14 @@ extern "C" {
 int __llvm_profile_dump(void);
 }
 #endif
+
+#ifndef HERMES_WEAK
+#ifdef _MSC_VER
+#define HERMES_WEAK #pragma weak
+#else // _MSC_VER
+#define HERMES_WEAK __attribute__((weak))
+#endif // _MSC_VER
+#endif // !defined(HERMES_WEAK)
 
 // Android OSS has a bug where exception data can get mangled when going via
 // fbjni. This macro can be used to expose the root cause in adb log. It serves
@@ -77,6 +86,14 @@ int __llvm_profile_dump(void);
 namespace vm = hermes::vm;
 namespace hbc = hermes::hbc;
 using ::hermes::hermesLog;
+
+namespace hermes::node_api {
+  HERMES_WEAK void
+  createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion, napi_env *env) {
+    throw facebook::jsi::JSINativeException(
+        "Node API is not supported in Hermes by default: Make sure you're including hermesNodeApi in your build.");
+  }
+}
 
 namespace facebook {
 namespace hermes {
@@ -586,6 +603,7 @@ class HermesRuntimeImpl final : public HermesRuntime,
   std::string description() override;
   bool isInspectable() override;
   jsi::Instrumentation &instrumentation() override;
+  void createNodeApiEnv(int32_t apiVersion, napi_env *) override;
 
   PointerValue *cloneSymbol(const Runtime::PointerValue *pv) override;
   PointerValue *cloneBigInt(const Runtime::PointerValue *pv) override;
@@ -2621,6 +2639,10 @@ void HermesRuntimeImpl::throwJSErrorWithMessage(Args &&...args) {
   // throwPendingError.
   (void)runtime_.raiseError(vm::TwineChar16(s));
   throwPendingError();
+}
+
+void HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion, napi_env *env) {
+  ::hermes::node_api::createNodeApiEnv(*this->getVMRuntimeUnsafe(), apiVersion, env);
 }
 
 namespace {

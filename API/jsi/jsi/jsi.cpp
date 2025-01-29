@@ -13,6 +13,14 @@
 #include <jsi/instrumentation.h>
 #include <jsi/jsi.h>
 
+#ifndef JSI_WEAK
+#ifdef _MSC_VER
+#define JSI_WEAK #pragma weak
+#else // _MSC_VER
+#define JSI_WEAK __attribute__((weak))
+#endif // _MSC_VER
+#endif // !defined(JSI_WEAK)
+
 namespace facebook {
 namespace jsi {
 
@@ -280,7 +288,17 @@ Instrumentation& Runtime::instrumentation() {
   return sharedInstance;
 }
 
-Value Runtime::createValueFromJsonUtf8(const uint8_t* json, size_t length) {
+// Weak to allow other (external) libraries to provide an implementation.
+JSI_WEAK void createNodeApiEnvFallback(int32_t apiVersion, napi_env *) {
+  throw JSINativeException(
+    "Node-API is not supported by this particular JSI runtime");
+}
+
+void Runtime::createNodeApiEnv(int32_t apiVersion, napi_env *env) {
+  createNodeApiEnvFallback(apiVersion, env);
+}
+
+Value Runtime::createValueFromJsonUtf8(const uint8_t *json, size_t length) {
   Function parseJson = global()
                            .getPropertyAsObject(*this, "JSON")
                            .getPropertyAsFunction(*this, "parse");
