@@ -1117,6 +1117,10 @@ class HermesRuntimeImpl final : public HermesRuntime,
   ::hermes::hbc::CompileFlags compileFlags_{};
 };
 
+::hermes::vm::Runtime &getVMRuntime(HermesRuntime &runtime) noexcept {
+  return static_cast<HermesRuntimeImpl &>(runtime).runtime_;
+}
+
 bool HermesRuntime::isHermesBytecode(const uint8_t *data, size_t len) {
   return hbc::BCProviderFromBuffer::isBytecodeStream(
       llvh::ArrayRef<uint8_t>(data, len));
