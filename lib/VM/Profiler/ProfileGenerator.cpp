@@ -131,7 +131,7 @@ static fhsp::ProfileSampleCallStackFrame *formatCallStackFrame(
 
 /* static */ fhsp::Profile ProfileGenerator::generate(
     const SamplingProfiler &sp,
-    const std::vector<SamplingProfiler::StackTrace> &sampledStacks) {
+    const llvh::SmallVector<SamplingProfiler::StackTrace, 8> &sampledStacks) {
   std::vector<fhsp::ProfileSample> samples;
   samples.reserve(sampledStacks.size());
   for (const SamplingProfiler::StackTrace &sampledStack : sampledStacks) {

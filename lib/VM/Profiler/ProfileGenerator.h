@@ -27,7 +27,7 @@ class ProfileGenerator {
   /// Emit Profile in a single struct.
   static facebook::hermes::sampling_profiler::Profile generate(
       const SamplingProfiler &sp,
-      const std::vector<SamplingProfiler::StackTrace> &sampledStacks);
+      const llvh::SmallVector<SamplingProfiler::StackTrace, 8> &sampledStacks);
 };
 
 } // namespace vm
