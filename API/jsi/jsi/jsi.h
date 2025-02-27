@@ -28,7 +28,7 @@
 
 #ifndef JSI_VERSION
 // Use the latest version by default
-#define JSI_VERSION 18
+#define JSI_VERSION 19
 #endif
 
 #if JSI_VERSION >= 3
@@ -43,10 +43,10 @@
 #define JSI_CONST_10
 #endif
 
-#if JSI_VERSION >= 14
-#define JSI_NOEXCEPT_14 noexcept
+#if JSI_VERSION >= 15
+#define JSI_NOEXCEPT_15 noexcept
 #else
-#define JSI_NOEXCEPT_14
+#define JSI_NOEXCEPT_15
 #endif
 
 #ifndef JSI_EXPORT
@@ -334,7 +334,7 @@ class JSI_EXPORT Runtime {
   // rvalue arguments/methods would also reduce the number of clones.
 
   struct PointerValue {
-    virtual void invalidate() JSI_NOEXCEPT_14 = 0;
+    virtual void invalidate() JSI_NOEXCEPT_15 = 0;
 
    protected:
     virtual ~PointerValue() = default;
@@ -354,7 +354,7 @@ class JSI_EXPORT Runtime {
   virtual PropNameID createPropNameIDFromUtf8(
       const uint8_t* utf8,
       size_t length) = 0;
-#if JSI_VERSION >= 18
+#if JSI_VERSION >= 19
   virtual PropNameID createPropNameIDFromUtf16(
       const char16_t* utf16,
       size_t length);
@@ -379,7 +379,7 @@ class JSI_EXPORT Runtime {
 
   virtual String createStringFromAscii(const char* str, size_t length) = 0;
   virtual String createStringFromUtf8(const uint8_t* utf8, size_t length) = 0;
-#if JSI_VERSION >= 18
+#if JSI_VERSION >= 19
   virtual String createStringFromUtf16(const char16_t* utf16, size_t length);
 #endif
   virtual std::string utf8(const String&) = 0;
@@ -395,7 +395,7 @@ class JSI_EXPORT Runtime {
   virtual std::shared_ptr<HostObject> getHostObject(const jsi::Object&) = 0;
   virtual HostFunctionType& getHostFunction(const jsi::Function&) = 0;
 
-#if JSI_VERSION >= 17
+#if JSI_VERSION >= 18
   // Creates a new Object with the custom prototype
   virtual Object createObjectWithPrototype(const Value& prototype);
 #endif
@@ -408,7 +408,7 @@ class JSI_EXPORT Runtime {
       std::shared_ptr<NativeState> state) = 0;
 #endif
 
-#if JSI_VERSION >= 16
+#if JSI_VERSION >= 17
   virtual void setPrototypeOf(const Object& object, const Value& prototype);
   virtual Value getPrototypeOf(const Object& object);
 #endif
@@ -481,12 +481,12 @@ class JSI_EXPORT Runtime {
       size_t amount) = 0;
 #endif
 
-#if JSI_VERSION >= 13
+#if JSI_VERSION >= 14
   virtual std::u16string utf16(const String& str);
   virtual std::u16string utf16(const PropNameID& sym);
 #endif  
 
-#if JSI_VERSION >= 15
+#if JSI_VERSION >= 16
   /// Invokes the provided callback \p cb with the String content in \p str.
   /// The callback must take in three arguments: bool ascii, const void* data,
   /// and size_t num, respectively. \p ascii indicates whether the \p data
@@ -534,7 +534,7 @@ class JSI_EXPORT Runtime {
 // Base class for pointer-storing types.
 class JSI_EXPORT Pointer {
  protected:
-  explicit Pointer(Pointer&& other) JSI_NOEXCEPT_14 : ptr_(other.ptr_) {
+  explicit Pointer(Pointer&& other) JSI_NOEXCEPT_15 : ptr_(other.ptr_) {
     other.ptr_ = nullptr;
   }
 
@@ -544,7 +544,7 @@ class JSI_EXPORT Pointer {
     }
   }
 
-  Pointer& operator=(Pointer&& other) JSI_NOEXCEPT_14;
+  Pointer& operator=(Pointer&& other) JSI_NOEXCEPT_15;
 
   friend class Runtime;
   friend class Value;
@@ -597,7 +597,7 @@ class JSI_EXPORT PropNameID : public Pointer {
         reinterpret_cast<const uint8_t*>(utf8.data()), utf8.size());
   }
 
-#if JSI_VERSION >= 18
+#if JSI_VERSION >= 19
   /// Given a series of UTF-16 encoded code units, create a PropNameId. The
   /// input may contain unpaired surrogates, which will be interpreted as a code
   /// point of the same value.
@@ -639,14 +639,14 @@ class JSI_EXPORT PropNameID : public Pointer {
     return runtime.utf8(*this);
   }
 
-#if JSI_VERSION >= 13
+#if JSI_VERSION >= 14
   /// Copies the data in a PropNameID as utf16 into a C++ string.
   std::u16string utf16(Runtime& runtime) const {
     return runtime.utf16(*this);
   }
 #endif
 
-#if JSI_VERSION >= 15
+#if JSI_VERSION >= 16
   /// Invokes the user provided callback to process the content in PropNameId.
   /// The callback must take in three arguments: bool ascii, const void* data,
   /// and size_t num, respectively. \p ascii indicates whether the \p data
@@ -808,7 +808,7 @@ class JSI_EXPORT String : public Pointer {
         reinterpret_cast<const uint8_t*>(utf8.data()), utf8.length());
   }
 
-#if JSI_VERSION >= 18
+#if JSI_VERSION >= 19
   /// Given a series of UTF-16 encoded code units, create a JS String. The input
   /// may contain unpaired surrogates, which will be interpreted as a code point
   /// of the same value.
@@ -835,14 +835,14 @@ class JSI_EXPORT String : public Pointer {
     return runtime.utf8(*this);
   }
 
-#if JSI_VERSION >= 13
+#if JSI_VERSION >= 14
   /// Copies the data in a JS string as utf16 into a C++ string.
   std::u16string utf16(Runtime& runtime) const {
     return runtime.utf16(*this);
   }
 #endif
 
-#if JSI_VERSION >= 15
+#if JSI_VERSION >= 16
   /// Invokes the user provided callback to process content in String. The
   /// callback must take in three arguments: bool ascii, const void* data, and
   /// size_t num, respectively. \p ascii indicates whether the \p data passed to
@@ -884,7 +884,7 @@ class JSI_EXPORT Object : public Pointer {
     return runtime.createObject(ho);
   }
 
-#if JSI_VERSION >= 17
+#if JSI_VERSION >= 18
   /// Creates a new Object with the custom prototype
   static Object create(Runtime& runtime, const Value& prototype) {
     return runtime.createObjectWithPrototype(prototype);
@@ -901,7 +901,7 @@ class JSI_EXPORT Object : public Pointer {
     return rt.instanceOf(*this, ctor);
   }
 
-#if JSI_VERSION >= 16
+#if JSI_VERSION >= 17
   /// Sets \p prototype as the prototype of the object. The prototype must be
   /// either an Object or null. If the prototype was not set successfully, this
   /// method will throw.
@@ -1344,7 +1344,7 @@ class JSI_EXPORT Function : public Object {
 class JSI_EXPORT Value {
  public:
   /// Default ctor creates an \c undefined JS value.
-  Value() JSI_NOEXCEPT_14 : Value(UndefinedKind) {}
+  Value() JSI_NOEXCEPT_15 : Value(UndefinedKind) {}
 
   /// Creates a \c null JS value.
   /* implicit */ Value(std::nullptr_t) : kind_(NullKind) {}
@@ -1387,7 +1387,7 @@ class JSI_EXPORT Value {
         "Value cannot be constructed directly from const char*");
   }
 
-  Value(Value&& other) JSI_NOEXCEPT_14;
+  Value(Value&& other) JSI_NOEXCEPT_15;
 
   /// Copies a Symbol lvalue into a new JS value.
   Value(Runtime& runtime, const Symbol& sym) : Value(SymbolKind) {
@@ -1436,7 +1436,7 @@ class JSI_EXPORT Value {
 
   // \return a \c Value created from a utf8-encoded JSON string.
   static Value
-  createFromJsonUtf8(Runtime& runtime, const uint8_t* json, size_t length) {
+  createFromJsonUtf8(Runtime& runtime, const uint8_t* json, size_t length)
 #if JSI_VERSION >= 2
   {
     return runtime.createValueFromJsonUtf8(json, length);
@@ -1449,7 +1449,7 @@ class JSI_EXPORT Value {
   /// https://262.ecma-international.org/11.0/#sec-strict-equality-comparison
   static bool strictEquals(Runtime& runtime, const Value& a, const Value& b);
 
-  Value& operator=(Value&& other) JSI_NOEXCEPT_14 {
+  Value& operator=(Value&& other) JSI_NOEXCEPT_15 {
     this->~Value();
     new (this) Value(std::move(other));
     return *this;

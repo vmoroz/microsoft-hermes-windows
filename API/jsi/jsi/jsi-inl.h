@@ -86,9 +86,11 @@ inline const Runtime::PointerValue* Runtime::getPointerValue(
   return value.data_.pointer.ptr_;
 }
 
+#if JSI_VERSION >= 17
 Value Object::getPrototype(Runtime& runtime) const {
   return runtime.getPrototypeOf(*this);
 }
+#endif
 
 inline Value Object::getProperty(Runtime& runtime, const char* name) const {
   return getProperty(runtime, String::createFromAscii(runtime, name));
@@ -242,11 +244,6 @@ inline void Object::setExternalMemoryPressure(Runtime& runtime, size_t amt)
   runtime.setExternalMemoryPressure(*this, amt);
 }
 #endif
-
-inline void Object::setExternalMemoryPressure(Runtime& runtime, size_t amt)
-    const {
-  runtime.setExternalMemoryPressure(*this, amt);
-}
 
 inline Array Object::getPropertyNames(Runtime& runtime) const {
   return runtime.getPropertyNames(*this);

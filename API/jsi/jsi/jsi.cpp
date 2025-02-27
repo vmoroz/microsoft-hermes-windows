@@ -64,6 +64,7 @@ Value callGlobalFunction(Runtime& runtime, const char* name, const Value& arg) {
   return f.call(runtime, arg);
 }
 
+#if JSI_VERSION >= 14
 // Given a sequence of UTF8 encoded bytes, advance the input to past where a
 // 32-bit unicode codepoint as been decoded and return the codepoint. If the
 // UTF8 encoding is invalid, then return the value with the unicode replacement
@@ -164,7 +165,9 @@ std::u16string convertUTF8ToUTF16(const std::string& utf8) {
   }
   return ret;
 }
+#endif
 
+#if JSI_VERSION >= 19
 // Given a unsigned number, which is less than 16, return the hex character.
 inline char hexDigit(unsigned x) {
   return x < 10 ? '0' + x : 'A' + (x - 10);
@@ -203,6 +206,7 @@ std::string getUtf16CodeUnitString(const char16_t* utf16, size_t length) {
   s.back() = '\'';
   return s;
 }
+#endif
 
 } // namespace
 
@@ -255,16 +259,24 @@ Instrumentation& Runtime::instrumentation() {
     void startHeapSampling(size_t) override {}
     void stopHeapSampling(std::ostream&) override {}
 
+#if JSI_VERSION >= 13
     void createSnapshotToFile(
         const std::string& /*path*/,
         const HeapSnapshotOptions& /*options*/) override {
+#else
+    void createSnapshotToFile(const std::string&) override {
+#endif
       throw JSINativeException(
           "Default instrumentation cannot create a heap snapshot");
     }
 
+#if JSI_VERSION >= 13
     void createSnapshotToStream(
         std::ostream& /*os*/,
         const HeapSnapshotOptions& /*options*/) override {
+#else
+    void createSnapshotToStream(std::ostream&) override {
+#endif
       throw JSINativeException(
           "Default instrumentation cannot create a heap snapshot");
     }
@@ -305,6 +317,7 @@ Value Value::createFromJsonUtf8(
 }
 #endif
 
+#if JSI_VERSION >= 19
 String Runtime::createStringFromUtf16(const char16_t* utf16, size_t length) {
   if (isAllASCII(utf16, length)) {
     std::string buffer(utf16, utf16 + length);
@@ -323,7 +336,9 @@ PropNameID Runtime::createPropNameIDFromUtf16(
   auto jsString = createStringFromUtf16(utf16, length);
   return createPropNameIDFromString(jsString);
 }
+#endif
 
+#if JSI_VERSION >= 14
 std::u16string Runtime::utf16(const PropNameID& sym) {
   auto utf8Str = utf8(sym);
   return convertUTF8ToUTF16(utf8Str);
@@ -333,7 +348,9 @@ std::u16string Runtime::utf16(const String& str) {
   auto utf8Str = utf8(str);
   return convertUTF8ToUTF16(utf8Str);
 }
+#endif
 
+#if JSI_VERSION >= 16
 void Runtime::getStringData(
     const jsi::String& str,
     void* ctx,
@@ -349,7 +366,9 @@ void Runtime::getPropNameIdData(
   auto utf16Str = utf16(sym);
   cb(ctx, false, utf16Str.data(), utf16Str.size());
 }
+#endif
 
+#if JSI_VERSION >= 17
 void Runtime::setPrototypeOf(const Object& object, const Value& prototype) {
   auto setPrototypeOfFn = global()
                               .getPropertyAsObject(*this, "Object")
@@ -363,15 +382,18 @@ Value Runtime::getPrototypeOf(const Object& object) {
                               .getPropertyAsFunction(*this, "getPrototypeOf");
   return setPrototypeOfFn.call(*this, object);
 }
+#endif
 
+#if JSI_VERSION >= 18
 Object Runtime::createObjectWithPrototype(const Value& prototype) {
   auto createFn = global()
                       .getPropertyAsObject(*this, "Object")
                       .getPropertyAsFunction(*this, "create");
   return createFn.call(*this, prototype).asObject(*this);
 }
+#endif
 
-Pointer& Pointer::operator=(Pointer&& other) noexcept {
+Pointer& Pointer::operator=(Pointer&& other) JSI_NOEXCEPT_15 {
   if (ptr_) {
     ptr_->invalidate();
   }
@@ -446,7 +468,7 @@ Function Object::asFunction(Runtime& runtime) && {
   return std::move(*this).getFunction(runtime);
 }
 
-Value::Value(Value&& other) noexcept : Value(other.kind_) {
+Value::Value(Value&& other) JSI_NOEXCEPT_15 : Value(other.kind_) {
   if (kind_ == BooleanKind) {
     data_.boolean = other.data_.boolean;
   } else if (kind_ == NumberKind) {

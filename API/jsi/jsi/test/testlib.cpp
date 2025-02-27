@@ -11,8 +11,8 @@
 #include <jsi/decorator.h>
 #include <jsi/jsi.h>
 
-#include <stdlib.h>
 #include <chrono>
+#include <cstdlib>
 #include <functional>
 #include <thread>
 #include <unordered_map>
@@ -1358,6 +1358,7 @@ TEST_P(JSITest, JSErrorTest) {
       JSIException);
 }
 
+#if defined(JSI_SUPPORT_MICROTASKS) && JSI_VERSION >= 12
 TEST_P(JSITest, MicrotasksTest) {
   try {
     rt.global().setProperty(rt, "globalValue", String::createFromAscii(rt, ""));
@@ -1389,6 +1390,7 @@ TEST_P(JSITest, MicrotasksTest) {
     // queueMicrotask() is unimplemented by some runtimes, ignore such failures.
   }
 }
+#endif
 
 //----------------------------------------------------------------------
 // Test that multiple levels of delegation in DecoratedHostObjects works.
@@ -1480,7 +1482,7 @@ TEST_P(JSITest, ArrayBufferSizeTest) {
   try {
     // Ensure we can safely write some data to the buffer.
     memset(ab.data(rt), 0xab, 10);
-  } catch (const JSINativeException& ex) {
+  } catch (const JSINativeException&) {
     // data() is unimplemented by some runtimes, ignore such failures.
   }
 
@@ -1576,6 +1578,7 @@ TEST_P(JSITest, UTF8ExceptionTest) {
   }
 }
 
+#if JSI_VERSION >= 14
 TEST_P(JSITest, UTF16ConversionTest) {
   // This Runtime Decorator is used to test the conversion from UTF-8 to UTF-16
   // in the default utf16 method for runtimes that do not provide their own
@@ -1639,7 +1642,9 @@ TEST_P(JSITest, UTF16ConversionTest) {
   rd.utf8Str = "\xea\x7a";
   EXPECT_EQ(str.utf16(rd), u"\uFFFD\u007A");
 }
+#endif
 
+#if JSI_VERSION >= 19
 TEST_P(JSITest, CreateFromUtf16Test) {
   // This Runtime Decorator is used to test the default createStringFromUtf16
   // and createPropNameIDFromUtf16 implementation for VMs that do not provide
@@ -1683,7 +1688,9 @@ TEST_P(JSITest, CreateFromUtf16Test) {
   auto cp = eval("loneSurrogate.charCodeAt(0)").getNumber();
   EXPECT_EQ(cp, 55357); // 0xD83D in decimal
 }
+#endif
 
+#if JSI_VERSION >= 16
 TEST_P(JSITest, GetStringDataTest) {
   // This Runtime Decorator is used to test the default getStringData
   // implementation for VMs that do not provide their own implementation
@@ -1713,7 +1720,9 @@ TEST_P(JSITest, GetStringDataTest) {
   str.getStringData(rd, cb);
   EXPECT_EQ(buf, str.utf16(rd));
 }
+#endif
 
+#if JSI_VERSION >= 17
 TEST_P(JSITest, ObjectSetPrototype) {
   // This Runtime Decorator is used to test the default implementation of
   // Object.setPrototypeOf
@@ -1747,7 +1756,9 @@ TEST_P(JSITest, ObjectSetPrototype) {
   auto getPrototypeRes = child.getPrototype(rd).asObject(rd);
   EXPECT_EQ(getPrototypeRes.getProperty(rd, "someProperty").getNumber(), 123);
 }
+#endif
 
+#if JSI_VERSION >= 18
 TEST_P(JSITest, ObjectCreateWithPrototype) {
   // This Runtime Decorator is used to test the default implementation of
   // Object.create(prototype)
@@ -1772,6 +1783,7 @@ TEST_P(JSITest, ObjectCreateWithPrototype) {
   child = Object::create(rd, Value::null());
   EXPECT_TRUE(child.getPrototype(rd).isNull());
 }
+#endif
 
 INSTANTIATE_TEST_CASE_P(
     Runtimes,
