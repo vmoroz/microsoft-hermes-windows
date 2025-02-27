@@ -8,9 +8,6 @@
 // Use INT_MAX, this should only be consumed by the pre-processor anyway.
 #define NAPI_VERSION_EXPERIMENTAL 2147483647
 #ifndef NAPI_VERSION
-#ifdef NAPI_EXPERIMENTAL
-#define NAPI_VERSION NAPI_VERSION_EXPERIMENTAL
-#else
 // The baseline version for N-API.
 // The NAPI_VERSION controls which version will be used by default when
 // compilling a native addon. If the addon developer specifically wants to use
@@ -18,7 +15,6 @@
 // LTS versions, they can set NAPI_VERSION knowing that they have specifically
 // depended on that version.
 #define NAPI_VERSION 8
-#endif
 #endif
 
 #include "js_native_api_types.h"
@@ -527,16 +523,6 @@ napi_add_finalizer(napi_env env,
 
 #endif  // NAPI_VERSION >= 5
 
-#ifdef NAPI_EXPERIMENTAL
-#define NODE_API_EXPERIMENTAL_HAS_POST_FINALIZER
-
-NAPI_EXTERN napi_status NAPI_CDECL
-node_api_post_finalizer(node_api_basic_env env,
-                        napi_finalize finalize_cb,
-                        void* finalize_data,
-                        void* finalize_hint);
-
-#endif  // NAPI_EXPERIMENTAL
 
 #if NAPI_VERSION >= 6
 
