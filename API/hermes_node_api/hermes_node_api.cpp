@@ -1,13 +1,13 @@
 /*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ * 
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT license.
  *
- * Copyright notices for portions of code adapted from Hermes, Node.js, and V8
- * projects:
- *
- * Copyright (c) Facebook, Inc. and its affiliates.
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
+ * Copyright notices for portions of code adapted from Node.js and V8 projects:
  *
  * Copyright Node.js contributors. All rights reserved.
  * https://github.com/nodejs/node/blob/master/LICENSE
@@ -65,10 +65,7 @@
 // TODO: How to provide detailed error messages without breaking tests?
 // TODO: Why console.log compiles in V8_JSI?
 
-#define NAPI_VERSION 8
-#define NAPI_EXPERIMENTAL
-
-#include "js_native_api.h"
+#include "hermes_node_api.h"
 
 #include "hermes/BCGen/HBC/BytecodeProviderFromSrc.h"
 #include "hermes/SourceMap/SourceMapParser.h"
@@ -83,7 +80,6 @@
 #include "hermes/VM/JSProxy.h"
 #include "hermes/VM/JSTypedArray.h"
 #include "hermes/VM/PropertyAccessor.h"
-#include "hermes/VM/Runtime.h"
 #include "llvh/ADT/SmallVector.h"
 #include "llvh/Support/ConvertUTF.h"
 
@@ -194,21 +190,7 @@
 extern "C" __declspec(dllimport) void __stdcall DebugBreak();
 #endif
 
-namespace hermes {
-namespace node_api {
-
-union HermesBuildVersionInfo {
-  struct {
-    uint16_t major;
-    uint16_t minor;
-    uint16_t patch;
-    uint16_t revision;
-  };
-  uint64_t version;
-};
-
-// TODO: (vmoroz) Remove this when we have a proper way to get the version.
-constexpr HermesBuildVersionInfo HermesBuildVersion = {};
+namespace hermes::node_api {
 
 //=============================================================================
 // Forward declaration of all classes.
@@ -6386,7 +6368,8 @@ napi_status NodeApiEnvironment::runScript(
   // CHECK_NAPI(getStringValueUTF8(source, nullptr, 0, &sourceSize));
   // std::unique_ptr<char[]> buffer =
   //     std::unique_ptr<char[]>(new char[sourceSize + 1]);
-  // CHECK_NAPI(getStringValueUTF8(source, buffer.get(), sourceSize + 1, nullptr));
+  // CHECK_NAPI(getStringValueUTF8(source, buffer.get(), sourceSize + 1,
+  // nullptr));
 
   // return scope.setResult(runPreparedScript(preparedScript, result));
   return napi_ok;
@@ -6592,8 +6575,7 @@ napi_status NodeApiEnvironment::checkCallResult(const T & /*value*/) noexcept {
   return clearLastNativeError();
 }
 
-} // namespace node_api
-} // namespace hermes
+} // namespace hermes::node_api
 
 //=============================================================================
 // Node-API implementation
@@ -6691,9 +6673,65 @@ napi_status NAPI_CDECL napi_create_string_utf16(
   return CHECKED_ENV(env)->createStringUTF16(str, length, result);
 }
 
+napi_status NAPI_CDECL node_api_create_external_string_latin1(
+    napi_env env,
+    char *str,
+    size_t length,
+    node_api_basic_finalize finalize_callback,
+    void *finalize_hint,
+    napi_value *result,
+    bool *copied) {
+  return CHECKED_ENV(env)->createExternalStringLatin1(
+      str, length, finalize_callback, finalize_hint, result, copied);
+}
+
+napi_status NAPI_CDECL node_api_create_external_string_utf16(
+    napi_env env,
+    char16_t *str,
+    size_t length,
+    node_api_basic_finalize finalize_callback,
+    void *finalize_hint,
+    napi_value *result,
+    bool *copied) {
+  return CHECKED_ENV(env)->createExternalStringUTF16(
+      str, length, finalize_callback, finalize_hint, result, copied);
+}
+
+napi_status NAPI_CDECL node_api_create_property_key_latin1(
+    napi_env env,
+    const char *str,
+    size_t length,
+    napi_value *result) {
+  return CHECKED_ENV(env)->createPropertyKeyLatin1(str, length, result);
+}
+
+napi_status NAPI_CDECL node_api_create_property_key_utf8(
+    napi_env env,
+    const char *str,
+    size_t length,
+    napi_value *result) {
+  return CHECKED_ENV(env)->createPropertyKeyUTF8(str, length, result);
+}
+
+napi_status NAPI_CDECL node_api_create_property_key_utf16(
+    napi_env env,
+    const char16_t *str,
+    size_t length,
+    napi_value *result) {
+  return CHECKED_ENV(env)->createPropertyKeyUTF16(str, length, result);
+}
+
 napi_status NAPI_CDECL
 napi_create_symbol(napi_env env, napi_value description, napi_value *result) {
   return CHECKED_ENV(env)->createSymbol(description, result);
+}
+
+napi_status NAPI_CDECL node_api_symbol_for(
+    napi_env env,
+    const char *utf8description,
+    size_t length,
+    napi_value *result) {
+  return CHECKED_ENV(env)->symbolFor(utf8description, length, result);
 }
 
 napi_status NAPI_CDECL napi_create_function(
@@ -6729,6 +6767,14 @@ napi_status NAPI_CDECL napi_create_range_error(
     napi_value msg,
     napi_value *result) {
   return CHECKED_ENV(env)->createJSRangeError(code, msg, result);
+}
+
+NAPI_EXTERN napi_status NAPI_CDECL node_api_create_syntax_error(
+    napi_env env,
+    napi_value code,
+    napi_value msg,
+    napi_value *result) {
+  return CHECKED_ENV(env)->createJSSyntaxError(code, msg, result);
 }
 
 //-----------------------------------------------------------------------------
@@ -6855,6 +6901,14 @@ napi_get_property_names(napi_env env, napi_value object, napi_value *result) {
   return CHECKED_ENV(env)->getForInPropertyNames(object, result);
 }
 
+napi_status NAPI_CDECL napi_set_property(
+    napi_env env,
+    napi_value object,
+    napi_value key,
+    napi_value value) {
+  return CHECKED_ENV(env)->setProperty(object, key, value);
+}
+
 napi_status NAPI_CDECL napi_has_property(
     napi_env env,
     napi_value object,
@@ -6871,20 +6925,28 @@ napi_status NAPI_CDECL napi_get_property(
   return CHECKED_ENV(env)->getProperty(object, key, result);
 }
 
-napi_status NAPI_CDECL napi_set_property(
-    napi_env env,
-    napi_value object,
-    napi_value key,
-    napi_value value) {
-  return CHECKED_ENV(env)->setProperty(object, key, value);
-}
-
 napi_status NAPI_CDECL napi_delete_property(
     napi_env env,
     napi_value object,
     napi_value key,
     bool *result) {
   return CHECKED_ENV(env)->deleteProperty(object, key, result);
+}
+
+napi_status NAPI_CDECL napi_has_own_property(
+    napi_env env,
+    napi_value object,
+    napi_value key,
+    bool *result) {
+  return CHECKED_ENV(env)->hasOwnProperty(object, key, result);
+}
+
+napi_status NAPI_CDECL napi_set_named_property(
+    napi_env env,
+    napi_value object,
+    const char *utf8name,
+    napi_value value) {
+  return CHECKED_ENV(env)->setNamedProperty(object, utf8name, value);
 }
 
 napi_status NAPI_CDECL napi_has_named_property(
@@ -6903,12 +6965,12 @@ napi_status NAPI_CDECL napi_get_named_property(
   return CHECKED_ENV(env)->getNamedProperty(object, utf8name, result);
 }
 
-napi_status NAPI_CDECL napi_set_named_property(
+napi_status NAPI_CDECL napi_set_element(
     napi_env env,
     napi_value object,
-    const char *utf8name,
+    uint32_t index,
     napi_value value) {
-  return CHECKED_ENV(env)->setNamedProperty(object, utf8name, value);
+  return CHECKED_ENV(env)->setElement(object, index, value);
 }
 
 napi_status NAPI_CDECL napi_has_element(
@@ -6927,28 +6989,12 @@ napi_status NAPI_CDECL napi_get_element(
   return CHECKED_ENV(env)->getElement(object, index, result);
 }
 
-napi_status NAPI_CDECL napi_set_element(
-    napi_env env,
-    napi_value object,
-    uint32_t index,
-    napi_value value) {
-  return CHECKED_ENV(env)->setElement(object, index, value);
-}
-
 napi_status NAPI_CDECL napi_delete_element(
     napi_env env,
     napi_value object,
     uint32_t index,
     bool *result) {
   return CHECKED_ENV(env)->deleteElement(object, index, result);
-}
-
-napi_status NAPI_CDECL napi_has_own_property(
-    napi_env env,
-    napi_value object,
-    napi_value key,
-    bool *result) {
-  return CHECKED_ENV(env)->hasOwnProperty(object, key, result);
 }
 
 napi_status NAPI_CDECL napi_define_properties(
@@ -7182,6 +7228,11 @@ napi_throw_range_error(napi_env env, const char *code, const char *msg) {
 }
 
 napi_status NAPI_CDECL
+node_api_throw_syntax_error(napi_env env, const char *code, const char *msg) {
+  return CHECKED_ENV(env)->throwJSSyntaxError(code, msg);
+}
+
+napi_status NAPI_CDECL
 napi_is_error(napi_env env, napi_value value, bool *result) {
   return CHECKED_ENV(env)->isJSError(value, result);
 }
@@ -7348,8 +7399,6 @@ napi_status NAPI_CDECL napi_adjust_external_memory(
       change_in_bytes, adjusted_value);
 }
 
-#if NAPI_VERSION >= 5
-
 //-----------------------------------------------------------------------------
 // Dates
 //-----------------------------------------------------------------------------
@@ -7383,10 +7432,6 @@ napi_status NAPI_CDECL napi_add_finalizer(
   return CHECKED_ENV(env)->addFinalizer(
       js_object, native_object, finalize_cb, finalize_hint, result);
 }
-
-#endif // NAPI_VERSION >= 5
-
-#if NAPI_VERSION >= 6
 
 //-----------------------------------------------------------------------------
 // BigInt
@@ -7469,10 +7514,6 @@ napi_status NAPI_CDECL napi_get_instance_data(napi_env env, void **data) {
   return CHECKED_ENV(env)->getInstanceData(data);
 }
 
-#endif // NAPI_VERSION >= 6
-
-#if NAPI_VERSION >= 7
-
 //-----------------------------------------------------------------------------
 // ArrayBuffer detaching
 //-----------------------------------------------------------------------------
@@ -7488,10 +7529,6 @@ napi_status NAPI_CDECL napi_is_detached_arraybuffer(
     bool *result) {
   return CHECKED_ENV(env)->isDetachedArrayBuffer(arraybuffer, result);
 }
-
-#endif // NAPI_VERSION >= 7
-
-#if NAPI_VERSION >= 8
 
 //-----------------------------------------------------------------------------
 // Type tagging
@@ -7519,5 +7556,3 @@ napi_status NAPI_CDECL napi_object_freeze(napi_env env, napi_value object) {
 napi_status NAPI_CDECL napi_object_seal(napi_env env, napi_value object) {
   return CHECKED_ENV(env)->objectSeal(object);
 }
-
-#endif // NAPI_VERSION >= 8
