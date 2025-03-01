@@ -68,12 +68,9 @@
 #define NAPI_VERSION 8
 #define NAPI_EXPERIMENTAL
 
-#include "MurmurHash.h"
-#include "ScriptStore.h"
-#include "hermes_api.h"
+#include "js_native_api.h"
 
 #include "hermes/BCGen/HBC/BytecodeProviderFromSrc.h"
-#include "hermes/DebuggerAPI.h"
 #include "hermes/SourceMap/SourceMapParser.h"
 #include "hermes/Support/SimpleDiagHandler.h"
 #include "hermes/VM/Callable.h"
@@ -210,7 +207,7 @@ union HermesBuildVersionInfo {
   uint64_t version;
 };
 
-//TODO: (vmoroz) Remove this when we have a proper way to get the version.
+// TODO: (vmoroz) Remove this when we have a proper way to get the version.
 constexpr HermesBuildVersionInfo HermesBuildVersion = {};
 
 //=============================================================================
@@ -610,8 +607,6 @@ class NodeApiEnvironment final {
   // Initializes a new instance of NodeApiEnvironment.
   explicit NodeApiEnvironment(
       vm::Runtime &runtime,
-      bool isInspectable,
-      std::shared_ptr<facebook::jsi::PreparedScriptStore> preparedScript,
       const vm::RuntimeConfig &runtimeConfig = {}) noexcept;
 
  private:
@@ -1490,14 +1485,6 @@ class NodeApiEnvironment final {
       size_t *byteOffset) noexcept;
 
   //-----------------------------------------------------------------------------
-  // Runtime info
-  //-----------------------------------------------------------------------------
- public:
-  napi_status getDescription(const char **result) noexcept;
-
-  napi_status isInspectable(bool *result) noexcept;
-
-  //-----------------------------------------------------------------------------
   // Version management
   //-----------------------------------------------------------------------------
  public:
@@ -1550,10 +1537,6 @@ class NodeApiEnvironment final {
           NodeApiEnvironment *env,
           int32_t id,
           vm::HermesValue error)) noexcept;
-
-  napi_status openEnvScope(jsr_napi_env_scope *scope) noexcept;
-
-  napi_status closeEnvScope(jsr_napi_env_scope scope) noexcept;
 
   // Exported function to check if there is an unhandled Promise rejection.
   napi_status hasUnhandledPromiseRejection(bool *result) noexcept;
@@ -1613,24 +1596,7 @@ class NodeApiEnvironment final {
 
   // Exported function to run script from a string value.
   // The sourceURL is used only for error reporting.
-  napi_status runScript(
-      napi_value source,
-      const char *sourceURL,
-      napi_value *result) noexcept;
-
-  napi_status createPreparedScript(
-      const uint8_t *scriptData,
-      size_t scriptLength,
-      jsr_data_delete_cb scriptDeleteCallback,
-      void *deleterData,
-      const char *sourceURL,
-      jsr_prepared_script *result) noexcept;
-
-  napi_status deletePreparedScript(jsr_prepared_script preparedScript) noexcept;
-
-  napi_status runPreparedScript(
-      jsr_prepared_script preparedScript,
-      napi_value *result) noexcept;
+  napi_status runScript(napi_value source, napi_value *result) noexcept;
 
   // Internal function to check if buffer contains Hermes VM bytecode.
   static bool isHermesBytecode(const uint8_t *data, size_t length) noexcept;
@@ -1745,12 +1711,6 @@ class NodeApiEnvironment final {
 
   // Flags used by byte code compiler.
   hbc::CompileFlags compileFlags_{};
-
-  // Optional prepared script store.
-  std::shared_ptr<facebook::jsi::PreparedScriptStore> scriptCache_{};
-
-  // Can we run a debugger?
-  bool isInspectable_{};
 
   // Collection of all predefined values.
   std::array<
@@ -2935,58 +2895,6 @@ class NodeApiExternalBuffer final : public hermes::Buffer {
   NodeApiExternalBufferCore *core_;
 };
 
-// Wraps script data as hermes::Buffer
-class ScriptDataBuffer final : public hermes::Buffer {
- public:
-  ScriptDataBuffer(
-      const uint8_t *scriptData,
-      size_t scriptLength,
-      jsr_data_delete_cb scriptDeleteCallback,
-      void *deleterData) noexcept
-      : Buffer(scriptData, scriptLength),
-        scriptDeleteCallback_(scriptDeleteCallback),
-        deleterData_(deleterData) {}
-
-  ~ScriptDataBuffer() noexcept override {
-    if (scriptDeleteCallback_ != nullptr) {
-      scriptDeleteCallback_(const_cast<uint8_t *>(data()), deleterData_);
-    }
-  }
-
-  ScriptDataBuffer(const ScriptDataBuffer &) = delete;
-  ScriptDataBuffer &operator=(const ScriptDataBuffer &) = delete;
-
- private:
-  jsr_data_delete_cb scriptDeleteCallback_{};
-  void *deleterData_{};
-};
-
-class JsiBuffer final : public hermes::Buffer {
- public:
-  JsiBuffer(std::shared_ptr<const facebook::jsi::Buffer> buffer) noexcept
-      : Buffer(buffer->data(), buffer->size()), buffer_(std::move(buffer)) {}
-
- private:
-  std::shared_ptr<const facebook::jsi::Buffer> buffer_;
-};
-
-class JsiSmallVectorBuffer final : public facebook::jsi::Buffer {
- public:
-  JsiSmallVectorBuffer(llvh::SmallVector<char, 0> data) noexcept
-      : data_(std::move(data)) {}
-
-  size_t size() const override {
-    return data_.size();
-  }
-
-  const uint8_t *data() const override {
-    return reinterpret_cast<const uint8_t *>(data_.data());
-  }
-
- private:
-  llvh::SmallVector<char, 0> data_;
-};
-
 // An implementation of PreparedJavaScript that wraps a BytecodeProvider.
 class NodeApiScriptModel final {
  public:
@@ -3272,16 +3180,9 @@ size_t convertUTF16ToUTF8WithReplacements(
 
 NodeApiEnvironment::NodeApiEnvironment(
     vm::Runtime &runtime,
-    bool isInspectable,
-    std::shared_ptr<facebook::jsi::PreparedScriptStore> scriptCache,
     const vm::RuntimeConfig &runtimeConfig) noexcept
     : runtime_(runtime),
-      isInspectable_(isInspectable),
-      scriptCache_(std::move(scriptCache)),
       pendingFinalizers_(NodeApiPendingFinalizers::create()) {
-  if (isInspectable) {
-    compileFlags_.debug = true;
-  }
   switch (runtimeConfig.getCompilationMode()) {
     case vm::SmartCompilation:
       compileFlags_.lazy = true;
@@ -6174,22 +6075,6 @@ napi_status NodeApiEnvironment::getDataViewInfo(
 }
 
 //-----------------------------------------------------------------------------
-// Runtime info
-//-----------------------------------------------------------------------------
-
-napi_status NodeApiEnvironment::getDescription(const char **result) noexcept {
-  CHECK_ARG(result);
-  *result = "Hermes";
-  return napi_ok;
-}
-
-napi_status NodeApiEnvironment::isInspectable(bool *result) noexcept {
-  CHECK_ARG(result);
-  *result = isInspectable_;
-  return napi_ok;
-}
-
-//-----------------------------------------------------------------------------
 // Version management
 //-----------------------------------------------------------------------------
 
@@ -6393,20 +6278,6 @@ NodeApiEnvironment::handleRejectionNotification(
   return env->getUndefined();
 }
 
-napi_status NodeApiEnvironment::openEnvScope(
-    jsr_napi_env_scope *scope) noexcept {
-  CHECK_ARG(scope);
-  *scope = reinterpret_cast<jsr_napi_env_scope>(new int(0));
-  return napi_ok;
-}
-
-napi_status NodeApiEnvironment::closeEnvScope(
-    jsr_napi_env_scope scope) noexcept {
-  CHECK_ARG(scope);
-  delete reinterpret_cast<int *>(scope);
-  return napi_ok;
-}
-
 napi_status NodeApiEnvironment::hasUnhandledPromiseRejection(
     bool *result) noexcept {
   return setResult(lastUnhandledRejectionId_ != -1, result);
@@ -6506,174 +6377,19 @@ napi_status NodeApiEnvironment::getInstanceData(void **nativeData) noexcept {
 //---------------------------------------------------------------------------
 
 napi_status NodeApiEnvironment::runScript(
-    napi_value source,
-    const char *sourceURL,
-    napi_value *result) noexcept {
-  CHECK_NAPI(checkPendingJSError());
-  NodeApiHandleScope scope{*this, result};
+    napi_value /*source*/,
+    napi_value * /*result*/) noexcept {
+  // CHECK_NAPI(checkPendingJSError());
+  // NodeApiHandleScope scope{*this, result};
 
-  size_t sourceSize{};
-  CHECK_NAPI(getStringValueUTF8(source, nullptr, 0, &sourceSize));
-  std::unique_ptr<char[]> buffer =
-      std::unique_ptr<char[]>(new char[sourceSize + 1]);
-  CHECK_NAPI(getStringValueUTF8(source, buffer.get(), sourceSize + 1, nullptr));
+  // size_t sourceSize{};
+  // CHECK_NAPI(getStringValueUTF8(source, nullptr, 0, &sourceSize));
+  // std::unique_ptr<char[]> buffer =
+  //     std::unique_ptr<char[]>(new char[sourceSize + 1]);
+  // CHECK_NAPI(getStringValueUTF8(source, buffer.get(), sourceSize + 1, nullptr));
 
-  jsr_prepared_script preparedScript{};
-  CHECK_NAPI(createPreparedScript(
-      reinterpret_cast<uint8_t *>(buffer.release()),
-      sourceSize,
-      [](void *data, void * /*deleterData*/) {
-        std::unique_ptr<char[]> buf(reinterpret_cast<char *>(data));
-      },
-      nullptr,
-      sourceURL,
-      &preparedScript));
-  // To delete prepared script after execution.
-  std::unique_ptr<NodeApiScriptModel> scriptModel{
-      reinterpret_cast<NodeApiScriptModel *>(preparedScript)};
-  return scope.setResult(runPreparedScript(preparedScript, result));
-}
-
-napi_status NodeApiEnvironment::createPreparedScript(
-    const uint8_t *scriptData,
-    size_t scriptLength,
-    jsr_data_delete_cb scriptDeleteCallback,
-    void *deleterData,
-    const char *sourceURL,
-    jsr_prepared_script *result) noexcept {
-  std::unique_ptr<ScriptDataBuffer> buffer = std::make_unique<ScriptDataBuffer>(
-      scriptData, scriptLength, scriptDeleteCallback, deleterData);
-
-  CHECK_NAPI(checkPendingJSError());
-  NodeApiHandleScope scope{*this};
-
-  std::pair<std::unique_ptr<hbc::BCProvider>, std::string> bcErr{};
-  vm::RuntimeModuleFlags runtimeFlags{};
-  runtimeFlags.persistent = true;
-
-  bool isBytecode = isHermesBytecode(buffer->data(), buffer->size());
-  // Save the first few bytes of the buffer so that we can later append them
-  // to any error message.
-  uint8_t bufPrefix[16];
-  const size_t bufSize = buffer->size();
-  std::memcpy(bufPrefix, buffer->data(), std::min(sizeof(bufPrefix), bufSize));
-
-  // Construct the BC provider either from buffer or source.
-  if (isBytecode) {
-    bcErr = hbc::BCProviderFromBuffer::createBCProviderFromBuffer(
-        std::move(buffer));
-  } else {
-#if defined(HERMESVM_LEAN)
-    bcErr.second = "prepareJavaScript source compilation not supported";
-#else
-
-    facebook::jsi::ScriptSignature scriptSignature;
-    facebook::jsi::JSRuntimeSignature runtimeSignature;
-    const char *prepareTag = "perf";
-
-    if (scriptCache_) {
-      uint64_t hash{};
-      bool isAscii = murmurhash(buffer->data(), buffer->size(), /*ref*/ hash);
-      facebook::jsi::JSRuntimeVersion_t runtimeVersion =
-          HermesBuildVersion.version;
-      scriptSignature = {std::string(sourceURL ? sourceURL : ""), hash};
-      runtimeSignature = {"Hermes", runtimeVersion};
-    }
-
-    std::shared_ptr<const facebook::jsi::Buffer> cache;
-    if (scriptCache_) {
-      cache = scriptCache_->tryGetPreparedScript(
-          scriptSignature, runtimeSignature, prepareTag);
-      bcErr = hbc::BCProviderFromBuffer::createBCProviderFromBuffer(
-          std::make_unique<JsiBuffer>(move(cache)));
-    }
-
-    hbc::BCProviderFromSrc *bytecodeProviderFromSrc{};
-    if (!bcErr.first) {
-      std::pair<std::unique_ptr<hbc::BCProviderFromSrc>, std::string>
-          bcFromSrcErr = hbc::BCProviderFromSrc::createBCProviderFromSrc(
-              std::move(buffer),
-              std::string(sourceURL ? sourceURL : ""),
-              nullptr,
-              compileFlags_);
-      bytecodeProviderFromSrc = bcFromSrcErr.first.get();
-      bcErr = std::move(bcFromSrcErr);
-    }
-
-    if (scriptCache_ && bytecodeProviderFromSrc) {
-      hbc::BytecodeModule *bcModule =
-          bytecodeProviderFromSrc->getBytecodeModule();
-
-      // Serialize/deserialize can't handle lazy compilation as of now. Do a
-      // check to make sure there is no lazy BytecodeFunction in module_.
-      for (uint32_t i = 0; i < bcModule->getNumFunctions(); i++) {
-        if (bytecodeProviderFromSrc->isFunctionLazy(i)) {
-          goto CannotSerialize;
-        }
-      }
-
-      // Serialize the bytecode. Call BytecodeSerializer to do the heavy
-      // lifting. Write to a SmallVector first, so we can know the total bytes
-      // and write it first and make life easier for Deserializer. This is going
-      // to be slower than writing to Serializer directly but it's OK to slow
-      // down serialization if it speeds up Deserializer.
-      BytecodeGenerationOptions bytecodeGenOpts =
-          BytecodeGenerationOptions::defaults();
-      llvh::SmallVector<char, 0> bytecodeVector;
-      llvh::raw_svector_ostream outStream(bytecodeVector);
-      hbc::BytecodeSerializer bcSerializer{outStream, bytecodeGenOpts};
-      bcSerializer.serialize(
-          *bcModule, bytecodeProviderFromSrc->getSourceHash());
-
-      scriptCache_->persistPreparedScript(
-          std::shared_ptr<const facebook::jsi::Buffer>(
-              new JsiSmallVectorBuffer(std::move(bytecodeVector))),
-          scriptSignature,
-          runtimeSignature,
-          prepareTag);
-    }
-#endif
-  }
-  if (!bcErr.first) {
-    NodeApiStringBuilder sb(" Buffer size: ", bufSize, ", starts with: ");
-    for (size_t i = 0; i < sizeof(bufPrefix) && i < bufSize; ++i) {
-      sb.append(llvh::format_hex_no_prefix(bufPrefix[i], 2));
-    }
-    return GENERIC_FAILURE("Compiling JS failed: ", bcErr.second, sb.str());
-  }
-
-#if !defined(HERMESVM_LEAN)
-CannotSerialize:
-#endif
-  *result = reinterpret_cast<jsr_prepared_script>(new NodeApiScriptModel(
-      std::move(bcErr.first),
-      runtimeFlags,
-      sourceURL ? sourceURL : "",
-      isBytecode));
-  return clearLastNativeError();
-}
-
-napi_status NodeApiEnvironment::deletePreparedScript(
-    jsr_prepared_script preparedScript) noexcept {
-  CHECK_ARG(preparedScript);
-  delete reinterpret_cast<NodeApiScriptModel *>(preparedScript);
+  // return scope.setResult(runPreparedScript(preparedScript, result));
   return napi_ok;
-}
-
-napi_status NodeApiEnvironment::runPreparedScript(
-    jsr_prepared_script preparedScript,
-    napi_value *result) noexcept {
-  CHECK_NAPI(checkPendingJSError());
-  NodeApiHandleScope scope{*this, result};
-  CHECK_ARG(preparedScript);
-  const NodeApiScriptModel *hermesPrep =
-      reinterpret_cast<NodeApiScriptModel *>(preparedScript);
-  vm::CallResult<vm::HermesValue> res = runtime_.runBytecode(
-      hermesPrep->bytecodeProvider(),
-      hermesPrep->runtimeFlags(),
-      hermesPrep->sourceURL(),
-      vm::Runtime::makeNullHandle<vm::Environment>());
-  return scope.setResult(std::move(res));
 }
 
 /*static*/ bool NodeApiEnvironment::isHermesBytecode(
@@ -7617,7 +7333,7 @@ napi_is_promise(napi_env env, napi_value value, bool *is_promise) {
 
 napi_status NAPI_CDECL
 napi_run_script(napi_env env, napi_value script, napi_value *result) {
-  return CHECKED_ENV(env)->runScript(script, nullptr, result);
+  return CHECKED_ENV(env)->runScript(script, result);
 }
 
 //-----------------------------------------------------------------------------
@@ -7805,113 +7521,3 @@ napi_status NAPI_CDECL napi_object_seal(napi_env env, napi_value object) {
 }
 
 #endif // NAPI_VERSION >= 8
-
-//=============================================================================
-// Hermes specific API
-//=============================================================================
-
-napi_status hermes_create_napi_env(
-    ::hermes::vm::Runtime &runtime,
-    bool isInspectable,
-    std::shared_ptr<facebook::jsi::PreparedScriptStore> preparedScript,
-    const ::hermes::vm::RuntimeConfig &runtimeConfig,
-    napi_env *env) {
-  if (!env) {
-    return napi_status::napi_invalid_arg;
-  }
-  *env = hermes::node_api::napiEnv(new hermes::node_api::NodeApiEnvironment(
-      runtime, isInspectable, std::move(preparedScript), runtimeConfig));
-  return napi_status::napi_ok;
-}
-
-//=============================================================================
-// Node-API extensions to host JS engine and to implement JSI
-//=============================================================================
-
-napi_status NAPI_CDECL jsr_env_ref(napi_env env) {
-  return CHECKED_ENV(env)->incRefCount();
-}
-
-napi_status NAPI_CDECL jsr_env_unref(napi_env env) {
-  return CHECKED_ENV(env)->decRefCount();
-}
-
-napi_status NAPI_CDECL jsr_collect_garbage(napi_env env) {
-  return CHECKED_ENV(env)->collectGarbage();
-}
-
-napi_status NAPI_CDECL
-jsr_has_unhandled_promise_rejection(napi_env env, bool *result) {
-  return CHECKED_ENV(env)->hasUnhandledPromiseRejection(result);
-}
-
-napi_status NAPI_CDECL jsr_get_and_clear_last_unhandled_promise_rejection(
-    napi_env env,
-    napi_value *result) {
-  return CHECKED_ENV(env)->getAndClearLastUnhandledPromiseRejection(result);
-}
-
-napi_status NAPI_CDECL jsr_get_description(napi_env env, const char **result) {
-  return CHECKED_ENV(env)->getDescription(result);
-}
-
-napi_status NAPI_CDECL
-jsr_drain_microtasks(napi_env env, int32_t max_count_hint, bool *result) {
-  return CHECKED_ENV(env)->drainMicrotasks(max_count_hint, result);
-}
-
-napi_status NAPI_CDECL jsr_is_inspectable(napi_env env, bool *result) {
-  return CHECKED_ENV(env)->isInspectable(result);
-}
-
-JSR_API jsr_open_napi_env_scope(napi_env env, jsr_napi_env_scope *scope) {
-  return CHECKED_ENV(env)->openEnvScope(scope);
-}
-
-JSR_API jsr_close_napi_env_scope(napi_env env, jsr_napi_env_scope scope) {
-  return CHECKED_ENV(env)->closeEnvScope(scope);
-}
-
-//-----------------------------------------------------------------------------
-// Script preparing and running.
-//
-// Script is usually converted to byte code, or in other words - prepared - for
-// execution. Then, we can run the prepared script.
-//-----------------------------------------------------------------------------
-
-napi_status NAPI_CDECL jsr_run_script(
-    napi_env env,
-    napi_value source,
-    const char *source_url,
-    napi_value *result) {
-  return CHECKED_ENV(env)->runScript(source, source_url, result);
-}
-
-napi_status NAPI_CDECL jsr_create_prepared_script(
-    napi_env env,
-    const uint8_t *script_data,
-    size_t script_length,
-    jsr_data_delete_cb script_delete_cb,
-    void *deleter_data,
-    const char *source_url,
-    jsr_prepared_script *result) {
-  return CHECKED_ENV(env)->createPreparedScript(
-      script_data,
-      script_length,
-      script_delete_cb,
-      deleter_data,
-      source_url,
-      result);
-}
-
-napi_status NAPI_CDECL
-jsr_delete_prepared_script(napi_env env, jsr_prepared_script prepared_script) {
-  return CHECKED_ENV(env)->deletePreparedScript(prepared_script);
-}
-
-napi_status NAPI_CDECL jsr_prepared_script_run(
-    napi_env env,
-    jsr_prepared_script prepared_script,
-    napi_value *result) {
-  return CHECKED_ENV(env)->runPreparedScript(prepared_script, result);
-}

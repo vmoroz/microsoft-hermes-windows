@@ -7,34 +7,17 @@ set(HERMES_ENABLE_EH_RTTI ON)
 
 add_subdirectory(node_api)
 
-# List the files that define exported functions explicitly, and they can link
-# against the internal functionality they need.
-set(api_sources
-  hermes_node_api.cpp
-  MurmurHash.cpp
-  hermes_win.cpp)
-
-add_library(libshared SHARED ${api_sources})
-target_link_libraries(libshared PRIVATE
-  jsi
-  libhermes
+add_library(hermesNodeApi STATIC hermes_node_api.cpp)
+target_link_libraries(hermesNodeApi PRIVATE
   hermesVMRuntime
-  hermesNodeApi
+  nodeApi
   hermesParser)
-target_link_options(libshared PRIVATE ${HERMES_EXTRA_LINKER_FLAGS})
-
-# Export the required header directory
-target_include_directories(libshared PUBLIC
-  ..
-  ../../public
-  node_api
-  ${HERMES_JSI_DIR})
 
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
   # Same as above, but for windows. Note that there is no equivalent of -fvisibility=default.
   set(compile_flags "")
 
-  # Enable exeption
+  # Enable exception
   set(compile_flags "${compile_flags} /EHsc")
 
   # Enable RTTI
@@ -54,9 +37,7 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
   endif()
 endif()
 
-set_target_properties(libshared PROPERTIES
+set_target_properties(hermesNodeApi PROPERTIES
   COMPILE_FLAGS "${compile_flags}"
   LINK_OPTIONS "$<IF:$<CONFIG:Debug>,${link_flags_debug},${link_flags_release}>"
-  # To make sure that the resulting DLL name is hermes.dll
-  OUTPUT_NAME hermes
 )

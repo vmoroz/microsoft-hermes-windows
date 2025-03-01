@@ -12,3 +12,5 @@ You can find more information about Node-API in
 
 This [page](https://github.com/nodejs/abi-stable-node/blob/doc/node-api-engine-bindings.md)
 maintains a list of known Node-API mappings to different programming languages.
+
+The node-api subfolder has a copy of the Node-API header files.
