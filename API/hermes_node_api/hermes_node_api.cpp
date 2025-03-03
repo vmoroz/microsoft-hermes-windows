@@ -589,13 +589,12 @@ class NodeApiEnvironment final {
   // Initializes a new instance of NodeApiEnvironment.
   explicit NodeApiEnvironment(
       vm::Runtime &runtime,
-      const vm::RuntimeConfig &runtimeConfig = {}) noexcept;
+      int32_t apiVersion) noexcept;
 
- private:
-  // Only the internal ref count can call the destructor.
   ~NodeApiEnvironment();
 
  public:
+  // TODO: Remove the ref count
   // Exported function to increment the ref count by one.
   napi_status incRefCount() noexcept;
 
@@ -1687,6 +1686,9 @@ class NodeApiEnvironment final {
 
   // Reference to the wrapped Hermes runtime.
   vm::Runtime &runtime_;
+
+  // TODO: Use default version 8 if not specified.
+  int32_t apiVersion_{0};
 
   // Reference to itself for convenient use in macros.
   NodeApiEnvironment &env{*this};
@@ -3251,26 +3253,28 @@ size_t convertUTF16ToUTF8WithReplacements(
 
 NodeApiEnvironment::NodeApiEnvironment(
     vm::Runtime &runtime,
-    const vm::RuntimeConfig &runtimeConfig) noexcept
+    int32_t apiVersion) noexcept
     : runtime_(runtime),
+      apiVersion_(apiVersion),
       pendingFinalizers_(NodeApiPendingFinalizers::create()) {
-  switch (runtimeConfig.getCompilationMode()) {
-    case vm::SmartCompilation:
-      compileFlags_.lazy = true;
-      // (Leaves thresholds at default values)
-      break;
-    case vm::ForceEagerCompilation:
-      compileFlags_.lazy = false;
-      break;
-    case vm::ForceLazyCompilation:
-      compileFlags_.lazy = true;
-      compileFlags_.preemptiveFileCompilationThreshold = 0;
-      compileFlags_.preemptiveFunctionCompilationThreshold = 0;
-      break;
-  }
+    //TODO: implement
+  //switch (runtimeConfig.getCompilationMode()) {
+  //  case vm::SmartCompilation:
+  //    compileFlags_.lazy = true;
+  //    // (Leaves thresholds at default values)
+  //    break;
+  //  case vm::ForceEagerCompilation:
+  //    compileFlags_.lazy = false;
+  //    break;
+  //  case vm::ForceLazyCompilation:
+  //    compileFlags_.lazy = true;
+  //    compileFlags_.preemptiveFileCompilationThreshold = 0;
+  //    compileFlags_.preemptiveFunctionCompilationThreshold = 0;
+  //    break;
+  //}
 
-  compileFlags_.enableGenerator = runtimeConfig.getEnableGenerator();
-  compileFlags_.emitAsyncBreakCheck = runtimeConfig.getAsyncBreakCheckInEval();
+//  compileFlags_.enableGenerator = runtimeConfig.getEnableGenerator();
+  //compileFlags_.emitAsyncBreakCheck = runtimeConfig.getAsyncBreakCheckInEval();
 
   runtime_.addCustomRootsFunction([this](vm::GC *, vm::RootAcceptor &acceptor) {
     napiValueStack_.forEach([&](const vm::PinnedHermesValue &value) {
@@ -6770,8 +6774,10 @@ napi_status NAPI_CDECL node_api_create_external_string_latin1(
     void *finalize_hint,
     napi_value *result,
     bool *copied) {
-  return CHECKED_ENV(env)->createExternalStringLatin1(
-      str, length, finalize_callback, finalize_hint, result, copied);
+  // TODO: implement
+  // return CHECKED_ENV(env)->createExternalStringLatin1(
+  //     str, length, finalize_callback, finalize_hint, result, copied);
+  return napi_ok;
 }
 
 napi_status NAPI_CDECL node_api_create_external_string_utf16(
@@ -6782,8 +6788,10 @@ napi_status NAPI_CDECL node_api_create_external_string_utf16(
     void *finalize_hint,
     napi_value *result,
     bool *copied) {
-  return CHECKED_ENV(env)->createExternalStringUTF16(
-      str, length, finalize_callback, finalize_hint, result, copied);
+  // TODO: implement
+  // return CHECKED_ENV(env)->createExternalStringUTF16(
+  //    str, length, finalize_callback, finalize_hint, result, copied);
+  return napi_ok;
 }
 
 napi_status NAPI_CDECL node_api_create_property_key_latin1(
@@ -6791,7 +6799,9 @@ napi_status NAPI_CDECL node_api_create_property_key_latin1(
     const char *str,
     size_t length,
     napi_value *result) {
-  return CHECKED_ENV(env)->createPropertyKeyLatin1(str, length, result);
+  // TODO: implement
+  // return CHECKED_ENV(env)->createPropertyKeyLatin1(str, length, result);
+  return napi_ok;
 }
 
 napi_status NAPI_CDECL node_api_create_property_key_utf8(
@@ -6799,7 +6809,9 @@ napi_status NAPI_CDECL node_api_create_property_key_utf8(
     const char *str,
     size_t length,
     napi_value *result) {
-  return CHECKED_ENV(env)->createPropertyKeyUTF8(str, length, result);
+  // TODO: implement
+  // return CHECKED_ENV(env)->createPropertyKeyUTF8(str, length, result);
+  return napi_ok;
 }
 
 napi_status NAPI_CDECL node_api_create_property_key_utf16(
@@ -6807,7 +6819,9 @@ napi_status NAPI_CDECL node_api_create_property_key_utf16(
     const char16_t *str,
     size_t length,
     napi_value *result) {
-  return CHECKED_ENV(env)->createPropertyKeyUTF16(str, length, result);
+  // TODO: implement
+  // return CHECKED_ENV(env)->createPropertyKeyUTF16(str, length, result);
+  return napi_ok;
 }
 
 napi_status NAPI_CDECL
@@ -6820,7 +6834,9 @@ napi_status NAPI_CDECL node_api_symbol_for(
     const char *utf8description,
     size_t length,
     napi_value *result) {
-  return CHECKED_ENV(env)->symbolFor(utf8description, length, result);
+  // TODO: implement
+  // return CHECKED_ENV(env)->symbolFor(utf8description, length, result);
+  return napi_ok;
 }
 
 napi_status NAPI_CDECL napi_create_function(
@@ -6863,7 +6879,9 @@ NAPI_EXTERN napi_status NAPI_CDECL node_api_create_syntax_error(
     napi_value code,
     napi_value msg,
     napi_value *result) {
-  return CHECKED_ENV(env)->createJSSyntaxError(code, msg, result);
+  // TODO: implement
+  // return CHECKED_ENV(env)->createJSSyntaxError(code, msg, result);
+  return napi_ok;
 }
 
 //-----------------------------------------------------------------------------
@@ -7318,7 +7336,9 @@ napi_throw_range_error(napi_env env, const char *code, const char *msg) {
 
 napi_status NAPI_CDECL
 node_api_throw_syntax_error(napi_env env, const char *code, const char *msg) {
-  return CHECKED_ENV(env)->throwJSSyntaxError(code, msg);
+  // TODO: implement
+  // return CHECKED_ENV(env)->throwJSSyntaxError(code, msg);
+  return napi_ok;
 }
 
 napi_status NAPI_CDECL
