@@ -3,7 +3,7 @@
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
- * 
+ *
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT license.
  *
@@ -3001,6 +3001,95 @@ class NodeApiDoubleConversion final {
   static constexpr int kSignificandSize = 53;
   static constexpr int kExponentBias = 0x3FF + kPhysicalSignificandSize;
 };
+
+class NodeApiEnvironmentHolder {
+ public:
+  napi_env getOrCreateEnvironment(
+      vm::Runtime &runtime,
+      int32_t apiVersion) noexcept {
+    if (rootEnv_ == nullptr) {
+      rootEnv_ = std::make_unique<NodeApiEnvironment>(runtime, apiVersion);
+    }
+    return napiEnv(rootEnv_.get());
+  }
+
+  napi_env createModuleEnvironment(
+      vm::Runtime &runtime,
+      int32_t apiVersion) noexcept {
+    auto env = std::make_unique<NodeApiEnvironment>(runtime, apiVersion);
+    napi_env result = napiEnv(env.get());
+    modelEnvs_.push_back(std::move(env));
+    return result;
+  }
+
+  static vm::CallResult<NodeApiEnvironmentHolder *> fromRuntime(
+      vm::Runtime &runtime) {
+    vm::GCScope gcScope(runtime);
+    vm::HermesValue globalObjectHV = runtime.getGlobal().getHermesValue();
+    vm::Handle<vm::JSObject> globalObjectHandle =
+        vm::Handle<vm::JSObject>::vmcast(runtime, globalObjectHV);
+    vm::SymbolID propSymbol = vm::Predefined::getSymbolID(
+        vm::Predefined::InternalPropertyArrayBufferExternalFinalizer);
+    vm::NamedPropertyDescriptor desc;
+    bool exists = vm::JSObject::getOwnNamedDescriptor(
+        globalObjectHandle, runtime, propSymbol, desc);
+    if (exists) {
+      // Raw pointers below.
+      vm::NoAllocScope scope(runtime);
+      vm::NativeState *ns =
+          vm::vmcast<vm::NativeState>(vm::JSObject::getNamedSlotValueUnsafe(
+                                          *globalObjectHandle, runtime, desc)
+                                          .getObject(runtime));
+      return reinterpret_cast<NodeApiEnvironmentHolder *>(ns->context());
+    }
+
+    NodeApiEnvironmentHolder *holder = new NodeApiEnvironmentHolder();
+    vm::Handle<vm::NativeState> ns = runtime.makeHandle(
+        vm::NativeState::create(runtime, holder, deleteHolder));
+    vm::CallResult<bool> res = vm::JSObject::defineOwnProperty(
+        globalObjectHandle,
+        runtime,
+        propSymbol,
+        vm::DefinePropertyFlags::getDefaultNewPropertyFlags(),
+        ns,
+        vm::PropOpFlags().plusThrowOnError());
+    if (res.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+      return vm::ExecutionStatus::EXCEPTION;
+    }
+    return holder;
+  }
+
+ private:
+  static void deleteHolder(vm::GC &, vm::NativeState *ns) {
+    delete reinterpret_cast<NodeApiEnvironmentHolder *>(ns->context());
+  }
+
+ private:
+  std::unique_ptr<NodeApiEnvironment> rootEnv_;
+  std::vector<std::unique_ptr<NodeApiEnvironment>> modelEnvs_;
+};
+
+vm::CallResult<napi_env> GetOrCreateRuntimeNodeApiEnvironment(
+    vm::Runtime &runtime,
+    int32_t apiVersion) noexcept {
+  vm::CallResult<NodeApiEnvironmentHolder *> holderRes =
+      NodeApiEnvironmentHolder::fromRuntime(runtime);
+  if (holderRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return vm::ExecutionStatus::EXCEPTION;
+  }
+  return (*holderRes)->getOrCreateEnvironment(runtime, apiVersion);
+}
+
+vm::CallResult<napi_env> CreateModuleNodeApiEnvironment(
+    vm::Runtime &runtime,
+    int32_t apiVersion) noexcept {
+  vm::CallResult<NodeApiEnvironmentHolder *> holderRes =
+      NodeApiEnvironmentHolder::fromRuntime(runtime);
+  if (holderRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return vm::ExecutionStatus::EXCEPTION;
+  }
+  return (*holderRes)->createModuleEnvironment(runtime, apiVersion);
+}
 
 // Max size of the runtime's register stack.
 // The runtime register stack needs to be small enough to be allocated on the
