@@ -1,45 +1,45 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#include <gtest/gtest.h>
-#include "hermes_api.h"
 #include "node_api_test.h"
+#include "v8_api.h"
 
-#include <memory>
-#include <vector>
+namespace node_api_tests {
 
-namespace node_api_test {
-
-class HermesRuntimeHolder : public IEnvHolder {
+class V8RuntimeHolder : public IEnvHolder {
  public:
-  HermesRuntimeHolder() noexcept {
+  V8RuntimeHolder(std::shared_ptr<NodeApiTaskRunner> taskRunner) noexcept {
     jsr_config config{};
     jsr_create_config(&config);
+    jsr_config_enable_gc_api(config, true);
+    std::shared_ptr<NodeApiTaskRunner>* taskRunnerPtr =
+        new std::shared_ptr<NodeApiTaskRunner>(std::move(taskRunner));
+    jsr_config_set_task_runner(config,
+                               taskRunnerPtr,
+                               NodeApiTaskRunner::PostTaskCallback,
+                               NodeApiTaskRunner::DeleteCallback,
+                               nullptr);
     jsr_create_runtime(config, &runtime_);
     jsr_delete_config(config);
     jsr_runtime_get_node_api_env(runtime_, &env_);
   }
 
-  ~HermesRuntimeHolder() {
-    jsr_delete_runtime(runtime_);
-  }
+  ~V8RuntimeHolder() { jsr_delete_runtime(runtime_); }
 
-  HermesRuntimeHolder(const HermesRuntimeHolder &) = delete;
-  HermesRuntimeHolder &operator=(const HermesRuntimeHolder &) = delete;
+  V8RuntimeHolder(const V8RuntimeHolder&) = delete;
+  V8RuntimeHolder& operator=(const V8RuntimeHolder&) = delete;
 
-  napi_env getEnv() override {
-    return env_;
-  }
+  napi_env getEnv() override { return env_; }
 
  private:
   jsr_runtime runtime_{};
   napi_env env_{};
 };
 
-std::vector<NodeApiTestData> NodeApiEnvFactories() {
-  return {{"../js", [] {
-             return std::unique_ptr<IEnvHolder>(new HermesRuntimeHolder());
-           }}};
+std::unique_ptr<IEnvHolder> CreateEnvHolder(
+    std::shared_ptr<NodeApiTaskRunner> taskRunner) {
+  return std::unique_ptr<IEnvHolder>(
+      new V8RuntimeHolder(std::move(taskRunner)));
 }
 
-} // namespace node_api_test
+}  // namespace node_api_tests
