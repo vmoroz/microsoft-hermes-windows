@@ -20,12 +20,13 @@ if (process.argv[2] === 'child') {
       setImmediate(() => gcLoop());
     }
   })();
-} else {
-  const assert = require('assert');
-  const { spawnSync } = require('child_process');
-  const child = spawnSync(process.execPath, [
-    '--expose-gc', __filename, 'child',
-  ]);
-  assert.strictEqual(child.signal, null);
-  assert.match(child.stderr.toString(), /Error during Finalize/m);
+  return;
 }
+
+const assert = require('assert');
+const { spawnSync } = require('child_process');
+const child = spawnSync(process.execPath, [
+  '--expose-gc', __filename, 'child',
+]);
+assert.strictEqual(child.signal, null);
+assert.match(child.stderr.toString(), /Error during Finalize/);

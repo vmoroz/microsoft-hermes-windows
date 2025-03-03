@@ -15,6 +15,46 @@ assert.strictEqual(test_reference.finalizeCount, 0);
 // with an async delay and GC call between each.
 async function runTests() {
   (() => {
+    const symbol = test_reference.createSymbol('testSym');
+    test_reference.createReference(symbol, 0);
+    assert.strictEqual(test_reference.referenceValue, symbol);
+  })();
+  test_reference.deleteReference();
+
+  (() => {
+    const symbol = test_reference.createSymbolFor('testSymFor');
+    test_reference.createReference(symbol, 0);
+    assert.strictEqual(test_reference.referenceValue, symbol);
+  })();
+  test_reference.deleteReference();
+
+  (() => {
+    const symbol = test_reference.createSymbolFor('testSymFor');
+    test_reference.createReference(symbol, 1);
+    assert.strictEqual(test_reference.referenceValue, symbol);
+    assert.strictEqual(test_reference.referenceValue, Symbol.for('testSymFor'));
+  })();
+  test_reference.deleteReference();
+
+  (() => {
+    const symbol = test_reference.createSymbolForEmptyString();
+    test_reference.createReference(symbol, 0);
+    assert.strictEqual(test_reference.referenceValue, Symbol.for(''));
+  })();
+  test_reference.deleteReference();
+
+  (() => {
+    const symbol = test_reference.createSymbolForEmptyString();
+    test_reference.createReference(symbol, 1);
+    assert.strictEqual(test_reference.referenceValue, symbol);
+    assert.strictEqual(test_reference.referenceValue, Symbol.for(''));
+  })();
+  test_reference.deleteReference();
+
+  assert.throws(() => test_reference.createSymbolForIncorrectLength(),
+                /Invalid argument/);
+
+  (() => {
     const value = test_reference.createExternal();
     assert.strictEqual(test_reference.finalizeCount, 0);
     assert.strictEqual(typeof value, 'object');
@@ -109,9 +149,7 @@ runTests();
 // required to ensure delete could be called before
 // the finalizer in manual testing.
 for (let i = 0; i < 1000; i++) {
-  (function() {
-    const wrapObject = new Object();
-    test_reference.validateDeleteBeforeFinalize(wrapObject);
-  })();
+  const wrapObject = new Object();
+  test_reference.validateDeleteBeforeFinalize(wrapObject);
   global.gc();
 }
