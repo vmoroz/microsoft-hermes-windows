@@ -53,6 +53,9 @@
 //   of "if-return" statements, and to report failing expressions along with the
 //   file name and code line number.
 
+// TODO: Update with the latest Node.js Node-API implementation that uses the
+// version info.
+
 // TODO: Allow DebugBreak in unexpected cases - add functions to indicate
 //       expected errors
 // TODO: Create NodeApiEnvironment with JSI Runtime
@@ -3257,24 +3260,25 @@ NodeApiEnvironment::NodeApiEnvironment(
     : runtime_(runtime),
       apiVersion_(apiVersion),
       pendingFinalizers_(NodeApiPendingFinalizers::create()) {
-    //TODO: implement
-  //switch (runtimeConfig.getCompilationMode()) {
-  //  case vm::SmartCompilation:
-  //    compileFlags_.lazy = true;
-  //    // (Leaves thresholds at default values)
-  //    break;
-  //  case vm::ForceEagerCompilation:
-  //    compileFlags_.lazy = false;
-  //    break;
-  //  case vm::ForceLazyCompilation:
-  //    compileFlags_.lazy = true;
-  //    compileFlags_.preemptiveFileCompilationThreshold = 0;
-  //    compileFlags_.preemptiveFunctionCompilationThreshold = 0;
-  //    break;
-  //}
+  // TODO: implement
+  // switch (runtimeConfig.getCompilationMode()) {
+  //   case vm::SmartCompilation:
+  //     compileFlags_.lazy = true;
+  //     // (Leaves thresholds at default values)
+  //     break;
+  //   case vm::ForceEagerCompilation:
+  //     compileFlags_.lazy = false;
+  //     break;
+  //   case vm::ForceLazyCompilation:
+  //     compileFlags_.lazy = true;
+  //     compileFlags_.preemptiveFileCompilationThreshold = 0;
+  //     compileFlags_.preemptiveFunctionCompilationThreshold = 0;
+  //     break;
+  // }
 
-//  compileFlags_.enableGenerator = runtimeConfig.getEnableGenerator();
-  //compileFlags_.emitAsyncBreakCheck = runtimeConfig.getAsyncBreakCheckInEval();
+  //  compileFlags_.enableGenerator = runtimeConfig.getEnableGenerator();
+  // compileFlags_.emitAsyncBreakCheck =
+  // runtimeConfig.getAsyncBreakCheckInEval();
 
   runtime_.addCustomRootsFunction([this](vm::GC *, vm::RootAcceptor &acceptor) {
     napiValueStack_.forEach([&](const vm::PinnedHermesValue &value) {
