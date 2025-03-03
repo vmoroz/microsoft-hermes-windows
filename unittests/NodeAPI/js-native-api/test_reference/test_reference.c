@@ -16,10 +16,8 @@ static napi_value GetFinalizeCount(napi_env env, napi_callback_info info) {
 }
 
 static void FinalizeExternal(napi_env env, void* data, void* hint) {
-  int* actual_value = data;
-  NODE_API_ASSERT_RETURN_VOID(
-      env,
-      actual_value == &test_value,
+  int *actual_value = data;
+  NODE_API_ASSERT_RETURN_VOID(env, actual_value == &test_value,
       "The correct pointer was passed to the finalizer");
   finalize_count++;
 }
@@ -29,11 +27,11 @@ static napi_value CreateExternal(napi_env env, napi_callback_info info) {
 
   napi_value result;
   NODE_API_CALL(env,
-                napi_create_external(env,
-                                     data,
-                                     NULL, /* finalize_cb */
-                                     NULL, /* finalize_hint */
-                                     &result));
+      napi_create_external(env,
+                           data,
+                           NULL, /* finalize_cb */
+                           NULL, /* finalize_hint */
+                           &result));
 
   finalize_count = 0;
   return result;
@@ -80,29 +78,27 @@ static napi_value CreateSymbolFor(napi_env env, napi_callback_info info) {
   return result_symbol;
 }
 
-static napi_value CreateSymbolForEmptyString(napi_env env,
-                                             napi_callback_info info) {
+static napi_value CreateSymbolForEmptyString(napi_env env, napi_callback_info info) {
   napi_value result_symbol;
   NODE_API_CALL(env, node_api_symbol_for(env, NULL, 0, &result_symbol));
   return result_symbol;
 }
 
-static napi_value CreateSymbolForIncorrectLength(napi_env env,
-                                                 napi_callback_info info) {
+static napi_value CreateSymbolForIncorrectLength(napi_env env, napi_callback_info info) {
   napi_value result_symbol;
   NODE_API_CALL(env, node_api_symbol_for(env, NULL, 5, &result_symbol));
   return result_symbol;
 }
 
-static napi_value CreateExternalWithFinalize(napi_env env,
-                                             napi_callback_info info) {
+static napi_value
+CreateExternalWithFinalize(napi_env env, napi_callback_info info) {
   napi_value result;
   NODE_API_CALL(env,
-                napi_create_external(env,
-                                     &test_value,
-                                     FinalizeExternal,
-                                     NULL, /* finalize_hint */
-                                     &result));
+      napi_create_external(env,
+                           &test_value,
+                           FinalizeExternal,
+                           NULL, /* finalize_hint */
+                           &result));
 
   finalize_count = 0;
   return result;
@@ -123,17 +119,15 @@ static napi_value CheckExternal(napi_env env, napi_callback_info info) {
   void* data;
   NODE_API_CALL(env, napi_get_value_external(env, arg, &data));
 
-  NODE_API_ASSERT(env,
-                  data != NULL && *(int*)data == test_value,
-                  "An external data value of 1 was expected.");
+  NODE_API_ASSERT(env, data != NULL && *(int*)data == test_value,
+      "An external data value of 1 was expected.");
 
   return NULL;
 }
 
 static napi_value CreateReference(napi_env env, napi_callback_info info) {
-  NODE_API_ASSERT(env,
-                  test_reference == NULL,
-                  "The test allows only one reference at a time.");
+  NODE_API_ASSERT(env, test_reference == NULL,
+      "The test allows only one reference at a time.");
 
   size_t argc = 2;
   napi_value args[2];
@@ -143,19 +137,18 @@ static napi_value CreateReference(napi_env env, napi_callback_info info) {
   uint32_t initial_refcount;
   NODE_API_CALL(env, napi_get_value_uint32(env, args[1], &initial_refcount));
 
-  NODE_API_CALL(
-      env,
+  NODE_API_CALL(env,
       napi_create_reference(env, args[0], initial_refcount, &test_reference));
 
-  NODE_API_ASSERT(
-      env, test_reference != NULL, "A reference should have been created.");
+  NODE_API_ASSERT(env, test_reference != NULL,
+      "A reference should have been created.");
 
   return NULL;
 }
 
 static napi_value DeleteReference(napi_env env, napi_callback_info info) {
-  NODE_API_ASSERT(
-      env, test_reference != NULL, "A reference must have been created.");
+  NODE_API_ASSERT(env, test_reference != NULL,
+      "A reference must have been created.");
 
   NODE_API_CALL(env, napi_delete_reference(env, test_reference));
   test_reference = NULL;
@@ -163,8 +156,8 @@ static napi_value DeleteReference(napi_env env, napi_callback_info info) {
 }
 
 static napi_value IncrementRefcount(napi_env env, napi_callback_info info) {
-  NODE_API_ASSERT(
-      env, test_reference != NULL, "A reference must have been created.");
+  NODE_API_ASSERT(env, test_reference != NULL,
+      "A reference must have been created.");
 
   uint32_t refcount;
   NODE_API_CALL(env, napi_reference_ref(env, test_reference, &refcount));
@@ -175,8 +168,8 @@ static napi_value IncrementRefcount(napi_env env, napi_callback_info info) {
 }
 
 static napi_value DecrementRefcount(napi_env env, napi_callback_info info) {
-  NODE_API_ASSERT(
-      env, test_reference != NULL, "A reference must have been created.");
+  NODE_API_ASSERT(env, test_reference != NULL,
+      "A reference must have been created.");
 
   uint32_t refcount;
   NODE_API_CALL(env, napi_reference_unref(env, test_reference, &refcount));
@@ -187,17 +180,16 @@ static napi_value DecrementRefcount(napi_env env, napi_callback_info info) {
 }
 
 static napi_value GetReferenceValue(napi_env env, napi_callback_info info) {
-  NODE_API_ASSERT(
-      env, test_reference != NULL, "A reference must have been created.");
+  NODE_API_ASSERT(env, test_reference != NULL,
+      "A reference must have been created.");
 
   napi_value result;
   NODE_API_CALL(env, napi_get_reference_value(env, test_reference, &result));
   return result;
 }
 
-static void DeleteBeforeFinalizeFinalizer(napi_env env,
-                                          void* finalize_data,
-                                          void* finalize_hint) {
+static void DeleteBeforeFinalizeFinalizer(
+    napi_env env, void* finalize_data, void* finalize_hint) {
   napi_ref* ref = (napi_ref*)finalize_data;
   napi_value value;
   assert(napi_get_reference_value(env, *ref, &value) == napi_ok);
@@ -206,16 +198,13 @@ static void DeleteBeforeFinalizeFinalizer(napi_env env,
   free(ref);
 }
 
-static napi_value ValidateDeleteBeforeFinalize(napi_env env,
-                                               napi_callback_info info) {
+static napi_value ValidateDeleteBeforeFinalize(napi_env env, napi_callback_info info) {
   napi_value wrapObject;
   size_t argc = 1;
-  NODE_API_CALL(env,
-                napi_get_cb_info(env, info, &argc, &wrapObject, NULL, NULL));
+  NODE_API_CALL(env, napi_get_cb_info(env, info, &argc, &wrapObject, NULL, NULL));
 
   napi_ref* ref_t = malloc(sizeof(napi_ref));
-  NODE_API_CALL(
-      env,
+  NODE_API_CALL(env,
       napi_wrap(
           env, wrapObject, ref_t, DeleteBeforeFinalizeFinalizer, NULL, NULL));
 
@@ -255,12 +244,8 @@ napi_value Init(napi_env env, napi_value exports) {
                                 ValidateDeleteBeforeFinalize),
   };
 
-  NODE_API_CALL(
-      env,
-      napi_define_properties(env,
-                             exports,
-                             sizeof(descriptors) / sizeof(*descriptors),
-                             descriptors));
+  NODE_API_CALL(env, napi_define_properties(
+      env, exports, sizeof(descriptors) / sizeof(*descriptors), descriptors));
 
   return exports;
 }

@@ -10,15 +10,14 @@ static napi_value MyFunction(napi_env env, napi_callback_info info) {
 
 static napi_value CreateFunction(napi_env env, napi_callback_info info) {
   napi_value fn;
-  NODE_API_CALL(
-      env, napi_create_function(env, "theFunction", -1, MyFunction, NULL, &fn));
+  NODE_API_CALL(env,
+    napi_create_function(env, "theFunction", -1, MyFunction, NULL, &fn));
   return fn;
 }
 
 EXTERN_C_START
 napi_value Init(napi_env env, napi_value exports) {
-  NODE_API_CALL(
-      env,
+  NODE_API_CALL(env,
       napi_create_function(env, "exports", -1, CreateFunction, NULL, &exports));
   return exports;
 }

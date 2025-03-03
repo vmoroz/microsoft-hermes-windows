@@ -24,8 +24,7 @@ static napi_value returnException(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
-static napi_value constructReturnException(napi_env env,
-                                           napi_callback_info info) {
+static napi_value constructReturnException(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value args[1];
   NODE_API_CALL(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
@@ -57,8 +56,7 @@ static napi_value allowException(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
-static napi_value constructAllowException(napi_env env,
-                                          napi_callback_info info) {
+static napi_value constructAllowException(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value args[1];
   NODE_API_CALL(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
@@ -78,16 +76,16 @@ static napi_value wasPending(napi_env env, napi_callback_info info) {
   return result;
 }
 
-static void finalizer(napi_env env, void* data, void* hint) {
-  NODE_API_CALL_RETURN_VOID(
-      env, napi_throw_error(env, NULL, "Error during Finalize"));
+static void finalizer(napi_env env, void *data, void *hint) {
+  NODE_API_CALL_RETURN_VOID(env,
+      napi_throw_error(env, NULL, "Error during Finalize"));
 }
 
 static napi_value createExternal(napi_env env, napi_callback_info info) {
   napi_value external;
 
   NODE_API_CALL(env,
-                napi_create_external(env, &num, finalizer, NULL, &external));
+      napi_create_external(env, &num, finalizer, NULL, &external));
 
   return external;
 }
@@ -95,26 +93,19 @@ static napi_value createExternal(napi_env env, napi_callback_info info) {
 EXTERN_C_START
 napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor descriptors[] = {
-      DECLARE_NODE_API_PROPERTY("returnException", returnException),
-      DECLARE_NODE_API_PROPERTY("allowException", allowException),
-      DECLARE_NODE_API_PROPERTY("constructReturnException",
-                                constructReturnException),
-      DECLARE_NODE_API_PROPERTY("constructAllowException",
-                                constructAllowException),
-      DECLARE_NODE_API_PROPERTY("wasPending", wasPending),
-      DECLARE_NODE_API_PROPERTY("createExternal", createExternal),
+    DECLARE_NODE_API_PROPERTY("returnException", returnException),
+    DECLARE_NODE_API_PROPERTY("allowException", allowException),
+    DECLARE_NODE_API_PROPERTY("constructReturnException", constructReturnException),
+    DECLARE_NODE_API_PROPERTY("constructAllowException", constructAllowException),
+    DECLARE_NODE_API_PROPERTY("wasPending", wasPending),
+    DECLARE_NODE_API_PROPERTY("createExternal", createExternal),
   };
-  NODE_API_CALL(
-      env,
-      napi_define_properties(env,
-                             exports,
-                             sizeof(descriptors) / sizeof(*descriptors),
-                             descriptors));
+  NODE_API_CALL(env, napi_define_properties(
+      env, exports, sizeof(descriptors) / sizeof(*descriptors), descriptors));
 
   napi_value error, code, message;
-  NODE_API_CALL(env,
-                napi_create_string_utf8(
-                    env, "Error during Init", NAPI_AUTO_LENGTH, &message));
+  NODE_API_CALL(env, napi_create_string_utf8(env, "Error during Init",
+      NAPI_AUTO_LENGTH, &message));
   NODE_API_CALL(env, napi_create_string_utf8(env, "", NAPI_AUTO_LENGTH, &code));
   NODE_API_CALL(env, napi_create_error(env, code, message, &error));
   NODE_API_CALL(env, napi_set_named_property(env, error, "binding", exports));

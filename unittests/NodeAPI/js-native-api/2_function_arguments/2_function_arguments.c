@@ -15,9 +15,8 @@ static napi_value Add(napi_env env, napi_callback_info info) {
   napi_valuetype valuetype1;
   NODE_API_CALL(env, napi_typeof(env, args[1], &valuetype1));
 
-  NODE_API_ASSERT(env,
-                  valuetype0 == napi_number && valuetype1 == napi_number,
-                  "Wrong argument type. Numbers expected.");
+  NODE_API_ASSERT(env, valuetype0 == napi_number && valuetype1 == napi_number,
+      "Wrong argument type. Numbers expected.");
 
   double value0;
   NODE_API_CALL(env, napi_get_value_double(env, args[0], &value0));

@@ -60,9 +60,10 @@ static napi_value OrdinaryFunction(napi_env env, napi_callback_info info) {
 EXTERN_C_START
 napi_value Init(napi_env env, napi_value exports) {
   const napi_property_descriptor desc[] = {
-      DECLARE_NODE_API_PROPERTY("BaseClass", BaseClass),
-      DECLARE_NODE_API_PROPERTY("OrdinaryFunction", OrdinaryFunction),
-      DECLARE_NODE_API_PROPERTY("Constructor", Constructor)};
+    DECLARE_NODE_API_PROPERTY("BaseClass", BaseClass),
+    DECLARE_NODE_API_PROPERTY("OrdinaryFunction", OrdinaryFunction),
+    DECLARE_NODE_API_PROPERTY("Constructor", Constructor)
+  };
   NODE_API_CALL(env, napi_define_properties(env, exports, 3, desc));
   return exports;
 }

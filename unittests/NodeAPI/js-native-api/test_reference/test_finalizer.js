@@ -1,25 +1,20 @@
 'use strict';
+// Flags: --expose-gc --force-node-api-uncaught-exceptions-policy
+
 const common = require('../../common');
-
-if (process.argv[2] === 'child') {
-  const binding = require(`./build/${common.buildType}/test_ref_finalizer`);
-
-  (async function() {
-    {
-      binding.createExternalWithJsFinalize(
-        common.mustCall(() => {
-          throw new Error('finalizer error');
-        }));
-    }
-    global.gc();
-  })().then(common.mustCall());
-  return;
-}
-
+const binding = require(`./build/${common.buildType}/test_finalizer`);
 const assert = require('assert');
-const { spawnSync } = require('child_process');
-const child = spawnSync(process.execPath, [
-  '--expose-gc', __filename, 'child',
-]);
-assert(common.nodeProcessAborted(child.status, child.signal));
-assert.match(child.stderr.toString(), /finalizer error/);
+
+process.on('uncaughtException', common.mustCall((err) => {
+  assert.throws(() => { throw err; }, /finalizer error/);
+}));
+
+(async function() {
+  {
+    binding.createExternalWithJsFinalize(
+      common.mustCall(() => {
+        throw new Error('finalizer error');
+      }));
+  }
+  global.gc();
+})().then(common.mustCall());
