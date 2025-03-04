@@ -2,10 +2,10 @@
 // Licensed under the MIT license.
 
 #include "node_api_test.h"
-#include "v8_api.h"
+// #include "v8_api.h"
 
 namespace node_api_tests {
-
+#if 0
 class V8RuntimeHolder : public IEnvHolder {
  public:
   V8RuntimeHolder(std::shared_ptr<NodeApiTaskRunner> taskRunner) noexcept {
@@ -41,5 +41,5 @@ std::unique_ptr<IEnvHolder> CreateEnvHolder(
   return std::unique_ptr<IEnvHolder>(
       new V8RuntimeHolder(std::move(taskRunner)));
 }
-
+#endif
 }  // namespace node_api_tests

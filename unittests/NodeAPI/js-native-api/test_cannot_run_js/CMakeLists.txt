@@ -1,0 +1,7 @@
+add_library(test_cannot_run_js MODULE test_cannot_run_js.c)
+target_compile_definitions(test_cannot_run_js PRIVATE NAPI_VERSION=10)
+target_link_libraries(test_cannot_run_js PRIVATE nodeApi)
+
+add_library(test_pending_exception MODULE test_cannot_run_js.c)
+target_compile_definitions(test_pending_exception PRIVATE NAPI_VERSION=9)
+target_link_libraries(test_pending_exception PRIVATE nodeApi)

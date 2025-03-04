@@ -1,0 +1,2 @@
+add_library(5_function_factory MODULE 5_function_factory.c)
+target_link_libraries(5_function_factory PRIVATE nodeApi)

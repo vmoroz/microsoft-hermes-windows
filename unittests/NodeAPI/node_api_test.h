@@ -19,7 +19,7 @@
 #include <vector>
 
 #define NAPI_EXPERIMENTAL
-#include "js_runtime_api.h"
+#include "../../API/hermes_node_api/node_api/js_native_api.h"
 
 extern "C" {
 #include "js-native-api/common.h"
@@ -91,6 +91,7 @@ inline int32_t GetEndOfLineCount(char const* script) noexcept {
   return std::count(script, script + strlen(script), '\n');
 }
 
+#if 0
 class NodeApiTaskRunner {
  public:
   uint32_t PostTask(std::function<void()>&& task) {
@@ -142,6 +143,7 @@ class NodeApiTaskRunner {
   std::list<std::pair<uint32_t, std::function<void()>>> m_taskQueue;
   uint32_t m_nextTaskId{1};
 };
+#endif
 
 // The exception used to propagate NAPI and script errors.
 struct NodeApiTestException : std::exception {
@@ -216,7 +218,7 @@ struct NodeApiHandleScope {
   napi_env m_env{nullptr};
   napi_handle_scope m_scope{nullptr};
 };
-
+#if 0
 struct NodeApiEnvScope {
   NodeApiEnvScope(napi_env env) noexcept : m_env{env} {
     CRASH_IF_FALSE(jsr_open_napi_env_scope(env, &m_scope) == napi_ok);
@@ -248,14 +250,14 @@ struct NodeApiEnvScope {
   napi_env m_env{};
   jsr_napi_env_scope m_scope{};
 };
-
+#endif
 // The context to run a NAPI test.
 // Some tests require interaction of multiple JS environments.
 // Thus, it is more convenient to have a special NodeApiTestContext instead of
 // setting the environment per test.
 struct NodeApiTestContext {
   NodeApiTestContext(napi_env env,
-                     std::shared_ptr<NodeApiTaskRunner> taskRunner,
+                     //std::shared_ptr<NodeApiTaskRunner> taskRunner,
                      std::string const& testJSPath,
                      std::vector<std::string> argv);
 
@@ -309,9 +311,9 @@ struct NodeApiTestContext {
  private:
   napi_env env;
   std::string m_testJSPath;
-  NodeApiEnvScope m_envScope;
+  //NodeApiEnvScope m_envScope;
   NodeApiHandleScope m_handleScope;
-  std::shared_ptr<NodeApiTaskRunner> m_taskRunner;
+  //std::shared_ptr<NodeApiTaskRunner> m_taskRunner;
   std::map<std::string, NodeApiRef, std::less<>> m_initializedModules;
   std::map<std::string, TestScriptInfo, std::less<>> m_scriptModules;
   std::map<std::string, std::function<napi_value(napi_env, napi_value)>>

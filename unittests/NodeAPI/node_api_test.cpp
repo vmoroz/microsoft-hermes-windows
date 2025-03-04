@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "node_api_test.h"
-#include <js_runtime_api.h>
+#include "js_native_api.h"
 #include <windows.h>
 #include <algorithm>
 #include <cstdarg>
@@ -213,9 +213,10 @@ void NodeApiTestException::ApplyScriptErrorData(napi_env env,
 //=============================================================================
 // NodeApiTest implementation
 //=============================================================================
-
+#if 0
 std::unique_ptr<IEnvHolder> CreateEnvHolder(
     std::shared_ptr<NodeApiTaskRunner> taskRunner);
+#endif
 
 int EvaluateJSFile(int argc, char** argv) {
   // Convert arguments to vector of strings and skip all options before the JS
@@ -235,7 +236,7 @@ int EvaluateJSFile(int argc, char** argv) {
     skipOptions = false;
     args.push_back(argv[i]);
   }
-
+#if 0
   try {
     std::shared_ptr<NodeApiTaskRunner> taskRunner =
         std::make_shared<NodeApiTaskRunner>();
@@ -257,6 +258,7 @@ int EvaluateJSFile(int argc, char** argv) {
     // return NodeApiTestErrorHandler(nullptr, std::current_exception(), "", "",
     // 0, 0);
   }
+#endif
   return 0;
 }
 
@@ -266,14 +268,14 @@ int EvaluateJSFile(int argc, char** argv) {
 
 NodeApiTestContext::NodeApiTestContext(
     napi_env env,
-    std::shared_ptr<NodeApiTaskRunner> taskRunner,
+    //std::shared_ptr<NodeApiTaskRunner> taskRunner,
     std::string const& testJSPath,
     std::vector<std::string> argv)
     : env(env),
       m_testJSPath(testJSPath),
-      m_envScope(env),
+      //m_envScope(env),
       m_handleScope(env),
-      m_taskRunner(std::move(taskRunner)),
+      //m_taskRunner(std::move(taskRunner)),
       m_scriptModules(GetCommonScripts(testJSPath)),
       m_argv(std::move(argv)) {
   DefineGlobalFunctions();
@@ -298,6 +300,7 @@ NodeApiTestContext::GetCommonScripts(std::string const& testJSPath) noexcept {
 
 napi_value NodeApiTestContext::RunScript(std::string const& code,
                                          char const* sourceUrl) {
+#if 0
   napi_value script{}, scriptResult{};
   THROW_IF_NOT_OK(
       napi_create_string_utf8(env, code.c_str(), code.size(), &script));
@@ -307,6 +310,8 @@ napi_value NodeApiTestContext::RunScript(std::string const& code,
     THROW_IF_NOT_OK(napi_run_script(env, script, &scriptResult));
   }
   return scriptResult;
+#endif
+  return nullptr;
 }
 
 using ModuleRegisterFuncCallback = napi_value(NAPI_CDECL*)(napi_env env,
@@ -366,6 +371,7 @@ napi_value NodeApiTestContext::GetModule(std::string const& moduleName) {
         int32_t moduleApiVersion =
             getModuleApiVersion ? getModuleApiVersion() : 8;
         napi_env moduleEnv{};
+#if 0
         NODE_API_CALL(
             env, jsr_create_node_api_env(env, moduleApiVersion, &moduleEnv));
         napi_value exports{};
@@ -381,8 +387,9 @@ napi_value NodeApiTestContext::GetModule(std::string const& moduleName) {
                 moduleEnv,
                 [](void* data) { (*reinterpret_cast<Task*>(data))(); },
                 &task));
-
         return registerModule(moduleEnv, moduleName, exports);
+#endif
+        return registerModule(moduleEnv, moduleName, nullptr);
       }
     }
   }
@@ -455,6 +462,7 @@ NodeApiTestErrorHandler NodeApiTestContext::RunTestScript(char const* script,
 
 void NodeApiTestContext::HandleUnhandledPromiseRejections() {
   bool hasException{false};
+  #if 0
   THROW_IF_NOT_OK(jsr_has_unhandled_promise_rejection(env, &hasException));
   if (hasException) {
     napi_value error{};
@@ -462,6 +470,7 @@ void NodeApiTestContext::HandleUnhandledPromiseRejections() {
         jsr_get_and_clear_last_unhandled_promise_rejection(env, &error));
     throw NodeApiTestException(env, error);
   }
+  #endif
 }
 
 NodeApiTestErrorHandler NodeApiTestContext::RunTestScript(
@@ -508,6 +517,7 @@ void NodeApiTestContext::DefineGlobalRequire(napi_value global) {
 
 // global.gc()
 void NodeApiTestContext::DefineGlobalGC(napi_value global) {
+#if 0
   DefineObjectMethod(
       global,
       "gc",
@@ -515,6 +525,7 @@ void NodeApiTestContext::DefineGlobalGC(napi_value global) {
         NODE_API_CALL(env, jsr_collect_garbage(env));
         return nullptr;
       });
+#endif
 }
 
 static napi_value NAPI_CDECL SetImmediateCallback(napi_env env,
@@ -765,6 +776,7 @@ napi_value NodeApiTestContext::SpawnSync(std::string command,
 uint32_t NodeApiTestContext::AddTask(napi_value callback) noexcept {
   std::shared_ptr<NodeApiRef> ref =
       std::make_shared<NodeApiRef>(MakeNodeApiRef(env, callback));
+#if 0
   return m_taskRunner->PostTask([env = this->env, ref = std::move(ref)]() {
     napi_value callback{}, undefined{};
     THROW_IF_NOT_OK(napi_get_undefined(env, &undefined));
@@ -772,14 +784,18 @@ uint32_t NodeApiTestContext::AddTask(napi_value callback) noexcept {
     THROW_IF_NOT_OK(
         napi_call_function(env, undefined, callback, 0, nullptr, nullptr));
   });
+  #endif
+  return 0;
 }
 
 void NodeApiTestContext::RemoveTask(uint32_t taskId) noexcept {
-  m_taskRunner->RemoveTask(taskId);
+    //TODO: implement
+  // m_taskRunner->RemoveTask(taskId);
 }
 
 void NodeApiTestContext::DrainTaskQueue() {
-  m_taskRunner->DrainTaskQueue();
+  // TODO: implement
+  //m_taskRunner->DrainTaskQueue();
 }
 
 void NodeApiTestContext::RunCallChecks() {
