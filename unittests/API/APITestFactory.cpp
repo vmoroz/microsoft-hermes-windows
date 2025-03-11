@@ -51,7 +51,7 @@ std::vector<RuntimeFactory> runtimeGenerators() {
       //   }
       // );
       // }
-      };
+  };
 }
 
 } // namespace jsi
