@@ -108,16 +108,16 @@ NodeApiRef MakeNodeApiRef(napi_env env, napi_value value) {
 }
 
 //=============================================================================
-// NodeApiTestException implementation
+// NodeLiteException implementation
 //=============================================================================
 
-NodeApiTestException::NodeApiTestException(napi_env env,
-                                           napi_status errorCode,
-                                           const char* expr) noexcept
-    : m_errorCode{errorCode}, m_expr{expr} {
-  bool isExceptionPending;
-  napi_is_exception_pending(env, &isExceptionPending);
-  if (isExceptionPending) {
+NodeLiteException::NodeLiteException(napi_env env,
+                                     napi_status error_code,
+                                     const char* expr) noexcept
+    : error_code_(error_code), expr_(expr) {
+  bool is_exception_pending;
+  napi_is_exception_pending(env, &is_exception_pending);
+  if (is_exception_pending) {
     napi_value error{};
     if (napi_get_and_clear_last_exception(env, &error) == napi_ok) {
       ApplyScriptErrorData(env, error);
@@ -125,51 +125,50 @@ NodeApiTestException::NodeApiTestException(napi_env env,
   }
 }
 
-NodeApiTestException::NodeApiTestException(napi_env env,
-                                           napi_value error) noexcept {
+NodeLiteException::NodeLiteException(napi_env env, napi_value error) noexcept {
   ApplyScriptErrorData(env, error);
 }
 
-void NodeApiTestException::ApplyScriptErrorData(napi_env env,
-                                                napi_value error) {
-  m_errorInfo = std::make_shared<NodeApiErrorInfo>();
+void NodeLiteException::ApplyScriptErrorData(napi_env env, napi_value error) {
+  error_info_ = std::make_shared<NodeApiErrorInfo>();
   napi_valuetype errorType{};
   napi_typeof(env, error, &errorType);
   if (errorType == napi_object) {
-    m_errorInfo->Name = GetPropertyString(env, error, "name");
-    m_errorInfo->Message = GetPropertyString(env, error, "message");
-    m_errorInfo->Stack = GetPropertyString(env, error, "stack");
-    if (m_errorInfo->Name == "AssertionError") {
-      m_assertionErrorInfo = std::make_shared<NodeApiAssertionErrorInfo>();
-      m_assertionErrorInfo->Method = GetPropertyString(env, error, "method");
-      m_assertionErrorInfo->Expected =
+    error_info_->Name = GetPropertyString(env, error, "name");
+    error_info_->Message = GetPropertyString(env, error, "message");
+    error_info_->Stack = GetPropertyString(env, error, "stack");
+    if (error_info_->Name == "AssertionError") {
+      assertion_error_info_ = std::make_shared<NodeApiAssertionErrorInfo>();
+      assertion_error_info_->Method = GetPropertyString(env, error, "method");
+      assertion_error_info_->Expected =
           GetPropertyString(env, error, "expected");
-      m_assertionErrorInfo->Actual = GetPropertyString(env, error, "actual");
-      m_assertionErrorInfo->SourceFile =
+      assertion_error_info_->Actual = GetPropertyString(env, error, "actual");
+      assertion_error_info_->SourceFile =
           GetPropertyString(env, error, "sourceFile");
-      m_assertionErrorInfo->SourceLine =
+      assertion_error_info_->SourceLine =
           GetPropertyInt32(env, error, "sourceLine");
-      m_assertionErrorInfo->ErrorStack =
+      assertion_error_info_->ErrorStack =
           GetPropertyString(env, error, "errorStack");
-      if (m_assertionErrorInfo->ErrorStack.empty()) {
-        m_assertionErrorInfo->ErrorStack = m_errorInfo->Stack;
+      if (assertion_error_info_->ErrorStack.empty()) {
+        assertion_error_info_->ErrorStack = error_info_->Stack;
       }
     }
   } else {
-    m_errorInfo->Message = CoerceToString(env, error);
+    error_info_->Message = CoerceToString(env, error);
   }
 }
 
-/*static*/ napi_value NodeApiTestException::GetProperty(napi_env env,
-                                                        napi_value obj,
-                                                        char const* name) {
+/*static*/ napi_value NodeLiteException::GetProperty(napi_env env,
+                                                     napi_value obj,
+                                                     char const* name) {
   napi_value result{};
   napi_get_named_property(env, obj, name, &result);
   return result;
 }
 
-/*static*/ std::string NodeApiTestException::GetPropertyString(
-    napi_env env, napi_value obj, char const* name) {
+/*static*/ std::string NodeLiteException::GetPropertyString(napi_env env,
+                                                            napi_value obj,
+                                                            char const* name) {
   bool hasProperty{};
   napi_has_named_property(env, obj, name, &hasProperty);
   if (hasProperty) {
@@ -185,24 +184,24 @@ void NodeApiTestException::ApplyScriptErrorData(napi_env env,
   }
 }
 
-/*static*/ int32_t NodeApiTestException::GetPropertyInt32(napi_env env,
-                                                          napi_value obj,
-                                                          char const* name) {
+/*static*/ int32_t NodeLiteException::GetPropertyInt32(napi_env env,
+                                                       napi_value obj,
+                                                       char const* name) {
   napi_value napiValue = GetProperty(env, obj, name);
   int32_t value{};
   napi_get_value_int32(env, napiValue, &value);
   return value;
 }
 
-/*static*/ std::string NodeApiTestException::CoerceToString(napi_env env,
-                                                            napi_value value) {
+/*static*/ std::string NodeLiteException::CoerceToString(napi_env env,
+                                                         napi_value value) {
   napi_value strValue;
   napi_coerce_to_string(env, value, &strValue);
   return ToString(env, strValue);
 }
 
-/*static*/ std::string NodeApiTestException::ToString(napi_env env,
-                                                      napi_value value) {
+/*static*/ std::string NodeLiteException::ToString(napi_env env,
+                                                   napi_value value) {
   size_t valueSize{};
   napi_get_value_string_utf8(env, value, nullptr, 0, &valueSize);
   std::string str(valueSize, '\0');
@@ -467,7 +466,7 @@ void NodeLiteRuntime::HandleUnhandledPromiseRejections() {
     napi_value error{};
     THROW_IF_NOT_OK(
         jsr_get_and_clear_last_unhandled_promise_rejection(env, &error));
-    throw NodeApiTestException(env, error);
+    throw NodeLiteException(env, error);
   }
 #endif
 }
@@ -912,8 +911,8 @@ int NodeApiTestErrorHandler::HandleAtProcessExit() noexcept {
   if (m_exception) {
     try {
       std::rethrow_exception(m_exception);
-    } catch (NodeApiTestException const& ex) {
-      if (auto assertionError = ex.AssertionErrorInfo()) {
+    } catch (NodeLiteException const& ex) {
+      if (auto assertionError = ex.assertion_error_info()) {
         auto sourceFile = assertionError->SourceFile;
         auto sourceLine = assertionError->SourceLine - m_scriptLineOffset;
         auto sourceCode = std::string("<Source is unavailable>");
@@ -925,51 +924,52 @@ int NodeApiTestErrorHandler::HandleAtProcessExit() noexcept {
           sourceFile = "<Unknown>";
         }
 
-        std::string methodName = "assert." + ex.AssertionErrorInfo()->Method;
+        std::string methodName = "assert." + ex.assertion_error_info()->Method;
         std::stringstream errorDetails;
         if (methodName != "assert.fail") {
-          errorDetails << " Expected: " << ex.AssertionErrorInfo()->Expected
+          errorDetails << " Expected: " << ex.assertion_error_info()->Expected
                        << '\n'
-                       << "   Actual: " << ex.AssertionErrorInfo()->Actual
+                       << "   Actual: " << ex.assertion_error_info()->Actual
                        << '\n';
         }
 
         std::string processedStack =
-            m_testContext->ProcessStack(ex.AssertionErrorInfo()->ErrorStack,
-                                        ex.AssertionErrorInfo()->Method);
+            m_testContext->ProcessStack(ex.assertion_error_info()->ErrorStack,
+                                        ex.assertion_error_info()->Method);
 
         return FormatExitMessage(
             m_file.c_str(),
             sourceLine,
             "JavaScript assertion error",
             [&](std::ostream& os) {
-              os << "Exception: " << ex.ErrorInfo()->Name << '\n'
+              os << "Exception: " << ex.error_info()->Name << '\n'
                  << "   Method: " << methodName << '\n'
-                 << "  Message: " << ex.ErrorInfo()->Message << '\n'
+                 << "  Message: " << ex.error_info()->Message << '\n'
                  << errorDetails.str(/*a filler for formatting*/)
                  << "     File: " << sourceFile << ":" << sourceLine << '\n'
                  << sourceCode << '\n'
                  << "Callstack: " << '\n'
                  << processedStack /*   a filler for formatting    */
                  << "Raw stack: " << '\n'
-                 << "  " << ex.AssertionErrorInfo()->ErrorStack;
+                 << "  " << ex.assertion_error_info()->ErrorStack;
             });
-      } else if (ex.ErrorInfo()) {
+      } else if (ex.error_info()) {
         return FormatExitMessage(
             m_file.c_str(), m_line, "JavaScript error", [&](std::ostream& os) {
-              os << "Exception: " << ex.ErrorInfo()->Name << '\n'
-                 << "  Message: " << ex.ErrorInfo()->Message << '\n'
-                 << "Callstack: " << ex.ErrorInfo()->Stack;
+              os << "Exception: " << ex.error_info()->Name << '\n'
+                 << "  Message: " << ex.error_info()->Message << '\n'
+                 << "Callstack: " << ex.error_info()->Stack;
             });
       } else {
         return FormatExitMessage(m_file.c_str(),
                                  m_line,
                                  "Test native exception",
                                  [&](std::ostream& os) {
-                                   os << "Exception: NodeApiTestException\n"
-                                      << "     Code: " << ex.ErrorCode() << '\n'
+                                   os << "Exception: NodeLiteException\n"
+                                      << "     Code: " << ex.error_code()
+                                      << '\n'
                                       << "  Message: " << ex.what() << '\n'
-                                      << "     Expr: " << ex.Expr();
+                                      << "     Expr: " << ex.expr();
                                  });
       }
     } catch (std::exception const& ex) {

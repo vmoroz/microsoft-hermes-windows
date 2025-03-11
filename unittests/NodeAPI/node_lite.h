@@ -35,12 +35,12 @@ extern "C" {
   } while (false)
 
 // Use this macro to handle NAPI function results in test code.
-// It throws NodeApiTestException that we then convert to GTest failure.
+// It throws NodeLiteException that we then convert to GTest failure.
 #define THROW_IF_NOT_OK(expr)                                                  \
   do {                                                                         \
     napi_status temp_status__ = (expr);                                        \
     if (temp_status__ != napi_status::napi_ok) {                               \
-      throw NodeApiTestException(env, temp_status__, #expr);                   \
+      throw NodeLiteException(env, temp_status__, #expr);                      \
     }                                                                          \
   } while (false)
 
@@ -54,10 +54,9 @@ constexpr napi_property_attributes operator|(napi_property_attributes left,
 namespace node_lite {
 
 // Forward declarations
-struct NodeApiTest;
 class NodeLiteRuntime;
 struct NodeApiTestErrorHandler;
-struct NodeApiTestException;
+class NodeLiteException;
 
 struct IEnvHolder {
   virtual ~IEnvHolder() {}
@@ -103,27 +102,28 @@ class NodeLiteTaskRunner {
 };
 
 // The exception used to propagate NAPI and script errors.
-struct NodeApiTestException : std::exception {
-  NodeApiTestException() noexcept = default;
+class NodeLiteException : std::exception {
+ public:
+  NodeLiteException() noexcept = default;
 
-  NodeApiTestException(napi_env env,
-                       napi_status errorCode,
-                       char const* expr) noexcept;
+  NodeLiteException(napi_env env,
+                    napi_status error_code,
+                    char const* expr) noexcept;
 
-  NodeApiTestException(napi_env env, napi_value error) noexcept;
+  NodeLiteException(napi_env env, napi_value error) noexcept;
 
-  const char* what() const noexcept override { return m_what.c_str(); }
+  const char* what() const noexcept override { return what_.c_str(); }
 
-  napi_status ErrorCode() const noexcept { return m_errorCode; }
+  napi_status error_code() const noexcept { return error_code_; }
 
-  std::string const& Expr() const noexcept { return m_expr; }
+  std::string const& expr() const noexcept { return expr_; }
 
-  NodeApiErrorInfo const* ErrorInfo() const noexcept {
-    return m_errorInfo.get();
+  NodeApiErrorInfo const* error_info() const noexcept {
+    return error_info_.get();
   }
 
-  NodeApiAssertionErrorInfo const* AssertionErrorInfo() const noexcept {
-    return m_assertionErrorInfo.get();
+  NodeApiAssertionErrorInfo const* assertion_error_info() const noexcept {
+    return assertion_error_info_.get();
   }
 
  private:
@@ -139,11 +139,11 @@ struct NodeApiTestException : std::exception {
   static std::string ToString(napi_env env, napi_value value);
 
  private:
-  napi_status m_errorCode{};
-  std::string m_expr;
-  std::string m_what;
-  std::shared_ptr<NodeApiErrorInfo> m_errorInfo;
-  std::shared_ptr<NodeApiAssertionErrorInfo> m_assertionErrorInfo;
+  napi_status error_code_{};
+  std::string expr_;
+  std::string what_;
+  std::shared_ptr<NodeApiErrorInfo> error_info_;
+  std::shared_ptr<NodeApiAssertionErrorInfo> assertion_error_info_;
 };
 
 // Define NodeApiRef "smart pointer" for napi_ref as unique_ptr with a custom
