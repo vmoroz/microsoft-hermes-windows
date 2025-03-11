@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#ifndef HERMES_UNITTESTS_NODEAPI_CHILD_PROCESS_H
-#define HERMES_UNITTESTS_NODEAPI_CHILD_PROCESS_H
+#ifndef NODE_API_TEST_CHILD_PROCESS_H
+#define NODE_API_TEST_CHILD_PROCESS_H
 
 #include <string>
 #include <string_view>
@@ -24,4 +24,4 @@ ProcessResult spawnSync(std::string_view command,
 
 }  // namespace node_lite::child_process
 
-#endif  // !HERMES_UNITTESTS_NODEAPI_CHILD_PROCESS_H
+#endif  // !NODE_API_TEST_CHILD_PROCESS_H

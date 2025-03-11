@@ -4,8 +4,8 @@
 // These tests are for NAPI and should not be JS engine specific
 
 #pragma once
-#ifndef NODE_API_TEST_H_
-#define NODE_API_TEST_H_
+#ifndef NODE_API_TEST_NODE_LITE_H
+#define NODE_API_TEST_NODE_LITE_H
 
 #include <algorithm>
 #include <exception>
@@ -55,7 +55,7 @@ namespace node_lite {
 
 // Forward declarations
 struct NodeApiTest;
-struct NodeApiTestContext;
+class NodeLiteRuntime;
 struct NodeApiTestErrorHandler;
 struct NodeApiTestException;
 
@@ -208,18 +208,59 @@ struct NodeApiEnvScope {
   jsr_napi_env_scope m_scope{};
 };
 #endif
+
+// Handles the exceptions after running tests.
+struct NodeApiTestErrorHandler {
+  NodeApiTestErrorHandler(NodeLiteRuntime* testContext,
+                          std::exception_ptr const& exception,
+                          std::string&& script,
+                          std::string&& file,
+                          int32_t line,
+                          int32_t scriptLineOffset) noexcept;
+  ~NodeApiTestErrorHandler() noexcept;
+
+  int HandleAtProcessExit() noexcept;
+
+  NodeApiTestErrorHandler(NodeApiTestErrorHandler const&) = delete;
+  NodeApiTestErrorHandler& operator=(NodeApiTestErrorHandler const&) = delete;
+
+  NodeApiTestErrorHandler(NodeApiTestErrorHandler&&) = default;
+  NodeApiTestErrorHandler& operator=(NodeApiTestErrorHandler&&) = default;
+
+ private:
+  std::string GetSourceCodeSliceForError(int32_t lineIndex,
+                                         int32_t extraLineCount) noexcept;
+
+  int FormatExitMessage(const std::string& file,
+                        int line,
+                        const std::string& message) noexcept;
+  int FormatExitMessage(const std::string& file,
+                        int line,
+                        const std::string& message,
+                        std::function<void(std::ostream&)> getDetails) noexcept;
+
+ private:
+  NodeLiteRuntime* m_testContext;
+  std::exception_ptr m_exception;
+  std::string m_script;
+  std::string m_file;
+  int32_t m_line;
+  int32_t m_scriptLineOffset;
+};
+
 // The context to run a NAPI test.
 // Some tests require interaction of multiple JS environments.
 // Thus, it is more convenient to have a special NodeApiTestContext instead of
 // setting the environment per test.
-struct NodeApiTestContext {
-  NodeApiTestContext(napi_env env,
-                     // std::shared_ptr<NodeApiTaskRunner> taskRunner,
-                     std::string const& testJSPath,
-                     std::vector<std::string> argv);
+class NodeLiteRuntime {
+ public:
+  NodeLiteRuntime(napi_env env,
+                  std::shared_ptr<NodeLiteTaskRunner> taskRunner,
+                  std::string const& scriptDir,
+                  std::vector<std::string> argv);
 
   static std::map<std::string, TestScriptInfo, std::less<>> GetCommonScripts(
-      std::string const& testJSPath) noexcept;
+      std::string const& scriptDir) noexcept;
 
   napi_value RunScript(std::string const& code,
                        char const* sourceUrl = nullptr);
@@ -267,56 +308,17 @@ struct NodeApiTestContext {
 
  private:
   napi_env env;
-  std::string m_testJSPath;
+  std::string scriptDir_;
   // NodeApiEnvScope m_envScope;
-  NodeApiHandleScope m_handleScope;
-  // std::shared_ptr<NodeApiTaskRunner> m_taskRunner;
-  std::map<std::string, NodeApiRef, std::less<>> m_initializedModules;
-  std::map<std::string, TestScriptInfo, std::less<>> m_scriptModules;
+  NodeApiHandleScope handleScope_;
+  std::shared_ptr<NodeLiteTaskRunner> taskRunner_;
+  std::map<std::string, NodeApiRef, std::less<>> initializedModules_;
+  std::map<std::string, TestScriptInfo, std::less<>> scriptModules_;
   std::map<std::string, std::function<napi_value(napi_env, napi_value)>>
-      m_nativeModules;
-  std::vector<std::string> m_argv;
-};
-
-// Handles the exceptions after running tests.
-struct NodeApiTestErrorHandler {
-  NodeApiTestErrorHandler(NodeApiTestContext* testContext,
-                          std::exception_ptr const& exception,
-                          std::string&& script,
-                          std::string&& file,
-                          int32_t line,
-                          int32_t scriptLineOffset) noexcept;
-  ~NodeApiTestErrorHandler() noexcept;
-
-  int HandleAtProcessExit() noexcept;
-
-  NodeApiTestErrorHandler(NodeApiTestErrorHandler const&) = delete;
-  NodeApiTestErrorHandler& operator=(NodeApiTestErrorHandler const&) = delete;
-
-  NodeApiTestErrorHandler(NodeApiTestErrorHandler&&) = default;
-  NodeApiTestErrorHandler& operator=(NodeApiTestErrorHandler&&) = default;
-
- private:
-  std::string GetSourceCodeSliceForError(int32_t lineIndex,
-                                         int32_t extraLineCount) noexcept;
-
-  int FormatExitMessage(const std::string& file,
-                        int line,
-                        const std::string& message) noexcept;
-  int FormatExitMessage(const std::string& file,
-                        int line,
-                        const std::string& message,
-                        std::function<void(std::ostream&)> getDetails) noexcept;
-
- private:
-  NodeApiTestContext* m_testContext;
-  std::exception_ptr m_exception;
-  std::string m_script;
-  std::string m_file;
-  int32_t m_line;
-  int32_t m_scriptLineOffset;
+      nativeModules_;
+  std::vector<std::string> argv_;
 };
 
 }  // namespace node_lite
 
-#endif  // !NODE_API_TEST_H_
+#endif  // !NODE_API_TEST_NODE_LITE_H

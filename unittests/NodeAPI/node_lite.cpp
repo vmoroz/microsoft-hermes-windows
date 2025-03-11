@@ -87,7 +87,7 @@ static napi_value JSRequire(napi_env env, napi_callback_info info) {
                 napi_get_value_string_utf8(
                     env, arg0, moduleName, sizeof(moduleName), &copied));
 
-  NodeApiTestContext* testContext = static_cast<NodeApiTestContext*>(data);
+  NodeLiteRuntime* testContext = static_cast<NodeLiteRuntime*>(data);
   return testContext->GetModule(moduleName);
 }
 
@@ -247,7 +247,7 @@ int EvaluateJSFile(int argc, char** argv) {
     fs::path jsPath = fs::path(jsFilePath);
     fs::path jsRootDir = jsPath.parent_path().parent_path();
     {
-      NodeApiTestContext context(
+      NodeLiteRuntime context(
           env, taskRunner, jsRootDir.string(), std::move(args));
       return context.RunTestScript(jsFilePath).HandleAtProcessExit();
     }
@@ -263,43 +263,42 @@ int EvaluateJSFile(int argc, char** argv) {
 }
 
 //=============================================================================
-// NodeApiTestContext implementation
+// NodeLiteRuntime implementation
 //=============================================================================
 
-NodeApiTestContext::NodeApiTestContext(
-    napi_env env,
-    // std::shared_ptr<NodeApiTaskRunner> taskRunner,
-    std::string const& testJSPath,
-    std::vector<std::string> argv)
+NodeLiteRuntime::NodeLiteRuntime(napi_env env,
+                                 std::shared_ptr<NodeLiteTaskRunner> taskRunner,
+                                 std::string const& scriptDir,
+                                 std::vector<std::string> argv)
     : env(env),
-      m_testJSPath(testJSPath),
+      scriptDir_(scriptDir),
       // m_envScope(env),
-      m_handleScope(env),
-      // m_taskRunner(std::move(taskRunner)),
-      m_scriptModules(GetCommonScripts(testJSPath)),
-      m_argv(std::move(argv)) {
+      handleScope_(env),
+      taskRunner_(std::move(taskRunner)),
+      scriptModules_(GetCommonScripts(scriptDir)),
+      argv_(std::move(argv)) {
   DefineGlobalFunctions();
   DefineChildProcessModule();
 }
 
 std::map<std::string, TestScriptInfo, std::less<>>
-NodeApiTestContext::GetCommonScripts(std::string const& testJSPath) noexcept {
+NodeLiteRuntime::GetCommonScripts(std::string const& scriptDir) noexcept {
   std::map<std::string, TestScriptInfo, std::less<>> moduleScripts;
   moduleScripts.try_emplace(
       "assert",
-      TestScriptInfo{ReadScriptText(testJSPath, "common/assert.js"),
+      TestScriptInfo{ReadScriptText(scriptDir, "common/assert.js"),
                      "common/assert.js",
                      1});
   moduleScripts.try_emplace(
       "../../common",
-      TestScriptInfo{ReadScriptText(testJSPath, "common/common.js"),
+      TestScriptInfo{ReadScriptText(scriptDir, "common/common.js"),
                      "common/common.js",
                      1});
   return moduleScripts;
 }
 
-napi_value NodeApiTestContext::RunScript(std::string const& code,
-                                         char const* sourceUrl) {
+napi_value NodeLiteRuntime::RunScript(std::string const& code,
+                                      char const* sourceUrl) {
 #if 0
   napi_value script{}, scriptResult{};
   THROW_IF_NOT_OK(
@@ -318,12 +317,12 @@ using ModuleRegisterFuncCallback = napi_value(NAPI_CDECL*)(napi_env env,
                                                            napi_value exports);
 using ModuleApiVersionCallback = int32_t(NAPI_CDECL*)();
 
-napi_value NodeApiTestContext::GetModule(std::string const& moduleName) {
+napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
   napi_value result{};
 
   // Check if the module has already been initialized.
-  auto moduleIt = m_initializedModules.find(moduleName);
-  if (moduleIt != m_initializedModules.end()) {
+  auto moduleIt = initializedModules_.find(moduleName);
+  if (moduleIt != initializedModules_.end()) {
     NODE_API_CALL(
         env, napi_get_reference_value(env, moduleIt->second.get(), &result));
     return result;
@@ -332,13 +331,13 @@ napi_value NodeApiTestContext::GetModule(std::string const& moduleName) {
   auto registerModule = [this](napi_env env,
                                std::string const& moduleName,
                                napi_value module) {
-    m_initializedModules.try_emplace(moduleName, MakeNodeApiRef(env, module));
+    initializedModules_.try_emplace(moduleName, MakeNodeApiRef(env, module));
     return module;
   };
 
   // Check if the module is registered script module.
-  auto scriptIt = m_scriptModules.find(moduleName);
-  if (scriptIt != m_scriptModules.end()) {
+  auto scriptIt = scriptModules_.find(moduleName);
+  if (scriptIt != scriptModules_.end()) {
     return registerModule(env,
                           moduleName,
                           RunScript(GetJSModuleText(scriptIt->second.script,
@@ -347,8 +346,8 @@ napi_value NodeApiTestContext::GetModule(std::string const& moduleName) {
   }
 
   // Check if the module is registered native module.
-  auto nativeModuleIt = m_nativeModules.find(moduleName);
-  if (nativeModuleIt != m_nativeModules.end()) {
+  auto nativeModuleIt = nativeModules_.find(moduleName);
+  if (nativeModuleIt != nativeModules_.end()) {
     napi_value exports{};
     NODE_API_CALL(env, napi_create_object(env, &exports));
     return registerModule(
@@ -397,47 +396,47 @@ napi_value NodeApiTestContext::GetModule(std::string const& moduleName) {
   // Check if it is a script module.
   if (moduleName.find("@babel") == 0) {
     std::string scriptFile = moduleName + ".js";
-    fs::path scriptPath = fs::path(m_testJSPath) / scriptFile;
+    fs::path scriptPath = fs::path(scriptDir_) / scriptFile;
     return registerModule(
         env,
         moduleName,
-        RunScript(GetJSModuleText(ReadScriptText(m_testJSPath, scriptFile),
-                                  scriptPath),
-                  scriptFile.c_str()));
+        RunScript(
+            GetJSModuleText(ReadScriptText(scriptDir_, scriptFile), scriptPath),
+            scriptFile.c_str()));
   } else if (moduleName.find("./") == 0 &&
              moduleName.find(".js") != std::string::npos) {
     std::string scriptFile = "@babel/runtime/helpers" + moduleName.substr(1);
-    fs::path scriptPath = fs::path(m_testJSPath) / scriptFile;
+    fs::path scriptPath = fs::path(scriptDir_) / scriptFile;
     return registerModule(
         env,
         moduleName,
-        RunScript(GetJSModuleText(ReadScriptText(m_testJSPath, scriptFile),
-                                  scriptPath),
-                  scriptFile.c_str()));
+        RunScript(
+            GetJSModuleText(ReadScriptText(scriptDir_, scriptFile), scriptPath),
+            scriptFile.c_str()));
   }
 
   NODE_API_CALL(env, napi_get_undefined(env, &result));
   return result;
 }
 
-TestScriptInfo* NodeApiTestContext::GetTestScriptInfo(
+TestScriptInfo* NodeLiteRuntime::GetTestScriptInfo(
     std::string const& moduleName) {
-  auto it = m_scriptModules.find(moduleName);
-  return it != m_scriptModules.end() ? &it->second : nullptr;
+  auto it = scriptModules_.find(moduleName);
+  return it != scriptModules_.end() ? &it->second : nullptr;
 }
 
-void NodeApiTestContext::AddNativeModule(
+void NodeLiteRuntime::AddNativeModule(
     char const* moduleName,
     std::function<napi_value(napi_env, napi_value)> initModule) {
-  m_nativeModules.try_emplace(moduleName, std::move(initModule));
+  nativeModules_.try_emplace(moduleName, std::move(initModule));
 }
 
-NodeApiTestErrorHandler NodeApiTestContext::RunTestScript(char const* script,
-                                                          char const* file,
-                                                          int32_t line) {
+NodeApiTestErrorHandler NodeLiteRuntime::RunTestScript(char const* script,
+                                                       char const* file,
+                                                       int32_t line) {
   try {
     std::string scriptText = GetJSModuleText(script, file);
-    m_scriptModules["TestScript"] =
+    scriptModules_["TestScript"] =
         TestScriptInfo{scriptText.c_str(), file, line};
 
     NodeApiHandleScope scope{env};
@@ -460,7 +459,7 @@ NodeApiTestErrorHandler NodeApiTestContext::RunTestScript(char const* script,
   }
 }
 
-void NodeApiTestContext::HandleUnhandledPromiseRejections() {
+void NodeLiteRuntime::HandleUnhandledPromiseRejections() {
   bool hasException{false};
 #if 0
   THROW_IF_NOT_OK(jsr_has_unhandled_promise_rejection(env, &hasException));
@@ -473,24 +472,24 @@ void NodeApiTestContext::HandleUnhandledPromiseRejections() {
 #endif
 }
 
-NodeApiTestErrorHandler NodeApiTestContext::RunTestScript(
+NodeApiTestErrorHandler NodeLiteRuntime::RunTestScript(
     TestScriptInfo const& scriptInfo) {
   return RunTestScript(scriptInfo.script.c_str(),
                        scriptInfo.filePath.string().c_str(),
                        scriptInfo.line);
 }
 
-NodeApiTestErrorHandler NodeApiTestContext::RunTestScript(
+NodeApiTestErrorHandler NodeLiteRuntime::RunTestScript(
     std::string const& scriptFile) {
   return RunTestScript(ReadFileText(scriptFile).c_str(), scriptFile.c_str(), 1);
 }
 
-std::string NodeApiTestContext::ReadScriptText(std::string const& testJSPath,
-                                               std::string const& scriptFile) {
+std::string NodeLiteRuntime::ReadScriptText(std::string const& testJSPath,
+                                            std::string const& scriptFile) {
   return ReadFileText(testJSPath + "/" + scriptFile);
 }
 
-std::string NodeApiTestContext::ReadFileText(std::string const& fileName) {
+std::string NodeLiteRuntime::ReadFileText(std::string const& fileName) {
   std::string text;
   std::ifstream fileStream(fileName);
   if (fileStream) {
@@ -501,9 +500,9 @@ std::string NodeApiTestContext::ReadFileText(std::string const& fileName) {
   return text;
 }
 
-void NodeApiTestContext::DefineObjectMethod(napi_value obj,
-                                            char const* funcName,
-                                            napi_callback cb) {
+void NodeLiteRuntime::DefineObjectMethod(napi_value obj,
+                                         char const* funcName,
+                                         napi_callback cb) {
   napi_value func{};
   THROW_IF_NOT_OK(
       napi_create_function(env, funcName, NAPI_AUTO_LENGTH, cb, this, &func));
@@ -511,12 +510,12 @@ void NodeApiTestContext::DefineObjectMethod(napi_value obj,
 }
 
 // global.require("module_name")
-void NodeApiTestContext::DefineGlobalRequire(napi_value global) {
+void NodeLiteRuntime::DefineGlobalRequire(napi_value global) {
   DefineObjectMethod(global, "require", JSRequire);
 }
 
 // global.gc()
-void NodeApiTestContext::DefineGlobalGC(napi_value global) {
+void NodeLiteRuntime::DefineGlobalGC(napi_value global) {
 #if 0
   DefineObjectMethod(
       global,
@@ -553,7 +552,7 @@ static napi_value NAPI_CDECL SetImmediateCallback(napi_env env,
   NODE_API_CALL(env,
                 napi_get_named_property(
                     env, global, "__NodeApiTestContext__", &selfValue));
-  NodeApiTestContext* self;
+  NodeLiteRuntime* self;
   NODE_API_CALL(env, napi_get_value_external(env, selfValue, (void**)&self));
 
   uint32_t taskId = self->AddTask(immediateCallback);
@@ -564,17 +563,17 @@ static napi_value NAPI_CDECL SetImmediateCallback(napi_env env,
 }
 
 // global.setImmediate()
-void NodeApiTestContext::DefineGlobalSetImmediate(napi_value global) {
+void NodeLiteRuntime::DefineGlobalSetImmediate(napi_value global) {
   DefineObjectMethod(global, "setImmediate", SetImmediateCallback);
 }
 
 // global.setTimeout()
-void NodeApiTestContext::DefineGlobalSetTimeout(napi_value global) {
+void NodeLiteRuntime::DefineGlobalSetTimeout(napi_value global) {
   DefineObjectMethod(global, "setTimeout", SetImmediateCallback);
 }
 
 // global.clearTimeout()
-void NodeApiTestContext::DefineGlobalClearTimeout(napi_value global) {
+void NodeLiteRuntime::DefineGlobalClearTimeout(napi_value global) {
   DefineObjectMethod(
       global,
       "clearTimeout",
@@ -603,7 +602,7 @@ void NodeApiTestContext::DefineGlobalClearTimeout(napi_value global) {
         NODE_API_CALL(env,
                       napi_get_named_property(
                           env, global, "__NodeApiTestContext__", &selfValue));
-        NodeApiTestContext* self;
+        NodeLiteRuntime* self;
         NODE_API_CALL(env,
                       napi_get_value_external(env, selfValue, (void**)&self));
 
@@ -646,21 +645,21 @@ static std::vector<std::string> ToStdStringArray(napi_env env,
   return result;
 }
 
-static NodeApiTestContext* GetTestContext(napi_env env) {
+static NodeLiteRuntime* GetTestContext(napi_env env) {
   napi_value global{};
   NODE_API_CALL(env, napi_get_global(env, &global));
   napi_value contextValue{};
   NODE_API_CALL(env,
                 napi_get_named_property(
                     env, global, "__NodeApiTestContext__", &contextValue));
-  NodeApiTestContext* context{};
+  NodeLiteRuntime* context{};
   NODE_API_CALL(env,
                 napi_get_value_external(env, contextValue, (void**)&context));
   return context;
 }
 
 // global.process
-void NodeApiTestContext::DefineGlobalProcess(napi_value global) {
+void NodeLiteRuntime::DefineGlobalProcess(napi_value global) {
   napi_value processObject{};
   THROW_IF_NOT_OK(napi_create_object(env, &processObject));
   THROW_IF_NOT_OK(
@@ -673,7 +672,7 @@ void NodeApiTestContext::DefineGlobalProcess(napi_value global) {
       napi_set_named_property(env, processObject, "argv", argvArray));
 
   uint32_t index = 0;
-  for (const std::string& arg : m_argv) {
+  for (const std::string& arg : argv_) {
     napi_value argValue{};
     THROW_IF_NOT_OK(
         napi_create_string_utf8(env, arg.c_str(), arg.size(), &argValue));
@@ -683,12 +682,12 @@ void NodeApiTestContext::DefineGlobalProcess(napi_value global) {
   // process.execPath
   napi_value execPath{};
   THROW_IF_NOT_OK(napi_create_string_utf8(
-      env, m_argv[0].c_str(), m_argv[0].size(), &execPath));
+      env, argv_[0].c_str(), argv_[0].size(), &execPath));
   THROW_IF_NOT_OK(
       napi_set_named_property(env, processObject, "execPath", execPath));
 }
 
-void NodeApiTestContext::DefineChildProcessModule() {
+void NodeLiteRuntime::DefineChildProcessModule() {
   AddNativeModule("child_process", [this](napi_env env, napi_value exports) {
     DefineObjectMethod(
         exports,
@@ -706,14 +705,14 @@ void NodeApiTestContext::DefineChildProcessModule() {
           std::string command = ToStdString(env, argv[0]);
           std::vector<std::string> args = ToStdStringArray(env, argv[1]);
 
-          NodeApiTestContext* self = GetTestContext(env);
+          NodeLiteRuntime* self = GetTestContext(env);
           return self->SpawnSync(command, args);
         });
     return exports;
   });
 }
 
-void NodeApiTestContext::DefineGlobalFunctions() {
+void NodeLiteRuntime::DefineGlobalFunctions() {
   NodeApiHandleScope scope{env};
 
   napi_value global{};
@@ -761,8 +760,8 @@ static void SetNullProperty(napi_env env, napi_value obj, char const* name) {
   THROW_IF_NOT_OK(napi_set_named_property(env, obj, name, valueObj));
 }
 
-napi_value NodeApiTestContext::SpawnSync(std::string command,
-                                         std::vector<std::string> args) {
+napi_value NodeLiteRuntime::SpawnSync(std::string command,
+                                      std::vector<std::string> args) {
   child_process::ProcessResult procResult =
       child_process::spawnSync(command, args);
   napi_value result{};
@@ -774,7 +773,7 @@ napi_value NodeApiTestContext::SpawnSync(std::string command,
   return result;
 }
 
-uint32_t NodeApiTestContext::AddTask(napi_value callback) noexcept {
+uint32_t NodeLiteRuntime::AddTask(napi_value callback) noexcept {
   std::shared_ptr<NodeApiRef> ref =
       std::make_shared<NodeApiRef>(MakeNodeApiRef(env, callback));
 #if 0
@@ -789,17 +788,17 @@ uint32_t NodeApiTestContext::AddTask(napi_value callback) noexcept {
   return 0;
 }
 
-void NodeApiTestContext::RemoveTask(uint32_t taskId) noexcept {
+void NodeLiteRuntime::RemoveTask(uint32_t taskId) noexcept {
   // TODO: implement
   // m_taskRunner->RemoveTask(taskId);
 }
 
-void NodeApiTestContext::DrainTaskQueue() {
+void NodeLiteRuntime::DrainTaskQueue() {
   // TODO: implement
   // m_taskRunner->DrainTaskQueue();
 }
 
-void NodeApiTestContext::RunCallChecks() {
+void NodeLiteRuntime::RunCallChecks() {
   napi_value common = GetModule("assert");
   napi_value undefined{}, runCallChecks{};
   THROW_IF_NOT_OK(
@@ -809,8 +808,8 @@ void NodeApiTestContext::RunCallChecks() {
       napi_call_function(env, undefined, runCallChecks, 0, nullptr, nullptr));
 }
 
-std::string NodeApiTestContext::ProcessStack(std::string const& stack,
-                                             std::string const& assertMethod) {
+std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
+                                          std::string const& assertMethod) {
   // Split up the stack string into an array of stack frames
   auto stackStream = std::istringstream(stack);
   std::string stackFrame;
@@ -894,7 +893,7 @@ void NodeLiteTaskRunner::DrainTaskQueue() {
 //=============================================================================
 
 NodeApiTestErrorHandler::NodeApiTestErrorHandler(
-    NodeApiTestContext* testContext,
+    NodeLiteRuntime* testContext,
     std::exception_ptr const& exception,
     std::string&& script,
     std::string&& file,
