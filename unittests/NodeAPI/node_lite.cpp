@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#include "node_api_test.h"
-#include "js_native_api.h"
+#include "node_lite.h"
 #include <windows.h>
 #include <algorithm>
 #include <cstdarg>
@@ -13,10 +12,11 @@
 #include <regex>
 #include <sstream>
 #include "child_process.h"
+#include "js_native_api.h"
 
 namespace fs = std::filesystem;
 
-namespace node_api_tests {
+namespace node_lite {
 
 // Use to override printf in tests to send output to a std::string instead of
 // stdout.
@@ -268,14 +268,14 @@ int EvaluateJSFile(int argc, char** argv) {
 
 NodeApiTestContext::NodeApiTestContext(
     napi_env env,
-    //std::shared_ptr<NodeApiTaskRunner> taskRunner,
+    // std::shared_ptr<NodeApiTaskRunner> taskRunner,
     std::string const& testJSPath,
     std::vector<std::string> argv)
     : env(env),
       m_testJSPath(testJSPath),
-      //m_envScope(env),
+      // m_envScope(env),
       m_handleScope(env),
-      //m_taskRunner(std::move(taskRunner)),
+      // m_taskRunner(std::move(taskRunner)),
       m_scriptModules(GetCommonScripts(testJSPath)),
       m_argv(std::move(argv)) {
   DefineGlobalFunctions();
@@ -462,7 +462,7 @@ NodeApiTestErrorHandler NodeApiTestContext::RunTestScript(char const* script,
 
 void NodeApiTestContext::HandleUnhandledPromiseRejections() {
   bool hasException{false};
-  #if 0
+#if 0
   THROW_IF_NOT_OK(jsr_has_unhandled_promise_rejection(env, &hasException));
   if (hasException) {
     napi_value error{};
@@ -470,7 +470,7 @@ void NodeApiTestContext::HandleUnhandledPromiseRejections() {
         jsr_get_and_clear_last_unhandled_promise_rejection(env, &error));
     throw NodeApiTestException(env, error);
   }
-  #endif
+#endif
 }
 
 NodeApiTestErrorHandler NodeApiTestContext::RunTestScript(
@@ -763,7 +763,8 @@ static void SetNullProperty(napi_env env, napi_value obj, char const* name) {
 
 napi_value NodeApiTestContext::SpawnSync(std::string command,
                                          std::vector<std::string> args) {
-  ProcessResult procResult = spawnSync(command, args);
+  child_process::ProcessResult procResult =
+      child_process::spawnSync(command, args);
   napi_value result{};
   THROW_IF_NOT_OK(napi_create_object(env, &result));
   SetUIntProperty(env, result, "status", procResult.status);
@@ -784,18 +785,18 @@ uint32_t NodeApiTestContext::AddTask(napi_value callback) noexcept {
     THROW_IF_NOT_OK(
         napi_call_function(env, undefined, callback, 0, nullptr, nullptr));
   });
-  #endif
+#endif
   return 0;
 }
 
 void NodeApiTestContext::RemoveTask(uint32_t taskId) noexcept {
-    //TODO: implement
+  // TODO: implement
   // m_taskRunner->RemoveTask(taskId);
 }
 
 void NodeApiTestContext::DrainTaskQueue() {
   // TODO: implement
-  //m_taskRunner->DrainTaskQueue();
+  // m_taskRunner->DrainTaskQueue();
 }
 
 void NodeApiTestContext::RunCallChecks() {
@@ -860,6 +861,32 @@ std::string NodeApiTestContext::ProcessStack(std::string const& stack,
   }
 
   return processedStack;
+}
+
+//=============================================================================
+// NodeLiteTaskRunner implementation
+//=============================================================================
+
+uint32_t NodeLiteTaskRunner::PostTask(std::function<void()> task) {
+  uint32_t taskId = nextTaskId_++;
+  taskQueue_.emplace_back(taskId, std::move(task));
+  return taskId;
+}
+
+void NodeLiteTaskRunner::RemoveTask(uint32_t taskId) noexcept {
+  taskQueue_.remove_if(
+      [taskId](const std::pair<uint32_t, std::function<void()>>& entry) {
+        return entry.first == taskId;
+      });
+}
+
+void NodeLiteTaskRunner::DrainTaskQueue() {
+  while (!taskQueue_.empty()) {
+    std::pair<uint32_t, std::function<void()>> task =
+        std::move(taskQueue_.front());
+    taskQueue_.pop_front();
+    task.second();
+  }
 }
 
 //=============================================================================
@@ -1003,8 +1030,8 @@ std::string NodeApiTestErrorHandler::GetSourceCodeSliceForError(
   return sourceCode;
 }
 
-}  // namespace node_api_tests
+}  // namespace node_lite
 
 int main(int argc, char** argv) {
-  return node_api_tests::EvaluateJSFile(argc, argv);
+  return node_lite::EvaluateJSFile(argc, argv);
 }

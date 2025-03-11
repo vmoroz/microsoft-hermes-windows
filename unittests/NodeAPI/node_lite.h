@@ -51,7 +51,7 @@ constexpr napi_property_attributes operator|(napi_property_attributes left,
                                   static_cast<int>(right));
 }
 
-namespace node_api_tests {
+namespace node_lite {
 
 // Forward declarations
 struct NodeApiTest;
@@ -93,51 +93,9 @@ inline int32_t GetEndOfLineCount(char const* script) noexcept {
 
 class NodeLiteTaskRunner {
  public:
-  uint32_t PostTask(std::function<void()> task) {
-    uint32_t taskId = nextTaskId_++;
-    taskQueue_.emplace_back(taskId, std::move(task));
-    return taskId;
-  }
-
-  void RemoveTask(uint32_t taskId) noexcept {
-    taskQueue_.remove_if(
-        [taskId](const std::pair<uint32_t, std::function<void()>>& entry) {
-          return entry.first == taskId;
-        });
-  }
-
-  void DrainTaskQueue() {
-    while (!taskQueue_.empty()) {
-      std::pair<uint32_t, std::function<void()>> task =
-          std::move(taskQueue_.front());
-      taskQueue_.pop_front();
-      task.second();
-    }
-  }
-
-  // TODO: implement
-  //static void PostTaskCallback(void* task_runner_data,
-  //                             void* task_data,
-  //                             jsr_task_run_cb task_run_cb,
-  //                             jsr_data_delete_cb task_data_delete_cb,
-  //                             void* deleter_data) {
-  //  NodeApiTaskRunner* taskRunnerPtr =
-  //      static_cast<std::shared_ptr<NodeApiTaskRunner>*>(task_runner_data)
-  //          ->get();
-  //  taskRunnerPtr->PostTask(
-  //      [task_run_cb, task_data, task_data_delete_cb, deleter_data]() {
-  //        if (task_run_cb != nullptr) {
-  //          task_run_cb(task_data);
-  //        }
-  //        if (task_data_delete_cb != nullptr) {
-  //          task_data_delete_cb(task_data, deleter_data);
-  //        }
-  //      });
-  //}
-
-  static void DeleteCallback(void* data, void* /*deleter_data*/) {
-    delete static_cast<std::shared_ptr<NodeLiteTaskRunner>*>(data);
-  }
+  uint32_t PostTask(std::function<void()> task);
+  void RemoveTask(uint32_t taskId) noexcept;
+  void DrainTaskQueue();
 
  private:
   std::list<std::pair<uint32_t, std::function<void()>>> taskQueue_;
@@ -256,7 +214,7 @@ struct NodeApiEnvScope {
 // setting the environment per test.
 struct NodeApiTestContext {
   NodeApiTestContext(napi_env env,
-                     //std::shared_ptr<NodeApiTaskRunner> taskRunner,
+                     // std::shared_ptr<NodeApiTaskRunner> taskRunner,
                      std::string const& testJSPath,
                      std::vector<std::string> argv);
 
@@ -310,9 +268,9 @@ struct NodeApiTestContext {
  private:
   napi_env env;
   std::string m_testJSPath;
-  //NodeApiEnvScope m_envScope;
+  // NodeApiEnvScope m_envScope;
   NodeApiHandleScope m_handleScope;
-  //std::shared_ptr<NodeApiTaskRunner> m_taskRunner;
+  // std::shared_ptr<NodeApiTaskRunner> m_taskRunner;
   std::map<std::string, NodeApiRef, std::less<>> m_initializedModules;
   std::map<std::string, TestScriptInfo, std::less<>> m_scriptModules;
   std::map<std::string, std::function<napi_value(napi_env, napi_value)>>
@@ -359,6 +317,6 @@ struct NodeApiTestErrorHandler {
   int32_t m_scriptLineOffset;
 };
 
-}  // namespace node_api_tests
+}  // namespace node_lite
 
 #endif  // !NODE_API_TEST_H_

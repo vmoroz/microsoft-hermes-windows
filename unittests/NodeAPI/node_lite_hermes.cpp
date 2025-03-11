@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#include "node_api_test.h"
+#include "node_lite.h"
 // #include "v8_api.h"
 
-namespace node_api_tests {
+namespace node_lite {
 #if 0
 class V8RuntimeHolder : public IEnvHolder {
  public:
@@ -42,4 +42,4 @@ std::unique_ptr<IEnvHolder> CreateEnvHolder(
       new V8RuntimeHolder(std::move(taskRunner)));
 }
 #endif
-}  // namespace node_api_tests
+}  // namespace node_lite

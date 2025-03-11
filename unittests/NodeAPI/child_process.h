@@ -8,13 +8,13 @@
 #include <string_view>
 #include <vector>
 
-namespace node_api_tests {
+namespace node_lite::child_process {
 
 // Struct to hold the result of a child process execution.
 struct ProcessResult {
-  uint32_t status; // Exit status of the child process.
-  std::string std_output; // Standard output from the child process.
-  std::string std_error; // Standard error from the child process.
+  uint32_t status;         // Exit status of the child process.
+  std::string std_output;  // Standard output from the child process.
+  std::string std_error;   // Standard error from the child process.
 };
 
 // Creates a child process to run the given command with the specified
@@ -22,6 +22,6 @@ struct ProcessResult {
 ProcessResult spawnSync(std::string_view command,
                         std::vector<std::string> args);
 
-}  // namespace node_api_tests
+}  // namespace node_lite::child_process
 
 #endif  // !HERMES_UNITTESTS_NODEAPI_CHILD_PROCESS_H

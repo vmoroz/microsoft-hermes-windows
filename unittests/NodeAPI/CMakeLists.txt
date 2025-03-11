@@ -78,9 +78,9 @@
 add_executable(node_lite
   child_process.cpp
   child_process.h
-  node_api_test.cpp
-  node_api_test.h
-  node_api_test_hermes.cpp
+  node_lite.cpp
+  node_lite.h
+  node_lite_hermes.cpp
 )
 
 target_link_libraries(node_lite
