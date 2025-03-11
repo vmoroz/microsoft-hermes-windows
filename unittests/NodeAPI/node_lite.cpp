@@ -251,10 +251,10 @@ int EvaluateJSFile(int argc, char** argv) {
       return context.RunTestScript(jsFilePath).HandleAtProcessExit();
     }
 
-    // return NodeApiTestErrorHandler(nullptr, std::exception_ptr(), "", "", 0,
+    // return NodeLiteErrorHandler(nullptr, std::exception_ptr(), "", "", 0,
     // 0);
   } catch (...) {
-    // return NodeApiTestErrorHandler(nullptr, std::current_exception(), "", "",
+    // return NodeLiteErrorHandler(nullptr, std::current_exception(), "", "",
     // 0, 0);
   }
 #endif
@@ -265,10 +265,11 @@ int EvaluateJSFile(int argc, char** argv) {
 // NodeLiteRuntime implementation
 //=============================================================================
 
-NodeLiteRuntime::NodeLiteRuntime(napi_env env,
-                                 std::shared_ptr<NodeLiteTaskRunner> task_runner,
-                                 std::string const& script_dir,
-                                 std::vector<std::string> argv)
+NodeLiteRuntime::NodeLiteRuntime(
+    napi_env env,
+    std::shared_ptr<NodeLiteTaskRunner> task_runner,
+    std::string const& script_dir,
+    std::vector<std::string> argv)
     : env(env),
       script_dir_(script_dir),
       // m_envScope(env),
@@ -399,9 +400,9 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
     return registerModule(
         env,
         moduleName,
-        RunScript(
-            GetJSModuleText(ReadScriptText(script_dir_, scriptFile), scriptPath),
-            scriptFile.c_str()));
+        RunScript(GetJSModuleText(ReadScriptText(script_dir_, scriptFile),
+                                  scriptPath),
+                  scriptFile.c_str()));
   } else if (moduleName.find("./") == 0 &&
              moduleName.find(".js") != std::string::npos) {
     std::string scriptFile = "@babel/runtime/helpers" + moduleName.substr(1);
@@ -409,9 +410,9 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
     return registerModule(
         env,
         moduleName,
-        RunScript(
-            GetJSModuleText(ReadScriptText(script_dir_, scriptFile), scriptPath),
-            scriptFile.c_str()));
+        RunScript(GetJSModuleText(ReadScriptText(script_dir_, scriptFile),
+                                  scriptPath),
+                  scriptFile.c_str()));
   }
 
   NODE_API_CALL(env, napi_get_undefined(env, &result));
@@ -430,9 +431,9 @@ void NodeLiteRuntime::AddNativeModule(
   native_modules_.try_emplace(moduleName, std::move(initModule));
 }
 
-NodeApiTestErrorHandler NodeLiteRuntime::RunTestScript(char const* script,
-                                                       char const* file,
-                                                       int32_t line) {
+NodeLiteErrorHandler NodeLiteRuntime::RunTestScript(char const* script,
+                                                    char const* file,
+                                                    int32_t line) {
   try {
     std::string scriptText = GetJSModuleText(script, file);
     script_modules_["TestScript"] =
@@ -446,15 +447,14 @@ NodeApiTestErrorHandler NodeLiteRuntime::RunTestScript(char const* script,
     DrainTaskQueue();
     RunCallChecks();
     HandleUnhandledPromiseRejections();
-    return NodeApiTestErrorHandler(
-        this, std::exception_ptr(), "", file, line, 0);
+    return NodeLiteErrorHandler(this, std::exception_ptr(), "", file, line, 0);
   } catch (...) {
-    return NodeApiTestErrorHandler(this,
-                                   std::current_exception(),
-                                   script,
-                                   file,
-                                   line,
-                                   ModulePrefixLineCount);
+    return NodeLiteErrorHandler(this,
+                                std::current_exception(),
+                                script,
+                                file,
+                                line,
+                                ModulePrefixLineCount);
   }
 }
 
@@ -471,14 +471,14 @@ void NodeLiteRuntime::HandleUnhandledPromiseRejections() {
 #endif
 }
 
-NodeApiTestErrorHandler NodeLiteRuntime::RunTestScript(
+NodeLiteErrorHandler NodeLiteRuntime::RunTestScript(
     TestScriptInfo const& scriptInfo) {
   return RunTestScript(scriptInfo.script.c_str(),
                        scriptInfo.filePath.string().c_str(),
                        scriptInfo.line);
 }
 
-NodeApiTestErrorHandler NodeLiteRuntime::RunTestScript(
+NodeLiteErrorHandler NodeLiteRuntime::RunTestScript(
     std::string const& scriptFile) {
   return RunTestScript(ReadFileText(scriptFile).c_str(), scriptFile.c_str(), 1);
 }
@@ -886,38 +886,37 @@ void NodeLiteTaskRunner::DrainTaskQueue() {
 }
 
 //=============================================================================
-// NodeApiTestErrorHandler implementation
+// NodeLiteErrorHandler implementation
 //=============================================================================
 
-NodeApiTestErrorHandler::NodeApiTestErrorHandler(
-    NodeLiteRuntime* testContext,
-    std::exception_ptr const& exception,
-    std::string&& script,
-    std::string&& file,
-    int32_t line,
-    int32_t scriptLineOffset) noexcept
-    : m_testContext(testContext),
-      m_exception(exception),
-      m_script(std::move(script)),
-      m_file(std::move(file)),
-      m_line(line),
-      m_scriptLineOffset(scriptLineOffset) {}
+NodeLiteErrorHandler::NodeLiteErrorHandler(NodeLiteRuntime* runtime,
+                                           std::exception_ptr const& exception,
+                                           std::string script,
+                                           std::string file,
+                                           int32_t line,
+                                           int32_t script_line_offset) noexcept
+    : runtime_(runtime),
+      exception_(exception),
+      script_(std::move(script)),
+      file_(std::move(file)),
+      line_(line),
+      script_line_offset_(script_line_offset) {}
 
-NodeApiTestErrorHandler::~NodeApiTestErrorHandler() noexcept = default;
+NodeLiteErrorHandler::~NodeLiteErrorHandler() noexcept = default;
 
-int NodeApiTestErrorHandler::HandleAtProcessExit() noexcept {
-  if (m_exception) {
+int NodeLiteErrorHandler::HandleAtProcessExit() noexcept {
+  if (exception_) {
     try {
-      std::rethrow_exception(m_exception);
+      std::rethrow_exception(exception_);
     } catch (NodeLiteException const& ex) {
       if (auto assertionError = ex.assertion_error_info()) {
         auto sourceFile = assertionError->SourceFile;
-        auto sourceLine = assertionError->SourceLine - m_scriptLineOffset;
+        auto sourceLine = assertionError->SourceLine - script_line_offset_;
         auto sourceCode = std::string("<Source is unavailable>");
         if (sourceFile == "TestScript") {
-          sourceFile = UseSrcFilePath(m_file);
+          sourceFile = UseSrcFilePath(file_);
           sourceCode = GetSourceCodeSliceForError(sourceLine, 2);
-          sourceLine += m_line - 1;
+          sourceLine += line_ - 1;
         } else if (sourceFile.empty()) {
           sourceFile = "<Unknown>";
         }
@@ -932,11 +931,11 @@ int NodeApiTestErrorHandler::HandleAtProcessExit() noexcept {
         }
 
         std::string processedStack =
-            m_testContext->ProcessStack(ex.assertion_error_info()->ErrorStack,
-                                        ex.assertion_error_info()->Method);
+            runtime_->ProcessStack(ex.assertion_error_info()->ErrorStack,
+                                   ex.assertion_error_info()->Method);
 
         return FormatExitMessage(
-            m_file.c_str(),
+            file_.c_str(),
             sourceLine,
             "JavaScript assertion error",
             [&](std::ostream& os) {
@@ -953,14 +952,14 @@ int NodeApiTestErrorHandler::HandleAtProcessExit() noexcept {
             });
       } else if (ex.error_info()) {
         return FormatExitMessage(
-            m_file.c_str(), m_line, "JavaScript error", [&](std::ostream& os) {
+            file_.c_str(), line_, "JavaScript error", [&](std::ostream& os) {
               os << "Exception: " << ex.error_info()->Name << '\n'
                  << "  Message: " << ex.error_info()->Message << '\n'
                  << "Callstack: " << ex.error_info()->Stack;
             });
       } else {
-        return FormatExitMessage(m_file.c_str(),
-                                 m_line,
+        return FormatExitMessage(file_.c_str(),
+                                 line_,
                                  "Test native exception",
                                  [&](std::ostream& os) {
                                    os << "Exception: NodeLiteException\n"
@@ -972,24 +971,24 @@ int NodeApiTestErrorHandler::HandleAtProcessExit() noexcept {
       }
     } catch (std::exception const& ex) {
       return FormatExitMessage(
-          m_file.c_str(), m_line, "C++ exception", [&](std::ostream& os) {
+          file_.c_str(), line_, "C++ exception", [&](std::ostream& os) {
             os << "Exception thrown: " << ex.what();
           });
     } catch (...) {
       return FormatExitMessage(
-          m_file.c_str(), m_line, "Unexpected test exception");
+          file_.c_str(), line_, "Unexpected test exception");
     }
   }
   return 0;
 }
 
-int NodeApiTestErrorHandler::FormatExitMessage(
+int NodeLiteErrorHandler::FormatExitMessage(
     const std::string& file, int line, const std::string& message) noexcept {
   return FormatExitMessage(
       file, line, message, [](std::ostream&) { return ""; });
 }
 
-int NodeApiTestErrorHandler::FormatExitMessage(
+int NodeLiteErrorHandler::FormatExitMessage(
     const std::string& file,
     int line,
     const std::string& message,
@@ -1007,10 +1006,10 @@ int NodeApiTestErrorHandler::FormatExitMessage(
   return 1;
 }
 
-std::string NodeApiTestErrorHandler::GetSourceCodeSliceForError(
+std::string NodeLiteErrorHandler::GetSourceCodeSliceForError(
     int32_t lineIndex, int32_t extraLineCount) noexcept {
   std::string sourceCode;
-  auto sourceStream = std::istringstream(m_script + '\n');
+  auto sourceStream = std::istringstream(script_ + '\n');
   std::string sourceLine;
   int32_t currentLineIndex = 1;  // The line index is 1-based.
 

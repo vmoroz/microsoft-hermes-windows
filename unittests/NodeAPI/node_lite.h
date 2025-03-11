@@ -55,7 +55,7 @@ namespace node_lite {
 
 // Forward declarations
 class NodeLiteRuntime;
-struct NodeApiTestErrorHandler;
+class NodeLiteErrorHandler;
 class NodeLiteException;
 
 struct IEnvHolder {
@@ -210,22 +210,23 @@ struct NodeApiEnvScope {
 #endif
 
 // Handles the exceptions after running tests.
-struct NodeApiTestErrorHandler {
-  NodeApiTestErrorHandler(NodeLiteRuntime* testContext,
-                          std::exception_ptr const& exception,
-                          std::string&& script,
-                          std::string&& file,
-                          int32_t line,
-                          int32_t scriptLineOffset) noexcept;
-  ~NodeApiTestErrorHandler() noexcept;
+class NodeLiteErrorHandler {
+ public:
+  NodeLiteErrorHandler(NodeLiteRuntime* runtime,
+                       std::exception_ptr const& exception,
+                       std::string script,
+                       std::string file,
+                       int32_t line,
+                       int32_t script_line_offset) noexcept;
+  ~NodeLiteErrorHandler() noexcept;
 
   int HandleAtProcessExit() noexcept;
 
-  NodeApiTestErrorHandler(NodeApiTestErrorHandler const&) = delete;
-  NodeApiTestErrorHandler& operator=(NodeApiTestErrorHandler const&) = delete;
+  NodeLiteErrorHandler(NodeLiteErrorHandler const&) = delete;
+  NodeLiteErrorHandler& operator=(NodeLiteErrorHandler const&) = delete;
 
-  NodeApiTestErrorHandler(NodeApiTestErrorHandler&&) = default;
-  NodeApiTestErrorHandler& operator=(NodeApiTestErrorHandler&&) = default;
+  NodeLiteErrorHandler(NodeLiteErrorHandler&&) = default;
+  NodeLiteErrorHandler& operator=(NodeLiteErrorHandler&&) = default;
 
  private:
   std::string GetSourceCodeSliceForError(int32_t lineIndex,
@@ -240,12 +241,12 @@ struct NodeApiTestErrorHandler {
                         std::function<void(std::ostream&)> getDetails) noexcept;
 
  private:
-  NodeLiteRuntime* m_testContext;
-  std::exception_ptr m_exception;
-  std::string m_script;
-  std::string m_file;
-  int32_t m_line;
-  int32_t m_scriptLineOffset;
+  NodeLiteRuntime* runtime_;
+  std::exception_ptr exception_;
+  std::string script_;
+  std::string file_;
+  int32_t line_;
+  int32_t script_line_offset_;
 };
 
 // The runtime to run test scripts.
@@ -264,11 +265,11 @@ class NodeLiteRuntime {
   napi_value GetModule(std::string const& moduleName);
   TestScriptInfo* GetTestScriptInfo(std::string const& moduleName);
 
-  NodeApiTestErrorHandler RunTestScript(char const* script,
-                                        char const* file,
-                                        int32_t line);
-  NodeApiTestErrorHandler RunTestScript(TestScriptInfo const& scripInfo);
-  NodeApiTestErrorHandler RunTestScript(std::string const& scriptFile);
+  NodeLiteErrorHandler RunTestScript(char const* script,
+                                     char const* file,
+                                     int32_t line);
+  NodeLiteErrorHandler RunTestScript(TestScriptInfo const& scripInfo);
+  NodeLiteErrorHandler RunTestScript(std::string const& scriptFile);
 
   static std::string ReadScriptText(std::string const& testJSPath,
                                     std::string const& scriptFile);
