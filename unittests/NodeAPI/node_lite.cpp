@@ -266,15 +266,15 @@ int EvaluateJSFile(int argc, char** argv) {
 //=============================================================================
 
 NodeLiteRuntime::NodeLiteRuntime(napi_env env,
-                                 std::shared_ptr<NodeLiteTaskRunner> taskRunner,
-                                 std::string const& scriptDir,
+                                 std::shared_ptr<NodeLiteTaskRunner> task_runner,
+                                 std::string const& script_dir,
                                  std::vector<std::string> argv)
     : env(env),
-      scriptDir_(scriptDir),
+      script_dir_(script_dir),
       // m_envScope(env),
-      handleScope_(env),
-      taskRunner_(std::move(taskRunner)),
-      scriptModules_(GetCommonScripts(scriptDir)),
+      handle_scope_(env),
+      task_runner_(std::move(task_runner)),
+      script_modules_(GetCommonScripts(script_dir)),
       argv_(std::move(argv)) {
   DefineGlobalFunctions();
   DefineChildProcessModule();
@@ -320,8 +320,8 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
   napi_value result{};
 
   // Check if the module has already been initialized.
-  auto moduleIt = initializedModules_.find(moduleName);
-  if (moduleIt != initializedModules_.end()) {
+  auto moduleIt = initialized_modules_.find(moduleName);
+  if (moduleIt != initialized_modules_.end()) {
     NODE_API_CALL(
         env, napi_get_reference_value(env, moduleIt->second.get(), &result));
     return result;
@@ -330,13 +330,13 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
   auto registerModule = [this](napi_env env,
                                std::string const& moduleName,
                                napi_value module) {
-    initializedModules_.try_emplace(moduleName, MakeNodeApiRef(env, module));
+    initialized_modules_.try_emplace(moduleName, MakeNodeApiRef(env, module));
     return module;
   };
 
   // Check if the module is registered script module.
-  auto scriptIt = scriptModules_.find(moduleName);
-  if (scriptIt != scriptModules_.end()) {
+  auto scriptIt = script_modules_.find(moduleName);
+  if (scriptIt != script_modules_.end()) {
     return registerModule(env,
                           moduleName,
                           RunScript(GetJSModuleText(scriptIt->second.script,
@@ -345,8 +345,8 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
   }
 
   // Check if the module is registered native module.
-  auto nativeModuleIt = nativeModules_.find(moduleName);
-  if (nativeModuleIt != nativeModules_.end()) {
+  auto nativeModuleIt = native_modules_.find(moduleName);
+  if (nativeModuleIt != native_modules_.end()) {
     napi_value exports{};
     NODE_API_CALL(env, napi_create_object(env, &exports));
     return registerModule(
@@ -395,22 +395,22 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
   // Check if it is a script module.
   if (moduleName.find("@babel") == 0) {
     std::string scriptFile = moduleName + ".js";
-    fs::path scriptPath = fs::path(scriptDir_) / scriptFile;
+    fs::path scriptPath = fs::path(script_dir_) / scriptFile;
     return registerModule(
         env,
         moduleName,
         RunScript(
-            GetJSModuleText(ReadScriptText(scriptDir_, scriptFile), scriptPath),
+            GetJSModuleText(ReadScriptText(script_dir_, scriptFile), scriptPath),
             scriptFile.c_str()));
   } else if (moduleName.find("./") == 0 &&
              moduleName.find(".js") != std::string::npos) {
     std::string scriptFile = "@babel/runtime/helpers" + moduleName.substr(1);
-    fs::path scriptPath = fs::path(scriptDir_) / scriptFile;
+    fs::path scriptPath = fs::path(script_dir_) / scriptFile;
     return registerModule(
         env,
         moduleName,
         RunScript(
-            GetJSModuleText(ReadScriptText(scriptDir_, scriptFile), scriptPath),
+            GetJSModuleText(ReadScriptText(script_dir_, scriptFile), scriptPath),
             scriptFile.c_str()));
   }
 
@@ -420,14 +420,14 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
 
 TestScriptInfo* NodeLiteRuntime::GetTestScriptInfo(
     std::string const& moduleName) {
-  auto it = scriptModules_.find(moduleName);
-  return it != scriptModules_.end() ? &it->second : nullptr;
+  auto it = script_modules_.find(moduleName);
+  return it != script_modules_.end() ? &it->second : nullptr;
 }
 
 void NodeLiteRuntime::AddNativeModule(
     char const* moduleName,
     std::function<napi_value(napi_env, napi_value)> initModule) {
-  nativeModules_.try_emplace(moduleName, std::move(initModule));
+  native_modules_.try_emplace(moduleName, std::move(initModule));
 }
 
 NodeApiTestErrorHandler NodeLiteRuntime::RunTestScript(char const* script,
@@ -435,7 +435,7 @@ NodeApiTestErrorHandler NodeLiteRuntime::RunTestScript(char const* script,
                                                        int32_t line) {
   try {
     std::string scriptText = GetJSModuleText(script, file);
-    scriptModules_["TestScript"] =
+    script_modules_["TestScript"] =
         TestScriptInfo{scriptText.c_str(), file, line};
 
     NodeApiHandleScope scope{env};
@@ -554,10 +554,10 @@ static napi_value NAPI_CDECL SetImmediateCallback(napi_env env,
   NodeLiteRuntime* self;
   NODE_API_CALL(env, napi_get_value_external(env, selfValue, (void**)&self));
 
-  uint32_t taskId = self->AddTask(immediateCallback);
+  uint32_t task_id = self->AddTask(immediateCallback);
 
   napi_value taskIdValue{};
-  NODE_API_CALL(env, napi_create_uint32(env, taskId, &taskIdValue));
+  NODE_API_CALL(env, napi_create_uint32(env, task_id, &taskIdValue));
   return taskIdValue;
 }
 
@@ -592,8 +592,8 @@ void NodeLiteRuntime::DefineGlobalClearTimeout(napi_value global) {
         NODE_API_ASSERT(env,
                         taskIdType == napi_number,
                         "Wrong type of argument. Expects a number.");
-        uint32_t taskId;
-        NODE_API_CALL(env, napi_get_value_uint32(env, taskIdValue, &taskId));
+        uint32_t task_id;
+        NODE_API_CALL(env, napi_get_value_uint32(env, taskIdValue, &task_id));
 
         napi_value global{};
         NODE_API_CALL(env, napi_get_global(env, &global));
@@ -605,7 +605,7 @@ void NodeLiteRuntime::DefineGlobalClearTimeout(napi_value global) {
         NODE_API_CALL(env,
                       napi_get_value_external(env, selfValue, (void**)&self));
 
-        self->RemoveTask(taskId);
+        self->RemoveTask(task_id);
 
         napi_value undefined{};
         NODE_API_CALL(env, napi_get_undefined(env, &undefined));
@@ -787,14 +787,12 @@ uint32_t NodeLiteRuntime::AddTask(napi_value callback) noexcept {
   return 0;
 }
 
-void NodeLiteRuntime::RemoveTask(uint32_t taskId) noexcept {
-  // TODO: implement
-  // m_taskRunner->RemoveTask(taskId);
+void NodeLiteRuntime::RemoveTask(uint32_t task_id) noexcept {
+  task_runner_->RemoveTask(task_id);
 }
 
 void NodeLiteRuntime::DrainTaskQueue() {
-  // TODO: implement
-  // m_taskRunner->DrainTaskQueue();
+  task_runner_->DrainTaskQueue();
 }
 
 void NodeLiteRuntime::RunCallChecks() {
@@ -866,23 +864,23 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 //=============================================================================
 
 uint32_t NodeLiteTaskRunner::PostTask(std::function<void()> task) {
-  uint32_t taskId = nextTaskId_++;
-  taskQueue_.emplace_back(taskId, std::move(task));
-  return taskId;
+  uint32_t task_id = next_task_id_++;
+  task_queue_.emplace_back(task_id, std::move(task));
+  return task_id;
 }
 
-void NodeLiteTaskRunner::RemoveTask(uint32_t taskId) noexcept {
-  taskQueue_.remove_if(
-      [taskId](const std::pair<uint32_t, std::function<void()>>& entry) {
-        return entry.first == taskId;
+void NodeLiteTaskRunner::RemoveTask(uint32_t task_id) noexcept {
+  task_queue_.remove_if(
+      [task_id](const std::pair<uint32_t, std::function<void()>>& entry) {
+        return entry.first == task_id;
       });
 }
 
 void NodeLiteTaskRunner::DrainTaskQueue() {
-  while (!taskQueue_.empty()) {
+  while (!task_queue_.empty()) {
     std::pair<uint32_t, std::function<void()>> task =
-        std::move(taskQueue_.front());
-    taskQueue_.pop_front();
+        std::move(task_queue_.front());
+    task_queue_.pop_front();
     task.second();
   }
 }

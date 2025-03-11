@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-// These tests are for NAPI and should not be JS engine specific
+// These tests are for Node-API and should not be JS engine specific
 
 #pragma once
 #ifndef NODE_API_TEST_NODE_LITE_H
@@ -93,15 +93,15 @@ inline int32_t GetEndOfLineCount(char const* script) noexcept {
 class NodeLiteTaskRunner {
  public:
   uint32_t PostTask(std::function<void()> task);
-  void RemoveTask(uint32_t taskId) noexcept;
+  void RemoveTask(uint32_t task_id) noexcept;
   void DrainTaskQueue();
 
  private:
-  std::list<std::pair<uint32_t, std::function<void()>>> taskQueue_;
-  uint32_t nextTaskId_{1};
+  std::list<std::pair<uint32_t, std::function<void()>>> task_queue_;
+  uint32_t next_task_id_{1};
 };
 
-// The exception used to propagate NAPI and script errors.
+// The exception used to propagate Node-API and script errors.
 class NodeLiteException : std::exception {
  public:
   NodeLiteException() noexcept = default;
@@ -248,10 +248,7 @@ struct NodeApiTestErrorHandler {
   int32_t m_scriptLineOffset;
 };
 
-// The context to run a NAPI test.
-// Some tests require interaction of multiple JS environments.
-// Thus, it is more convenient to have a special NodeApiTestContext instead of
-// setting the environment per test.
+// The runtime to run test scripts.
 class NodeLiteRuntime {
  public:
   NodeLiteRuntime(napi_env env,
@@ -308,14 +305,14 @@ class NodeLiteRuntime {
 
  private:
   napi_env env;
-  std::string scriptDir_;
+  std::string script_dir_;
   // NodeApiEnvScope m_envScope;
-  NodeApiHandleScope handleScope_;
-  std::shared_ptr<NodeLiteTaskRunner> taskRunner_;
-  std::map<std::string, NodeApiRef, std::less<>> initializedModules_;
-  std::map<std::string, TestScriptInfo, std::less<>> scriptModules_;
+  NodeApiHandleScope handle_scope_;
+  std::shared_ptr<NodeLiteTaskRunner> task_runner_;
+  std::map<std::string, NodeApiRef, std::less<>> initialized_modules_;
+  std::map<std::string, TestScriptInfo, std::less<>> script_modules_;
   std::map<std::string, std::function<napi_value(napi_env, napi_value)>>
-      nativeModules_;
+      native_modules_;
   std::vector<std::string> argv_;
 };
 
