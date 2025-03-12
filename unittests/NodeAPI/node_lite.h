@@ -81,17 +81,6 @@ struct NodeLiteScriptInfo {
   int32_t line;
 };
 
-class NodeLiteTaskRunner {
- public:
-  uint32_t PostTask(std::function<void()> task);
-  void RemoveTask(uint32_t task_id) noexcept;
-  void DrainTaskQueue();
-
- private:
-  std::list<std::pair<uint32_t, std::function<void()>>> task_queue_;
-  uint32_t next_task_id_{1};
-};
-
 // The exception used to propagate Node-API and script errors.
 class NodeLiteException : std::exception {
  public:
@@ -137,40 +126,6 @@ class NodeLiteException : std::exception {
   std::shared_ptr<NodeLiteAssertionErrorInfo> assertion_error_info_;
 };
 
-// Define NodeApiRef "smart pointer" for napi_ref as unique_ptr with a custom
-// deleter.
-class NodeApiRefDeleter {
- public:
-  NodeApiRefDeleter(napi_env env) noexcept : env(env) {}
-
-  void operator()(napi_ref ref) {
-    THROW_IF_NOT_OK(napi_delete_reference(env, ref));
-  }
-
- private:
-  napi_env env;
-};
-
-using NodeApiRef = std::unique_ptr<napi_ref__, NodeApiRefDeleter>;
-
-class NodeApiHandleScope {
- public:
-  NodeApiHandleScope(napi_env env) noexcept : env_(env) {
-    CRASH_IF_FALSE(napi_open_handle_scope(env, &handle_scope_) == napi_ok);
-  }
-
-  ~NodeApiHandleScope() noexcept {
-    CRASH_IF_FALSE(napi_close_handle_scope(env_, handle_scope_) == napi_ok);
-  }
-
-  NodeApiHandleScope(const NodeApiHandleScope&) = delete;
-  NodeApiHandleScope& operator=(const NodeApiHandleScope&) = delete;
-
- private:
-  napi_env env_{};
-  napi_handle_scope handle_scope_{};
-};
-
 // Handles the exceptions after running scripts.
 class NodeLiteErrorHandler {
  public:
@@ -211,6 +166,51 @@ class NodeLiteErrorHandler {
   int32_t script_line_offset_;
 };
 
+// Define NodeApiRef "smart pointer" for napi_ref as unique_ptr with a custom
+// deleter.
+class NodeApiRefDeleter {
+ public:
+  NodeApiRefDeleter(napi_env env) noexcept : env(env) {}
+
+  void operator()(napi_ref ref) {
+    THROW_IF_NOT_OK(napi_delete_reference(env, ref));
+  }
+
+ private:
+  napi_env env;
+};
+
+using NodeApiRef = std::unique_ptr<napi_ref__, NodeApiRefDeleter>;
+
+class NodeApiHandleScope {
+ public:
+  NodeApiHandleScope(napi_env env) noexcept : env_(env) {
+    CRASH_IF_FALSE(napi_open_handle_scope(env, &handle_scope_) == napi_ok);
+  }
+
+  ~NodeApiHandleScope() noexcept {
+    CRASH_IF_FALSE(napi_close_handle_scope(env_, handle_scope_) == napi_ok);
+  }
+
+  NodeApiHandleScope(const NodeApiHandleScope&) = delete;
+  NodeApiHandleScope& operator=(const NodeApiHandleScope&) = delete;
+
+ private:
+  napi_env env_{};
+  napi_handle_scope handle_scope_{};
+};
+
+class NodeLiteTaskRunner {
+ public:
+  uint32_t PostTask(std::function<void()> task);
+  void RemoveTask(uint32_t task_id) noexcept;
+  void DrainTaskQueue();
+
+ private:
+  std::list<std::pair<uint32_t, std::function<void()>>> task_queue_;
+  uint32_t next_task_id_{1};
+};
+
 // The runtime to run test scripts.
 class NodeLiteRuntime {
  public:
@@ -230,8 +230,8 @@ class NodeLiteRuntime {
   NodeLiteScriptInfo* GetScriptInfo(std::string const& module_name);
 
   NodeLiteErrorHandler RunScript(char const* script,
-                                     char const* file,
-                                     int32_t line);
+                                 char const* file,
+                                 int32_t line);
   NodeLiteErrorHandler RunScriptFile(NodeLiteScriptInfo const& script_info);
   NodeLiteErrorHandler RunScriptFile(std::string const& script_file);
 
@@ -260,6 +260,18 @@ class NodeLiteRuntime {
   void DefineGlobalProcess(napi_value global);
   void DefineGlobalFunctions();
   void DefineChildProcessModule();
+
+  static napi_value NAPI_CDECL SetImmediateCallback(napi_env env,
+                                                    napi_callback_info info);
+  static void SetUIntProperty(napi_env env,
+                              napi_value obj,
+                              char const* name,
+                              uint32_t value);
+  static void SetStrProperty(napi_env env,
+                             napi_value obj,
+                             char const* name,
+                             std::string const& value);
+  static void SetNullProperty(napi_env env, napi_value obj, char const* name);
 
   void RunCallChecks();
   void HandleUnhandledPromiseRejections();

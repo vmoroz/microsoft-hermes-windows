@@ -217,6 +217,169 @@ void NodeLiteException::ApplyScriptErrorData(napi_env env, napi_value error) {
 }
 
 //=============================================================================
+// NodeLiteErrorHandler implementation
+//=============================================================================
+
+NodeLiteErrorHandler::NodeLiteErrorHandler(NodeLiteRuntime* runtime,
+                                           std::exception_ptr const& exception,
+                                           std::string script,
+                                           std::string file,
+                                           int32_t line,
+                                           int32_t script_line_offset) noexcept
+    : runtime_(runtime),
+      exception_(exception),
+      script_(std::move(script)),
+      file_(std::move(file)),
+      line_(line),
+      script_line_offset_(script_line_offset) {}
+
+NodeLiteErrorHandler::~NodeLiteErrorHandler() noexcept = default;
+
+int NodeLiteErrorHandler::HandleAtProcessExit() noexcept {
+  if (exception_) {
+    try {
+      std::rethrow_exception(exception_);
+    } catch (NodeLiteException const& ex) {
+      if (auto assertionError = ex.assertion_error_info()) {
+        auto sourceFile = assertionError->source_file;
+        auto sourceLine = assertionError->source_line - script_line_offset_;
+        auto sourceCode = std::string("<Source is unavailable>");
+        if (sourceFile == "MainScript") {
+          sourceFile = UseSrcFilePath(file_);
+          sourceCode = GetSourceCodeSliceForError(sourceLine, 2);
+          sourceLine += line_ - 1;
+        } else if (sourceFile.empty()) {
+          sourceFile = "<Unknown>";
+        }
+
+        std::string methodName = "assert." + ex.assertion_error_info()->method;
+        std::stringstream errorDetails;
+        if (methodName != "assert.fail") {
+          errorDetails << " Expected: " << ex.assertion_error_info()->expected
+                       << '\n'
+                       << "   Actual: " << ex.assertion_error_info()->actual
+                       << '\n';
+        }
+
+        std::string processedStack =
+            runtime_->ProcessStack(ex.assertion_error_info()->error_stack,
+                                   ex.assertion_error_info()->method);
+
+        return FormatExitMessage(
+            file_.c_str(),
+            sourceLine,
+            "JavaScript assertion error",
+            [&](std::ostream& os) {
+              os << "Exception: " << ex.error_info()->name << '\n'
+                 << "   Method: " << methodName << '\n'
+                 << "  Message: " << ex.error_info()->message << '\n'
+                 << errorDetails.str(/*a filler for formatting*/)
+                 << "     File: " << sourceFile << ":" << sourceLine << '\n'
+                 << sourceCode << '\n'
+                 << "Callstack: " << '\n'
+                 << processedStack /*   a filler for formatting    */
+                 << "Raw stack: " << '\n'
+                 << "  " << ex.assertion_error_info()->error_stack;
+            });
+      } else if (ex.error_info()) {
+        return FormatExitMessage(
+            file_.c_str(), line_, "JavaScript error", [&](std::ostream& os) {
+              os << "Exception: " << ex.error_info()->name << '\n'
+                 << "  Message: " << ex.error_info()->message << '\n'
+                 << "Callstack: " << ex.error_info()->stack;
+            });
+      } else {
+        return FormatExitMessage(
+            file_.c_str(), line_, "NodeLite exception", [&](std::ostream& os) {
+              os << "Exception: NodeLiteException\n"
+                 << "     Code: " << ex.error_code() << '\n'
+                 << "  Message: " << ex.what() << '\n'
+                 << "     Expr: " << ex.expr();
+            });
+      }
+    } catch (std::exception const& ex) {
+      return FormatExitMessage(
+          file_.c_str(), line_, "C++ exception", [&](std::ostream& os) {
+            os << "Exception thrown: " << ex.what();
+          });
+    } catch (...) {
+      return FormatExitMessage(file_.c_str(), line_, "Unexpected exception");
+    }
+  }
+  return 0;
+}
+
+int NodeLiteErrorHandler::FormatExitMessage(
+    const std::string& file, int line, const std::string& message) noexcept {
+  return FormatExitMessage(
+      file, line, message, [](std::ostream&) { return ""; });
+}
+
+int NodeLiteErrorHandler::FormatExitMessage(
+    const std::string& file,
+    int line,
+    const std::string& message,
+    std::function<void(std::ostream&)> getDetails) noexcept {
+  std::ostringstream detailsStream;
+  getDetails(detailsStream);
+  std::string details = detailsStream.str();
+  std::cerr << "file:" << file << "\n";
+  std::cerr << "line:" << line << "\n";
+  std::cerr << message;
+  if (!details.empty()) {
+    std::cerr << "\n" << details;
+  }
+  std::cerr << std::endl;
+  return 1;
+}
+
+std::string NodeLiteErrorHandler::GetSourceCodeSliceForError(
+    int32_t lineIndex, int32_t extra_line_count) noexcept {
+  std::string sourceCode;
+  auto sourceStream = std::istringstream(script_ + '\n');
+  std::string sourceLine;
+  int32_t currentLineIndex = 1;  // The line index is 1-based.
+
+  while (std::getline(sourceStream, sourceLine, '\n')) {
+    if (currentLineIndex > lineIndex + extra_line_count) break;
+    if (currentLineIndex >= lineIndex - extra_line_count) {
+      sourceCode += currentLineIndex == lineIndex ? "===> " : "     ";
+      sourceCode += sourceLine;
+      sourceCode += "\n";
+    }
+    ++currentLineIndex;
+  }
+
+  return sourceCode;
+}
+
+//=============================================================================
+// NodeLiteTaskRunner implementation
+//=============================================================================
+
+uint32_t NodeLiteTaskRunner::PostTask(std::function<void()> task) {
+  uint32_t task_id = next_task_id_++;
+  task_queue_.emplace_back(task_id, std::move(task));
+  return task_id;
+}
+
+void NodeLiteTaskRunner::RemoveTask(uint32_t task_id) noexcept {
+  task_queue_.remove_if(
+      [task_id](const std::pair<uint32_t, std::function<void()>>& entry) {
+        return entry.first == task_id;
+      });
+}
+
+void NodeLiteTaskRunner::DrainTaskQueue() {
+  while (!task_queue_.empty()) {
+    std::pair<uint32_t, std::function<void()>> task =
+        std::move(task_queue_.front());
+    task_queue_.pop_front();
+    task.second();
+  }
+}
+
+//=============================================================================
 // NodeLiteRuntime implementation
 //=============================================================================
 
@@ -523,8 +686,8 @@ void NodeLiteRuntime::DefineGlobalGC(napi_value global) {
 #endif
 }
 
-static napi_value NAPI_CDECL SetImmediateCallback(napi_env env,
-                                                  napi_callback_info info) {
+/*static*/ napi_value NAPI_CDECL
+NodeLiteRuntime::SetImmediateCallback(napi_env env, napi_callback_info info) {
   size_t argc{1};
   napi_value immediateCallback{};
   NODE_API_CALL(
@@ -731,26 +894,28 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
   DefineGlobalProcess(global);
 }
 
-static void SetUIntProperty(napi_env env,
-                            napi_value obj,
-                            char const* name,
-                            uint32_t value) {
+/*static*/ void NodeLiteRuntime::SetUIntProperty(napi_env env,
+                                                 napi_value obj,
+                                                 char const* name,
+                                                 uint32_t value) {
   napi_value valueObj{};
   THROW_IF_NOT_OK(napi_create_uint32(env, value, &valueObj));
   THROW_IF_NOT_OK(napi_set_named_property(env, obj, name, valueObj));
 }
 
-static void SetStrProperty(napi_env env,
-                           napi_value obj,
-                           char const* name,
-                           std::string const& value) {
+/*static*/ void NodeLiteRuntime::SetStrProperty(napi_env env,
+                                                napi_value obj,
+                                                char const* name,
+                                                std::string const& value) {
   napi_value valueObj{};
   THROW_IF_NOT_OK(
       napi_create_string_utf8(env, value.c_str(), value.size(), &valueObj));
   THROW_IF_NOT_OK(napi_set_named_property(env, obj, name, valueObj));
 }
 
-static void SetNullProperty(napi_env env, napi_value obj, char const* name) {
+/*static*/ void NodeLiteRuntime::SetNullProperty(napi_env env,
+                                                 napi_value obj,
+                                                 char const* name) {
   napi_value valueObj{};
   THROW_IF_NOT_OK(napi_get_null(env, &valueObj));
   THROW_IF_NOT_OK(napi_set_named_property(env, obj, name, valueObj));
@@ -850,169 +1015,6 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   }
 
   return processedStack;
-}
-
-//=============================================================================
-// NodeLiteTaskRunner implementation
-//=============================================================================
-
-uint32_t NodeLiteTaskRunner::PostTask(std::function<void()> task) {
-  uint32_t task_id = next_task_id_++;
-  task_queue_.emplace_back(task_id, std::move(task));
-  return task_id;
-}
-
-void NodeLiteTaskRunner::RemoveTask(uint32_t task_id) noexcept {
-  task_queue_.remove_if(
-      [task_id](const std::pair<uint32_t, std::function<void()>>& entry) {
-        return entry.first == task_id;
-      });
-}
-
-void NodeLiteTaskRunner::DrainTaskQueue() {
-  while (!task_queue_.empty()) {
-    std::pair<uint32_t, std::function<void()>> task =
-        std::move(task_queue_.front());
-    task_queue_.pop_front();
-    task.second();
-  }
-}
-
-//=============================================================================
-// NodeLiteErrorHandler implementation
-//=============================================================================
-
-NodeLiteErrorHandler::NodeLiteErrorHandler(NodeLiteRuntime* runtime,
-                                           std::exception_ptr const& exception,
-                                           std::string script,
-                                           std::string file,
-                                           int32_t line,
-                                           int32_t script_line_offset) noexcept
-    : runtime_(runtime),
-      exception_(exception),
-      script_(std::move(script)),
-      file_(std::move(file)),
-      line_(line),
-      script_line_offset_(script_line_offset) {}
-
-NodeLiteErrorHandler::~NodeLiteErrorHandler() noexcept = default;
-
-int NodeLiteErrorHandler::HandleAtProcessExit() noexcept {
-  if (exception_) {
-    try {
-      std::rethrow_exception(exception_);
-    } catch (NodeLiteException const& ex) {
-      if (auto assertionError = ex.assertion_error_info()) {
-        auto sourceFile = assertionError->source_file;
-        auto sourceLine = assertionError->source_line - script_line_offset_;
-        auto sourceCode = std::string("<Source is unavailable>");
-        if (sourceFile == "MainScript") {
-          sourceFile = UseSrcFilePath(file_);
-          sourceCode = GetSourceCodeSliceForError(sourceLine, 2);
-          sourceLine += line_ - 1;
-        } else if (sourceFile.empty()) {
-          sourceFile = "<Unknown>";
-        }
-
-        std::string methodName = "assert." + ex.assertion_error_info()->method;
-        std::stringstream errorDetails;
-        if (methodName != "assert.fail") {
-          errorDetails << " Expected: " << ex.assertion_error_info()->expected
-                       << '\n'
-                       << "   Actual: " << ex.assertion_error_info()->actual
-                       << '\n';
-        }
-
-        std::string processedStack =
-            runtime_->ProcessStack(ex.assertion_error_info()->error_stack,
-                                   ex.assertion_error_info()->method);
-
-        return FormatExitMessage(
-            file_.c_str(),
-            sourceLine,
-            "JavaScript assertion error",
-            [&](std::ostream& os) {
-              os << "Exception: " << ex.error_info()->name << '\n'
-                 << "   Method: " << methodName << '\n'
-                 << "  Message: " << ex.error_info()->message << '\n'
-                 << errorDetails.str(/*a filler for formatting*/)
-                 << "     File: " << sourceFile << ":" << sourceLine << '\n'
-                 << sourceCode << '\n'
-                 << "Callstack: " << '\n'
-                 << processedStack /*   a filler for formatting    */
-                 << "Raw stack: " << '\n'
-                 << "  " << ex.assertion_error_info()->error_stack;
-            });
-      } else if (ex.error_info()) {
-        return FormatExitMessage(
-            file_.c_str(), line_, "JavaScript error", [&](std::ostream& os) {
-              os << "Exception: " << ex.error_info()->name << '\n'
-                 << "  Message: " << ex.error_info()->message << '\n'
-                 << "Callstack: " << ex.error_info()->stack;
-            });
-      } else {
-        return FormatExitMessage(
-            file_.c_str(), line_, "NodeLite exception", [&](std::ostream& os) {
-              os << "Exception: NodeLiteException\n"
-                 << "     Code: " << ex.error_code() << '\n'
-                 << "  Message: " << ex.what() << '\n'
-                 << "     Expr: " << ex.expr();
-            });
-      }
-    } catch (std::exception const& ex) {
-      return FormatExitMessage(
-          file_.c_str(), line_, "C++ exception", [&](std::ostream& os) {
-            os << "Exception thrown: " << ex.what();
-          });
-    } catch (...) {
-      return FormatExitMessage(file_.c_str(), line_, "Unexpected exception");
-    }
-  }
-  return 0;
-}
-
-int NodeLiteErrorHandler::FormatExitMessage(
-    const std::string& file, int line, const std::string& message) noexcept {
-  return FormatExitMessage(
-      file, line, message, [](std::ostream&) { return ""; });
-}
-
-int NodeLiteErrorHandler::FormatExitMessage(
-    const std::string& file,
-    int line,
-    const std::string& message,
-    std::function<void(std::ostream&)> getDetails) noexcept {
-  std::ostringstream detailsStream;
-  getDetails(detailsStream);
-  std::string details = detailsStream.str();
-  std::cerr << "file:" << file << "\n";
-  std::cerr << "line:" << line << "\n";
-  std::cerr << message;
-  if (!details.empty()) {
-    std::cerr << "\n" << details;
-  }
-  std::cerr << std::endl;
-  return 1;
-}
-
-std::string NodeLiteErrorHandler::GetSourceCodeSliceForError(
-    int32_t lineIndex, int32_t extra_line_count) noexcept {
-  std::string sourceCode;
-  auto sourceStream = std::istringstream(script_ + '\n');
-  std::string sourceLine;
-  int32_t currentLineIndex = 1;  // The line index is 1-based.
-
-  while (std::getline(sourceStream, sourceLine, '\n')) {
-    if (currentLineIndex > lineIndex + extra_line_count) break;
-    if (currentLineIndex >= lineIndex - extra_line_count) {
-      sourceCode += currentLineIndex == lineIndex ? "===> " : "     ";
-      sourceCode += sourceLine;
-      sourceCode += "\n";
-    }
-    ++currentLineIndex;
-  }
-
-  return sourceCode;
 }
 
 }  // namespace node_lite
