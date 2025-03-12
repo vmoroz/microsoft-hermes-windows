@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-// These tests are for Node-API and should not be JS engine specific
+// A simple Node.js-like runtime that runs Node-API test scripts.
 
 #pragma once
 #ifndef NODE_API_TEST_NODE_LITE_H
@@ -30,11 +30,11 @@ extern "C" {
   do {                                                                         \
     if (!(condition)) {                                                        \
       *((int*)nullptr) = 1;                                                    \
-      std::terminate();                                                        \
+      std::abort();                                                            \
     }                                                                          \
   } while (false)
 
-// Use this macro to handle NAPI function results in test code.
+// Use this macro to handle Node-API function results in test code.
 // It throws NodeLiteException that we then convert to GTest failure.
 #define THROW_IF_NOT_OK(expr)                                                  \
   do {                                                                         \
@@ -54,41 +54,33 @@ constexpr napi_property_attributes operator|(napi_property_attributes left,
 namespace node_lite {
 
 // Forward declarations
+class NodeApiHandleScope;
 class NodeLiteRuntime;
 class NodeLiteErrorHandler;
 class NodeLiteException;
 
-struct IEnvHolder {
-  virtual ~IEnvHolder() {}
-  virtual napi_env getEnv() = 0;
-};
-
 // Properties from JavaScript Error object.
-struct NodeApiErrorInfo {
-  std::string Name;
-  std::string Message;
-  std::string Stack;
+struct NodeLiteErrorInfo {
+  std::string name;
+  std::string message;
+  std::string stack;
 };
 
 // Properties from JavaScript AssertionError object.
-struct NodeApiAssertionErrorInfo {
-  std::string Method;
-  std::string Expected;
-  std::string Actual;
-  std::string SourceFile;
-  int32_t SourceLine;
-  std::string ErrorStack;
+struct NodeLiteAssertionErrorInfo {
+  std::string method;
+  std::string expected;
+  std::string actual;
+  std::string source_file;
+  int32_t source_line;
+  std::string error_stack;
 };
 
-struct TestScriptInfo {
+struct NodeLiteScriptInfo {
   std::string script;
-  std::filesystem::path filePath;
+  std::filesystem::path file_path;
   int32_t line;
 };
-
-inline int32_t GetEndOfLineCount(char const* script) noexcept {
-  return std::count(script, script + strlen(script), '\n');
-}
 
 class NodeLiteTaskRunner {
  public:
@@ -118,11 +110,11 @@ class NodeLiteException : std::exception {
 
   std::string const& expr() const noexcept { return expr_; }
 
-  NodeApiErrorInfo const* error_info() const noexcept {
+  NodeLiteErrorInfo const* error_info() const noexcept {
     return error_info_.get();
   }
 
-  NodeApiAssertionErrorInfo const* assertion_error_info() const noexcept {
+  NodeLiteAssertionErrorInfo const* assertion_error_info() const noexcept {
     return assertion_error_info_.get();
   }
 
@@ -142,13 +134,14 @@ class NodeLiteException : std::exception {
   napi_status error_code_{};
   std::string expr_;
   std::string what_;
-  std::shared_ptr<NodeApiErrorInfo> error_info_;
-  std::shared_ptr<NodeApiAssertionErrorInfo> assertion_error_info_;
+  std::shared_ptr<NodeLiteErrorInfo> error_info_;
+  std::shared_ptr<NodeLiteAssertionErrorInfo> assertion_error_info_;
 };
 
 // Define NodeApiRef "smart pointer" for napi_ref as unique_ptr with a custom
 // deleter.
-struct NodeApiRefDeleter {
+class NodeApiRefDeleter {
+ public:
   NodeApiRefDeleter(napi_env env) noexcept : env(env) {}
 
   void operator()(napi_ref ref) {
@@ -160,54 +153,24 @@ struct NodeApiRefDeleter {
 };
 
 using NodeApiRef = std::unique_ptr<napi_ref__, NodeApiRefDeleter>;
-extern NodeApiRef MakeNodeApiRef(napi_env env, napi_value value);
 
-struct NodeApiHandleScope {
-  NodeApiHandleScope(napi_env env) noexcept : m_env{env} {
-    CRASH_IF_FALSE(napi_open_handle_scope(env, &m_scope) == napi_ok);
+class NodeApiHandleScope {
+ public:
+  NodeApiHandleScope(napi_env env) noexcept : env_(env) {
+    CRASH_IF_FALSE(napi_open_handle_scope(env, &handle_scope_) == napi_ok);
   }
 
   ~NodeApiHandleScope() noexcept {
-    CRASH_IF_FALSE(napi_close_handle_scope(m_env, m_scope) == napi_ok);
+    CRASH_IF_FALSE(napi_close_handle_scope(env_, handle_scope_) == napi_ok);
   }
+
+  NodeApiHandleScope(const NodeApiHandleScope&) = delete;
+  NodeApiHandleScope& operator=(const NodeApiHandleScope&) = delete;
 
  private:
-  napi_env m_env{nullptr};
-  napi_handle_scope m_scope{nullptr};
+  napi_env env_{};
+  napi_handle_scope handle_scope_{};
 };
-#if 0
-struct NodeApiEnvScope {
-  NodeApiEnvScope(napi_env env) noexcept : m_env{env} {
-    CRASH_IF_FALSE(jsr_open_napi_env_scope(env, &m_scope) == napi_ok);
-  }
-
-  ~NodeApiEnvScope() noexcept {
-    if (m_env != nullptr) {
-      CRASH_IF_FALSE(jsr_close_napi_env_scope(m_env, m_scope) == napi_ok);
-    }
-  }
-
-  NodeApiEnvScope(NodeApiEnvScope&& other)
-      : m_env(std::exchange(other.m_env, nullptr)),
-        m_scope(std::exchange(other.m_scope, nullptr)) {}
-
-  NodeApiEnvScope& operator=(NodeApiEnvScope&& other) {
-    if (this != &other) {
-      NodeApiEnvScope temp(std::move(*this));
-      m_env = std::exchange(other.m_env, nullptr);
-      m_scope = std::exchange(other.m_scope, nullptr);
-    }
-    return *this;
-  }
-
-  NodeApiEnvScope(const NodeApiEnvScope&) = delete;
-  NodeApiEnvScope& operator=(const NodeApiEnvScope&) = delete;
-
- private:
-  napi_env m_env{};
-  jsr_napi_env_scope m_scope{};
-};
-#endif
 
 // Handles the exceptions after running tests.
 class NodeLiteErrorHandler {
@@ -252,35 +215,37 @@ class NodeLiteErrorHandler {
 // The runtime to run test scripts.
 class NodeLiteRuntime {
  public:
+  static int32_t Run(int32_t argc, char* argv[]);
+
   NodeLiteRuntime(napi_env env,
-                  std::shared_ptr<NodeLiteTaskRunner> taskRunner,
-                  std::string const& scriptDir,
+                  std::shared_ptr<NodeLiteTaskRunner> task_runner,
+                  std::string const& script_dir,
                   std::vector<std::string> argv);
 
-  static std::map<std::string, TestScriptInfo, std::less<>> GetCommonScripts(
-      std::string const& scriptDir) noexcept;
+  static std::map<std::string, NodeLiteScriptInfo, std::less<>>
+  GetCommonScripts(std::string const& script_dir) noexcept;
 
   napi_value RunScript(std::string const& code,
-                       char const* sourceUrl = nullptr);
-  napi_value GetModule(std::string const& moduleName);
-  TestScriptInfo* GetTestScriptInfo(std::string const& moduleName);
+                       char const* source_url = nullptr);
+  napi_value GetModule(std::string const& module_name);
+  NodeLiteScriptInfo* GetTestScriptInfo(std::string const& module_name);
 
   NodeLiteErrorHandler RunTestScript(char const* script,
                                      char const* file,
                                      int32_t line);
-  NodeLiteErrorHandler RunTestScript(TestScriptInfo const& scripInfo);
-  NodeLiteErrorHandler RunTestScript(std::string const& scriptFile);
+  NodeLiteErrorHandler RunTestScript(NodeLiteScriptInfo const& scrip_info);
+  NodeLiteErrorHandler RunTestScript(std::string const& script_file);
 
-  static std::string ReadScriptText(std::string const& testJSPath,
-                                    std::string const& scriptFile);
-  static std::string ReadFileText(std::string const& fileName);
+  static std::string ReadScriptText(std::string const& script_dir,
+                                    std::string const& script_file);
+  static std::string ReadFileText(std::string const& filename);
 
   void AddNativeModule(
-      char const* moduleName,
-      std::function<napi_value(napi_env, napi_value)> initModule);
+      char const* module_name,
+      std::function<napi_value(napi_env, napi_value)> init_module);
 
   void DefineObjectMethod(napi_value obj,
-                          char const* funcName,
+                          char const* func_name,
                           napi_callback cb);
   void DefineGlobalRequire(napi_value global);
   void DefineGlobalGC(napi_value global);
@@ -295,11 +260,11 @@ class NodeLiteRuntime {
   void HandleUnhandledPromiseRejections();
 
   std::string ProcessStack(std::string const& stack,
-                           std::string const& assertMethod);
+                           std::string const& assert_method);
 
   // The callback function to be executed after the script completion.
   uint32_t AddTask(napi_value callback) noexcept;
-  void RemoveTask(uint32_t taskId) noexcept;
+  void RemoveTask(uint32_t task_id) noexcept;
   void DrainTaskQueue();
 
   napi_value SpawnSync(std::string command, std::vector<std::string> args);
@@ -307,11 +272,10 @@ class NodeLiteRuntime {
  private:
   napi_env env;
   std::string script_dir_;
-  // NodeApiEnvScope m_envScope;
   NodeApiHandleScope handle_scope_;
   std::shared_ptr<NodeLiteTaskRunner> task_runner_;
   std::map<std::string, NodeApiRef, std::less<>> initialized_modules_;
-  std::map<std::string, TestScriptInfo, std::less<>> script_modules_;
+  std::map<std::string, NodeLiteScriptInfo, std::less<>> script_modules_;
   std::map<std::string, std::function<napi_value(napi_env, napi_value)>>
       native_modules_;
   std::vector<std::string> argv_;

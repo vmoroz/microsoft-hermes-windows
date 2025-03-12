@@ -18,22 +18,22 @@ namespace fs = std::filesystem;
 
 namespace node_lite {
 
-// Use to override printf in tests to send output to a std::string instead of
-// stdout.
-int test_printf(std::string& output, const char* format, ...) {
+namespace {
+
+std::string FormatString(const char* format, ...) {
   va_list args1;
   va_start(args1, format);
   va_list args2;
   va_copy(args2, args1);
-  auto buf = std::string(std::vsnprintf(nullptr, 0, format, args1), '\0');
+  std::string result =
+      std::string(std::vsnprintf(nullptr, 0, format, args1), '\0');
   va_end(args1);
-  std::vsnprintf(&buf[0], buf.size() + 1, format, args2);
+  std::vsnprintf(&result[0], result.size() + 1, format, args2);
   va_end(args2);
-  output += buf;
-  return buf.size();
+  return result;
 }
 
-std::string replaceAll(std::string&& str,
+std::string ReplaceAll(std::string str,
                        std::string_view from,
                        std::string_view to) {
   std::string result = std::move(str);
@@ -47,28 +47,33 @@ std::string replaceAll(std::string&& str,
   return result;
 }
 
-static char const* ModulePrefix = R"(
+int32_t GetEndOfLineCount(char const* script) noexcept {
+  return std::count(script, script + strlen(script), '\n');
+}
+
+char const* module_prefix = R"(
   'use strict';
   (function(module) {
     let exports = module.exports;
     const __filename = module.filename;
     const __dirname = module.path;)"
-                                  "\n";
-static char const* ModuleSuffix = R"(
+                            "\n";
+
+char const* module_suffix = R"(
     return module.exports;
   })({exports: {}, filename: "%s", path: "%s"});)";
-static int32_t const ModulePrefixLineCount = GetEndOfLineCount(ModulePrefix);
+
+int32_t const module_prefix_line_count = GetEndOfLineCount(module_prefix);
 
 static std::string GetJSModuleText(std::string const& jsModuleCode,
                                    fs::path const& jsModulePath) {
   std::string result;
-  result += ModulePrefix;
+  result += module_prefix;
   result += jsModuleCode;
-  test_printf(
-      result,
-      ModuleSuffix,
-      replaceAll(jsModulePath.string(), "\\", "\\\\").c_str(),
-      replaceAll(jsModulePath.parent_path().string(), "\\", "\\\\").c_str());
+  result += FormatString(
+      module_suffix,
+      ReplaceAll(jsModulePath.string(), "\\", "\\\\").c_str(),
+      ReplaceAll(jsModulePath.parent_path().string(), "\\", "\\\\").c_str());
   return result;
 }
 
@@ -107,6 +112,8 @@ NodeApiRef MakeNodeApiRef(napi_env env, napi_value value) {
   return NodeApiRef(ref, NodeApiRefDeleter(env));
 }
 
+}  // namespace
+
 //=============================================================================
 // NodeLiteException implementation
 //=============================================================================
@@ -130,31 +137,31 @@ NodeLiteException::NodeLiteException(napi_env env, napi_value error) noexcept {
 }
 
 void NodeLiteException::ApplyScriptErrorData(napi_env env, napi_value error) {
-  error_info_ = std::make_shared<NodeApiErrorInfo>();
+  error_info_ = std::make_shared<NodeLiteErrorInfo>();
   napi_valuetype errorType{};
   napi_typeof(env, error, &errorType);
   if (errorType == napi_object) {
-    error_info_->Name = GetPropertyString(env, error, "name");
-    error_info_->Message = GetPropertyString(env, error, "message");
-    error_info_->Stack = GetPropertyString(env, error, "stack");
-    if (error_info_->Name == "AssertionError") {
-      assertion_error_info_ = std::make_shared<NodeApiAssertionErrorInfo>();
-      assertion_error_info_->Method = GetPropertyString(env, error, "method");
-      assertion_error_info_->Expected =
+    error_info_->name = GetPropertyString(env, error, "name");
+    error_info_->message = GetPropertyString(env, error, "message");
+    error_info_->stack = GetPropertyString(env, error, "stack");
+    if (error_info_->name == "AssertionError") {
+      assertion_error_info_ = std::make_shared<NodeLiteAssertionErrorInfo>();
+      assertion_error_info_->method = GetPropertyString(env, error, "method");
+      assertion_error_info_->expected =
           GetPropertyString(env, error, "expected");
-      assertion_error_info_->Actual = GetPropertyString(env, error, "actual");
-      assertion_error_info_->SourceFile =
+      assertion_error_info_->actual = GetPropertyString(env, error, "actual");
+      assertion_error_info_->source_file =
           GetPropertyString(env, error, "sourceFile");
-      assertion_error_info_->SourceLine =
+      assertion_error_info_->source_line =
           GetPropertyInt32(env, error, "sourceLine");
-      assertion_error_info_->ErrorStack =
+      assertion_error_info_->error_stack =
           GetPropertyString(env, error, "errorStack");
-      if (assertion_error_info_->ErrorStack.empty()) {
-        assertion_error_info_->ErrorStack = error_info_->Stack;
+      if (assertion_error_info_->error_stack.empty()) {
+        assertion_error_info_->error_stack = error_info_->stack;
       }
     }
   } else {
-    error_info_->Message = CoerceToString(env, error);
+    error_info_->message = CoerceToString(env, error);
   }
 }
 
@@ -210,14 +217,10 @@ void NodeLiteException::ApplyScriptErrorData(napi_env env, napi_value error) {
 }
 
 //=============================================================================
-// NodeApiTest implementation
+// NodeLiteRuntime implementation
 //=============================================================================
-#if 0
-std::unique_ptr<IEnvHolder> CreateEnvHolder(
-    std::shared_ptr<NodeApiTaskRunner> taskRunner);
-#endif
 
-int EvaluateJSFile(int argc, char** argv) {
+int32_t NodeLiteRuntime::Run(int32_t argc, char** argv) {
   // Convert arguments to vector of strings and skip all options before the JS
   // file name.
   std::vector<std::string> args;
@@ -235,35 +238,30 @@ int EvaluateJSFile(int argc, char** argv) {
     skipOptions = false;
     args.push_back(argv[i]);
   }
-#if 0
+
   try {
-    std::shared_ptr<NodeApiTaskRunner> taskRunner =
-        std::make_shared<NodeApiTaskRunner>();
-    std::unique_ptr<IEnvHolder> envHolder = CreateEnvHolder(taskRunner);
-    napi_env env = envHolder->getEnv();
+    std::shared_ptr<NodeLiteTaskRunner> taskRunner =
+        std::make_shared<NodeLiteTaskRunner>();
+    // TODO: implement
+    // std::unique_ptr<IEnvHolder> envHolder = CreateEnvHolder(taskRunner);
+    // napi_env env = envHolder->getEnv();
+    napi_env env = nullptr;  // Placeholder for the actual environment holder.
 
     std::string jsFilePath = args[1];
     fs::path jsPath = fs::path(jsFilePath);
     fs::path jsRootDir = jsPath.parent_path().parent_path();
     {
-      NodeLiteRuntime context(
+      NodeLiteRuntime runtime(
           env, taskRunner, jsRootDir.string(), std::move(args));
-      return context.RunTestScript(jsFilePath).HandleAtProcessExit();
+      return runtime.RunTestScript(jsFilePath).HandleAtProcessExit();
     }
 
-    // return NodeLiteErrorHandler(nullptr, std::exception_ptr(), "", "", 0,
-    // 0);
+    return 0;
   } catch (...) {
-    // return NodeLiteErrorHandler(nullptr, std::current_exception(), "", "",
-    // 0, 0);
+    return NodeLiteErrorHandler(nullptr, std::current_exception(), "", "", 0, 0)
+        .HandleAtProcessExit();
   }
-#endif
-  return 0;
 }
-
-//=============================================================================
-// NodeLiteRuntime implementation
-//=============================================================================
 
 NodeLiteRuntime::NodeLiteRuntime(
     napi_env env,
@@ -272,7 +270,6 @@ NodeLiteRuntime::NodeLiteRuntime(
     std::vector<std::string> argv)
     : env(env),
       script_dir_(script_dir),
-      // m_envScope(env),
       handle_scope_(env),
       task_runner_(std::move(task_runner)),
       script_modules_(GetCommonScripts(script_dir)),
@@ -281,20 +278,20 @@ NodeLiteRuntime::NodeLiteRuntime(
   DefineChildProcessModule();
 }
 
-std::map<std::string, TestScriptInfo, std::less<>>
+std::map<std::string, NodeLiteScriptInfo, std::less<>>
 NodeLiteRuntime::GetCommonScripts(std::string const& scriptDir) noexcept {
-  std::map<std::string, TestScriptInfo, std::less<>> moduleScripts;
-  moduleScripts.try_emplace(
+  std::map<std::string, NodeLiteScriptInfo, std::less<>> module_scripts;
+  module_scripts.try_emplace(
       "assert",
-      TestScriptInfo{ReadScriptText(scriptDir, "common/assert.js"),
-                     "common/assert.js",
-                     1});
-  moduleScripts.try_emplace(
+      NodeLiteScriptInfo{ReadScriptText(scriptDir, "common/assert.js"),
+                         "common/assert.js",
+                         1});
+  module_scripts.try_emplace(
       "../../common",
-      TestScriptInfo{ReadScriptText(scriptDir, "common/common.js"),
-                     "common/common.js",
-                     1});
-  return moduleScripts;
+      NodeLiteScriptInfo{ReadScriptText(scriptDir, "common/common.js"),
+                         "common/common.js",
+                         1});
+  return module_scripts;
 }
 
 napi_value NodeLiteRuntime::RunScript(std::string const& code,
@@ -341,7 +338,7 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
     return registerModule(env,
                           moduleName,
                           RunScript(GetJSModuleText(scriptIt->second.script,
-                                                    scriptIt->second.filePath),
+                                                    scriptIt->second.file_path),
                                     moduleName.c_str()));
   }
 
@@ -419,7 +416,7 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
   return result;
 }
 
-TestScriptInfo* NodeLiteRuntime::GetTestScriptInfo(
+NodeLiteScriptInfo* NodeLiteRuntime::GetTestScriptInfo(
     std::string const& moduleName) {
   auto it = script_modules_.find(moduleName);
   return it != script_modules_.end() ? &it->second : nullptr;
@@ -437,7 +434,7 @@ NodeLiteErrorHandler NodeLiteRuntime::RunTestScript(char const* script,
   try {
     std::string scriptText = GetJSModuleText(script, file);
     script_modules_["TestScript"] =
-        TestScriptInfo{scriptText.c_str(), file, line};
+        NodeLiteScriptInfo{scriptText.c_str(), file, line};
 
     NodeApiHandleScope scope{env};
     {
@@ -454,7 +451,7 @@ NodeLiteErrorHandler NodeLiteRuntime::RunTestScript(char const* script,
                                 script,
                                 file,
                                 line,
-                                ModulePrefixLineCount);
+                                module_prefix_line_count);
   }
 }
 
@@ -472,9 +469,9 @@ void NodeLiteRuntime::HandleUnhandledPromiseRejections() {
 }
 
 NodeLiteErrorHandler NodeLiteRuntime::RunTestScript(
-    TestScriptInfo const& scriptInfo) {
+    NodeLiteScriptInfo const& scriptInfo) {
   return RunTestScript(scriptInfo.script.c_str(),
-                       scriptInfo.filePath.string().c_str(),
+                       scriptInfo.file_path.string().c_str(),
                        scriptInfo.line);
 }
 
@@ -837,10 +834,10 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
                 GetTestScriptInfo(locationMatch[1].str())) {
           int32_t cppLine = scriptInfo->line +
                             std::stoi(locationMatch[2].str()) -
-                            ModulePrefixLineCount - 1;
+                            module_prefix_line_count - 1;
           processedFrame = locationMatch.prefix().str() +
-                           UseSrcFilePath(scriptInfo->filePath.string()) + ':' +
-                           std::to_string(cppLine) +
+                           UseSrcFilePath(scriptInfo->file_path.string()) +
+                           ':' + std::to_string(cppLine) +
                            locationMatch.suffix().str();
         }
       }
@@ -910,8 +907,8 @@ int NodeLiteErrorHandler::HandleAtProcessExit() noexcept {
       std::rethrow_exception(exception_);
     } catch (NodeLiteException const& ex) {
       if (auto assertionError = ex.assertion_error_info()) {
-        auto sourceFile = assertionError->SourceFile;
-        auto sourceLine = assertionError->SourceLine - script_line_offset_;
+        auto sourceFile = assertionError->source_file;
+        auto sourceLine = assertionError->source_line - script_line_offset_;
         auto sourceCode = std::string("<Source is unavailable>");
         if (sourceFile == "TestScript") {
           sourceFile = UseSrcFilePath(file_);
@@ -921,41 +918,41 @@ int NodeLiteErrorHandler::HandleAtProcessExit() noexcept {
           sourceFile = "<Unknown>";
         }
 
-        std::string methodName = "assert." + ex.assertion_error_info()->Method;
+        std::string methodName = "assert." + ex.assertion_error_info()->method;
         std::stringstream errorDetails;
         if (methodName != "assert.fail") {
-          errorDetails << " Expected: " << ex.assertion_error_info()->Expected
+          errorDetails << " Expected: " << ex.assertion_error_info()->expected
                        << '\n'
-                       << "   Actual: " << ex.assertion_error_info()->Actual
+                       << "   Actual: " << ex.assertion_error_info()->actual
                        << '\n';
         }
 
         std::string processedStack =
-            runtime_->ProcessStack(ex.assertion_error_info()->ErrorStack,
-                                   ex.assertion_error_info()->Method);
+            runtime_->ProcessStack(ex.assertion_error_info()->error_stack,
+                                   ex.assertion_error_info()->method);
 
         return FormatExitMessage(
             file_.c_str(),
             sourceLine,
             "JavaScript assertion error",
             [&](std::ostream& os) {
-              os << "Exception: " << ex.error_info()->Name << '\n'
+              os << "Exception: " << ex.error_info()->name << '\n'
                  << "   Method: " << methodName << '\n'
-                 << "  Message: " << ex.error_info()->Message << '\n'
+                 << "  Message: " << ex.error_info()->message << '\n'
                  << errorDetails.str(/*a filler for formatting*/)
                  << "     File: " << sourceFile << ":" << sourceLine << '\n'
                  << sourceCode << '\n'
                  << "Callstack: " << '\n'
                  << processedStack /*   a filler for formatting    */
                  << "Raw stack: " << '\n'
-                 << "  " << ex.assertion_error_info()->ErrorStack;
+                 << "  " << ex.assertion_error_info()->error_stack;
             });
       } else if (ex.error_info()) {
         return FormatExitMessage(
             file_.c_str(), line_, "JavaScript error", [&](std::ostream& os) {
-              os << "Exception: " << ex.error_info()->Name << '\n'
-                 << "  Message: " << ex.error_info()->Message << '\n'
-                 << "Callstack: " << ex.error_info()->Stack;
+              os << "Exception: " << ex.error_info()->name << '\n'
+                 << "  Message: " << ex.error_info()->message << '\n'
+                 << "Callstack: " << ex.error_info()->stack;
             });
       } else {
         return FormatExitMessage(file_.c_str(),
@@ -1028,6 +1025,6 @@ std::string NodeLiteErrorHandler::GetSourceCodeSliceForError(
 
 }  // namespace node_lite
 
-int main(int argc, char** argv) {
-  return node_lite::EvaluateJSFile(argc, argv);
+int32_t main(int32_t argc, char* argv[]) {
+  return node_lite::NodeLiteRuntime::Run(argc, argv);
 }
