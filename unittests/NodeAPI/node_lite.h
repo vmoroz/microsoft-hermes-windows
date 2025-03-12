@@ -15,7 +15,6 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <thread>
 #include <vector>
 
 #define NAPI_EXPERIMENTAL
@@ -34,8 +33,8 @@ extern "C" {
     }                                                                          \
   } while (false)
 
-// Use this macro to handle Node-API function results in test code.
-// It throws NodeLiteException that we then convert to GTest failure.
+// Use this macro to handle Node-API function results.
+// It throws NodeLiteException.
 #define THROW_IF_NOT_OK(expr)                                                  \
   do {                                                                         \
     napi_status temp_status__ = (expr);                                        \
@@ -44,7 +43,7 @@ extern "C" {
     }                                                                          \
   } while (false)
 
-// Define operator '|' to allow "or-ing" napi_property_attributes in tests.
+// Define operator '|' to allow "or-ing" napi_property_attributes.
 constexpr napi_property_attributes operator|(napi_property_attributes left,
                                              napi_property_attributes right) {
   return napi_property_attributes(static_cast<int>(left) |
@@ -172,7 +171,7 @@ class NodeApiHandleScope {
   napi_handle_scope handle_scope_{};
 };
 
-// Handles the exceptions after running tests.
+// Handles the exceptions after running scripts.
 class NodeLiteErrorHandler {
  public:
   NodeLiteErrorHandler(NodeLiteRuntime* runtime,
@@ -228,13 +227,13 @@ class NodeLiteRuntime {
   napi_value RunScript(std::string const& code,
                        char const* source_url = nullptr);
   napi_value GetModule(std::string const& module_name);
-  NodeLiteScriptInfo* GetTestScriptInfo(std::string const& module_name);
+  NodeLiteScriptInfo* GetScriptInfo(std::string const& module_name);
 
-  NodeLiteErrorHandler RunTestScript(char const* script,
+  NodeLiteErrorHandler RunScript(char const* script,
                                      char const* file,
                                      int32_t line);
-  NodeLiteErrorHandler RunTestScript(NodeLiteScriptInfo const& scrip_info);
-  NodeLiteErrorHandler RunTestScript(std::string const& script_file);
+  NodeLiteErrorHandler RunScriptFile(NodeLiteScriptInfo const& script_info);
+  NodeLiteErrorHandler RunScriptFile(std::string const& script_file);
 
   static std::string ReadScriptText(std::string const& script_dir,
                                     std::string const& script_file);
@@ -243,6 +242,12 @@ class NodeLiteRuntime {
   void AddNativeModule(
       char const* module_name,
       std::function<napi_value(napi_env, napi_value)> init_module);
+
+  static std::string NodeLiteRuntime::ToStdString(napi_env env,
+                                                  napi_value value);
+  static std::vector<std::string> ToStdStringArray(napi_env env,
+                                                   napi_value value);
+  static NodeLiteRuntime* GetRuntime(napi_env env);
 
   void DefineObjectMethod(napi_value obj,
                           char const* func_name,

@@ -65,15 +65,15 @@ char const* module_suffix = R"(
 
 int32_t const module_prefix_line_count = GetEndOfLineCount(module_prefix);
 
-static std::string GetJSModuleText(std::string const& jsModuleCode,
-                                   fs::path const& jsModulePath) {
+static std::string GetJSModuleText(std::string const& module_code,
+                                   fs::path const& module_path) {
   std::string result;
   result += module_prefix;
-  result += jsModuleCode;
+  result += module_code;
   result += FormatString(
       module_suffix,
-      ReplaceAll(jsModulePath.string(), "\\", "\\\\").c_str(),
-      ReplaceAll(jsModulePath.parent_path().string(), "\\", "\\\\").c_str());
+      ReplaceAll(module_path.string(), "\\", "\\\\").c_str(),
+      ReplaceAll(module_path.parent_path().string(), "\\", "\\\\").c_str());
   return result;
 }
 
@@ -92,8 +92,8 @@ static napi_value JSRequire(napi_env env, napi_callback_info info) {
                 napi_get_value_string_utf8(
                     env, arg0, moduleName, sizeof(moduleName), &copied));
 
-  NodeLiteRuntime* testContext = static_cast<NodeLiteRuntime*>(data);
-  return testContext->GetModule(moduleName);
+  NodeLiteRuntime* runtime = static_cast<NodeLiteRuntime*>(data);
+  return runtime->GetModule(moduleName);
 }
 
 static std::string UseSrcFilePath(std::string const& file) {
@@ -220,7 +220,7 @@ void NodeLiteException::ApplyScriptErrorData(napi_env env, napi_value error) {
 // NodeLiteRuntime implementation
 //=============================================================================
 
-int32_t NodeLiteRuntime::Run(int32_t argc, char** argv) {
+int32_t NodeLiteRuntime::Run(int32_t argc, char* argv[]) {
   // Convert arguments to vector of strings and skip all options before the JS
   // file name.
   std::vector<std::string> args;
@@ -247,13 +247,13 @@ int32_t NodeLiteRuntime::Run(int32_t argc, char** argv) {
     // napi_env env = envHolder->getEnv();
     napi_env env = nullptr;  // Placeholder for the actual environment holder.
 
-    std::string jsFilePath = args[1];
-    fs::path jsPath = fs::path(jsFilePath);
-    fs::path jsRootDir = jsPath.parent_path().parent_path();
+    std::string js_file_path = args[1];
+    fs::path js_path = fs::path(js_file_path);
+    fs::path js_root_dir = js_path.parent_path().parent_path();
     {
       NodeLiteRuntime runtime(
-          env, taskRunner, jsRootDir.string(), std::move(args));
-      return runtime.RunTestScript(jsFilePath).HandleAtProcessExit();
+          env, taskRunner, js_root_dir.string(), std::move(args));
+      return runtime.RunScriptFile(js_file_path).HandleAtProcessExit();
     }
 
     return 0;
@@ -279,33 +279,33 @@ NodeLiteRuntime::NodeLiteRuntime(
 }
 
 std::map<std::string, NodeLiteScriptInfo, std::less<>>
-NodeLiteRuntime::GetCommonScripts(std::string const& scriptDir) noexcept {
+NodeLiteRuntime::GetCommonScripts(std::string const& script_dir) noexcept {
   std::map<std::string, NodeLiteScriptInfo, std::less<>> module_scripts;
   module_scripts.try_emplace(
       "assert",
-      NodeLiteScriptInfo{ReadScriptText(scriptDir, "common/assert.js"),
+      NodeLiteScriptInfo{ReadScriptText(script_dir, "common/assert.js"),
                          "common/assert.js",
                          1});
   module_scripts.try_emplace(
       "../../common",
-      NodeLiteScriptInfo{ReadScriptText(scriptDir, "common/common.js"),
+      NodeLiteScriptInfo{ReadScriptText(script_dir, "common/common.js"),
                          "common/common.js",
                          1});
   return module_scripts;
 }
 
 napi_value NodeLiteRuntime::RunScript(std::string const& code,
-                                      char const* sourceUrl) {
+                                      char const* source_url) {
 #if 0
-  napi_value script{}, scriptResult{};
+  napi_value script{}, script_result{};
   THROW_IF_NOT_OK(
       napi_create_string_utf8(env, code.c_str(), code.size(), &script));
   if (sourceUrl) {
-    THROW_IF_NOT_OK(jsr_run_script(env, script, sourceUrl, &scriptResult));
+    THROW_IF_NOT_OK(jsr_run_script(env, script, source_url, &script_result));
   } else {
-    THROW_IF_NOT_OK(napi_run_script(env, script, &scriptResult));
+    THROW_IF_NOT_OK(napi_run_script(env, script, &script_result));
   }
-  return scriptResult;
+  return script_result;
 #endif
   return nullptr;
 }
@@ -314,11 +314,11 @@ using ModuleRegisterFuncCallback = napi_value(NAPI_CDECL*)(napi_env env,
                                                            napi_value exports);
 using ModuleApiVersionCallback = int32_t(NAPI_CDECL*)();
 
-napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
+napi_value NodeLiteRuntime::GetModule(std::string const& module_name) {
   napi_value result{};
 
   // Check if the module has already been initialized.
-  auto moduleIt = initialized_modules_.find(moduleName);
+  auto moduleIt = initialized_modules_.find(module_name);
   if (moduleIt != initialized_modules_.end()) {
     NODE_API_CALL(
         env, napi_get_reference_value(env, moduleIt->second.get(), &result));
@@ -326,35 +326,35 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
   }
 
   auto registerModule = [this](napi_env env,
-                               std::string const& moduleName,
+                               std::string const& module_name,
                                napi_value module) {
-    initialized_modules_.try_emplace(moduleName, MakeNodeApiRef(env, module));
+    initialized_modules_.try_emplace(module_name, MakeNodeApiRef(env, module));
     return module;
   };
 
   // Check if the module is registered script module.
-  auto scriptIt = script_modules_.find(moduleName);
+  auto scriptIt = script_modules_.find(module_name);
   if (scriptIt != script_modules_.end()) {
     return registerModule(env,
-                          moduleName,
+                          module_name,
                           RunScript(GetJSModuleText(scriptIt->second.script,
                                                     scriptIt->second.file_path),
-                                    moduleName.c_str()));
+                                    module_name.c_str()));
   }
 
   // Check if the module is registered native module.
-  auto nativeModuleIt = native_modules_.find(moduleName);
+  auto nativeModuleIt = native_modules_.find(module_name);
   if (nativeModuleIt != native_modules_.end()) {
     napi_value exports{};
     NODE_API_CALL(env, napi_create_object(env, &exports));
     return registerModule(
-        env, moduleName, nativeModuleIt->second(env, exports));
+        env, module_name, nativeModuleIt->second(env, exports));
   }
 
   // Check if it is a native module.
   const char nativeModulePrefix[] = "./build/x86/";
-  if (moduleName.find(nativeModulePrefix) == 0) {
-    std::string dllName = moduleName.substr(std::size(nativeModulePrefix) - 1);
+  if (module_name.find(nativeModulePrefix) == 0) {
+    std::string dllName = module_name.substr(std::size(nativeModulePrefix) - 1);
     HMODULE dllModule = ::LoadLibraryA(dllName.c_str());
     if (dllModule != NULL) {
       ModuleRegisterFuncCallback moduleRegisterFunc =
@@ -383,30 +383,30 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
                 moduleEnv,
                 [](void* data) { (*reinterpret_cast<Task*>(data))(); },
                 &task));
-        return registerModule(moduleEnv, moduleName, exports);
+        return registerModule(moduleEnv, module_name, exports);
 #endif
-        return registerModule(moduleEnv, moduleName, nullptr);
+        return registerModule(moduleEnv, module_name, nullptr);
       }
     }
   }
 
   // Check if it is a script module.
-  if (moduleName.find("@babel") == 0) {
-    std::string scriptFile = moduleName + ".js";
+  if (module_name.find("@babel") == 0) {
+    std::string scriptFile = module_name + ".js";
     fs::path scriptPath = fs::path(script_dir_) / scriptFile;
     return registerModule(
         env,
-        moduleName,
+        module_name,
         RunScript(GetJSModuleText(ReadScriptText(script_dir_, scriptFile),
                                   scriptPath),
                   scriptFile.c_str()));
-  } else if (moduleName.find("./") == 0 &&
-             moduleName.find(".js") != std::string::npos) {
-    std::string scriptFile = "@babel/runtime/helpers" + moduleName.substr(1);
+  } else if (module_name.find("./") == 0 &&
+             module_name.find(".js") != std::string::npos) {
+    std::string scriptFile = "@babel/runtime/helpers" + module_name.substr(1);
     fs::path scriptPath = fs::path(script_dir_) / scriptFile;
     return registerModule(
         env,
-        moduleName,
+        module_name,
         RunScript(GetJSModuleText(ReadScriptText(script_dir_, scriptFile),
                                   scriptPath),
                   scriptFile.c_str()));
@@ -416,30 +416,30 @@ napi_value NodeLiteRuntime::GetModule(std::string const& moduleName) {
   return result;
 }
 
-NodeLiteScriptInfo* NodeLiteRuntime::GetTestScriptInfo(
-    std::string const& moduleName) {
-  auto it = script_modules_.find(moduleName);
+NodeLiteScriptInfo* NodeLiteRuntime::GetScriptInfo(
+    std::string const& module_name) {
+  auto it = script_modules_.find(module_name);
   return it != script_modules_.end() ? &it->second : nullptr;
 }
 
 void NodeLiteRuntime::AddNativeModule(
-    char const* moduleName,
-    std::function<napi_value(napi_env, napi_value)> initModule) {
-  native_modules_.try_emplace(moduleName, std::move(initModule));
+    char const* module_name,
+    std::function<napi_value(napi_env, napi_value)> init_module) {
+  native_modules_.try_emplace(module_name, std::move(init_module));
 }
 
-NodeLiteErrorHandler NodeLiteRuntime::RunTestScript(char const* script,
-                                                    char const* file,
-                                                    int32_t line) {
+NodeLiteErrorHandler NodeLiteRuntime::RunScript(char const* script,
+                                                char const* file,
+                                                int32_t line) {
   try {
     std::string scriptText = GetJSModuleText(script, file);
-    script_modules_["TestScript"] =
+    script_modules_["MainScript"] =
         NodeLiteScriptInfo{scriptText.c_str(), file, line};
 
     NodeApiHandleScope scope{env};
     {
       NodeApiHandleScope scope{env};
-      RunScript(scriptText.c_str(), "TestScript");
+      RunScript(scriptText.c_str(), "MainScript");
     }
     DrainTaskQueue();
     RunCallChecks();
@@ -468,41 +468,41 @@ void NodeLiteRuntime::HandleUnhandledPromiseRejections() {
 #endif
 }
 
-NodeLiteErrorHandler NodeLiteRuntime::RunTestScript(
-    NodeLiteScriptInfo const& scriptInfo) {
-  return RunTestScript(scriptInfo.script.c_str(),
-                       scriptInfo.file_path.string().c_str(),
-                       scriptInfo.line);
+NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
+    NodeLiteScriptInfo const& script_info) {
+  return RunScript(script_info.script.c_str(),
+                   script_info.file_path.string().c_str(),
+                   script_info.line);
 }
 
-NodeLiteErrorHandler NodeLiteRuntime::RunTestScript(
-    std::string const& scriptFile) {
-  return RunTestScript(ReadFileText(scriptFile).c_str(), scriptFile.c_str(), 1);
+NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
+    std::string const& script_file) {
+  return RunScript(ReadFileText(script_file).c_str(), script_file.c_str(), 1);
 }
 
-std::string NodeLiteRuntime::ReadScriptText(std::string const& testJSPath,
-                                            std::string const& scriptFile) {
-  return ReadFileText(testJSPath + "/" + scriptFile);
+std::string NodeLiteRuntime::ReadScriptText(std::string const& script_dir,
+                                            std::string const& script_file) {
+  return ReadFileText(script_dir + "/" + script_file);
 }
 
-std::string NodeLiteRuntime::ReadFileText(std::string const& fileName) {
+std::string NodeLiteRuntime::ReadFileText(std::string const& filename) {
   std::string text;
-  std::ifstream fileStream(fileName);
-  if (fileStream) {
+  std::ifstream file_stream(filename);
+  if (file_stream) {
     std::ostringstream ss;
-    ss << fileStream.rdbuf();
+    ss << file_stream.rdbuf();
     text = ss.str();
   }
   return text;
 }
 
 void NodeLiteRuntime::DefineObjectMethod(napi_value obj,
-                                         char const* funcName,
+                                         char const* func_name,
                                          napi_callback cb) {
   napi_value func{};
   THROW_IF_NOT_OK(
-      napi_create_function(env, funcName, NAPI_AUTO_LENGTH, cb, this, &func));
-  THROW_IF_NOT_OK(napi_set_named_property(env, obj, funcName, func));
+      napi_create_function(env, func_name, NAPI_AUTO_LENGTH, cb, this, &func));
+  THROW_IF_NOT_OK(napi_set_named_property(env, obj, func_name, func));
 }
 
 // global.require("module_name")
@@ -545,9 +545,9 @@ static napi_value NAPI_CDECL SetImmediateCallback(napi_env env,
   napi_value global{};
   NODE_API_CALL(env, napi_get_global(env, &global));
   napi_value selfValue{};
-  NODE_API_CALL(env,
-                napi_get_named_property(
-                    env, global, "__NodeApiTestContext__", &selfValue));
+  NODE_API_CALL(
+      env,
+      napi_get_named_property(env, global, "__NodeLiteRuntime__", &selfValue));
   NodeLiteRuntime* self;
   NODE_API_CALL(env, napi_get_value_external(env, selfValue, (void**)&self));
 
@@ -597,7 +597,7 @@ void NodeLiteRuntime::DefineGlobalClearTimeout(napi_value global) {
         napi_value selfValue{};
         NODE_API_CALL(env,
                       napi_get_named_property(
-                          env, global, "__NodeApiTestContext__", &selfValue));
+                          env, global, "__NodeLiteRuntime__", &selfValue));
         NodeLiteRuntime* self;
         NODE_API_CALL(env,
                       napi_get_value_external(env, selfValue, (void**)&self));
@@ -610,25 +610,25 @@ void NodeLiteRuntime::DefineGlobalClearTimeout(napi_value global) {
       });
 }
 
-static std::string ToStdString(napi_env env, napi_value value) {
-  napi_valuetype valueType;
-  THROW_IF_NOT_OK(napi_typeof(env, value, &valueType));
+std::string NodeLiteRuntime::ToStdString(napi_env env, napi_value value) {
+  napi_valuetype value_type;
+  THROW_IF_NOT_OK(napi_typeof(env, value, &value_type));
   NODE_API_ASSERT(env,
-                  valueType == napi_string,
+                  value_type == napi_string,
                   "Wrong type of argument. Expects a string.");
-  size_t valueSize{};
-  napi_get_value_string_utf8(env, value, nullptr, 0, &valueSize);
-  std::string str(valueSize, '\0');
-  napi_get_value_string_utf8(env, value, &str[0], valueSize + 1, nullptr);
+  size_t value_size{};
+  napi_get_value_string_utf8(env, value, nullptr, 0, &value_size);
+  std::string str(value_size, '\0');
+  napi_get_value_string_utf8(env, value, &str[0], value_size + 1, nullptr);
   return str;
 }
 
-static std::vector<std::string> ToStdStringArray(napi_env env,
-                                                 napi_value value) {
+std::vector<std::string> NodeLiteRuntime::ToStdStringArray(napi_env env,
+                                                           napi_value value) {
   std::vector<std::string> result;
-  bool isArray;
-  THROW_IF_NOT_OK(napi_is_array(env, value, &isArray));
-  if (isArray) {
+  bool is_array;
+  THROW_IF_NOT_OK(napi_is_array(env, value, &is_array));
+  if (is_array) {
     uint32_t length;
     THROW_IF_NOT_OK(napi_get_array_length(env, value, &length));
     result.reserve(length);
@@ -641,13 +641,13 @@ static std::vector<std::string> ToStdStringArray(napi_env env,
   return result;
 }
 
-static NodeLiteRuntime* GetTestContext(napi_env env) {
+NodeLiteRuntime* NodeLiteRuntime::GetRuntime(napi_env env) {
   napi_value global{};
   NODE_API_CALL(env, napi_get_global(env, &global));
   napi_value contextValue{};
   NODE_API_CALL(env,
                 napi_get_named_property(
-                    env, global, "__NodeApiTestContext__", &contextValue));
+                    env, global, "__NodeLiteRuntime__", &contextValue));
   NodeLiteRuntime* context{};
   NODE_API_CALL(env,
                 napi_get_value_external(env, contextValue, (void**)&context));
@@ -701,7 +701,7 @@ void NodeLiteRuntime::DefineChildProcessModule() {
           std::string command = ToStdString(env, argv[0]);
           std::vector<std::string> args = ToStdStringArray(env, argv[1]);
 
-          NodeLiteRuntime* self = GetTestContext(env);
+          NodeLiteRuntime* self = GetRuntime(env);
           return self->SpawnSync(command, args);
         });
     return exports;
@@ -717,11 +717,11 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
   // Add global
   THROW_IF_NOT_OK(napi_set_named_property(env, global, "global", global));
 
-  // Add __NodeApiTestContext__
+  // Add __NodeLiteRuntime__
   napi_value self{};
   THROW_IF_NOT_OK(napi_create_external(env, this, nullptr, nullptr, &self));
   THROW_IF_NOT_OK(
-      napi_set_named_property(env, global, "__NodeApiTestContext__", self));
+      napi_set_named_property(env, global, "__NodeLiteRuntime__", self));
 
   DefineGlobalRequire(global);
   DefineGlobalGC(global);
@@ -772,16 +772,13 @@ napi_value NodeLiteRuntime::SpawnSync(std::string command,
 uint32_t NodeLiteRuntime::AddTask(napi_value callback) noexcept {
   std::shared_ptr<NodeApiRef> ref =
       std::make_shared<NodeApiRef>(MakeNodeApiRef(env, callback));
-#if 0
-  return m_taskRunner->PostTask([env = this->env, ref = std::move(ref)]() {
+  return task_runner_->PostTask([env = this->env, ref = std::move(ref)]() {
     napi_value callback{}, undefined{};
     THROW_IF_NOT_OK(napi_get_undefined(env, &undefined));
     THROW_IF_NOT_OK(napi_get_reference_value(env, ref->get(), &callback));
     THROW_IF_NOT_OK(
         napi_call_function(env, undefined, callback, 0, nullptr, nullptr));
   });
-#endif
-  return 0;
 }
 
 void NodeLiteRuntime::RemoveTask(uint32_t task_id) noexcept {
@@ -803,7 +800,7 @@ void NodeLiteRuntime::RunCallChecks() {
 }
 
 std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
-                                          std::string const& assertMethod) {
+                                          std::string const& assert_method) {
   // Split up the stack string into an array of stack frames
   auto stackStream = std::istringstream(stack);
   std::string stackFrame;
@@ -823,15 +820,14 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 
   std::string processedStack;
   bool assertFuncFound = false;
-  std::string assertFuncPattern = assertMethod + " (";
+  std::string assertFuncPattern = assert_method + " (";
   const std::regex locationRE("(\\w+):(\\d+)");
   std::smatch locationMatch;
   for (auto const& frame : stackFrames) {
     if (assertFuncFound) {
       std::string processedFrame;
       if (std::regex_search(frame, locationMatch, locationRE)) {
-        if (auto const* scriptInfo =
-                GetTestScriptInfo(locationMatch[1].str())) {
+        if (auto const* scriptInfo = GetScriptInfo(locationMatch[1].str())) {
           int32_t cppLine = scriptInfo->line +
                             std::stoi(locationMatch[2].str()) -
                             module_prefix_line_count - 1;
@@ -910,7 +906,7 @@ int NodeLiteErrorHandler::HandleAtProcessExit() noexcept {
         auto sourceFile = assertionError->source_file;
         auto sourceLine = assertionError->source_line - script_line_offset_;
         auto sourceCode = std::string("<Source is unavailable>");
-        if (sourceFile == "TestScript") {
+        if (sourceFile == "MainScript") {
           sourceFile = UseSrcFilePath(file_);
           sourceCode = GetSourceCodeSliceForError(sourceLine, 2);
           sourceLine += line_ - 1;
@@ -955,16 +951,13 @@ int NodeLiteErrorHandler::HandleAtProcessExit() noexcept {
                  << "Callstack: " << ex.error_info()->stack;
             });
       } else {
-        return FormatExitMessage(file_.c_str(),
-                                 line_,
-                                 "Test native exception",
-                                 [&](std::ostream& os) {
-                                   os << "Exception: NodeLiteException\n"
-                                      << "     Code: " << ex.error_code()
-                                      << '\n'
-                                      << "  Message: " << ex.what() << '\n'
-                                      << "     Expr: " << ex.expr();
-                                 });
+        return FormatExitMessage(
+            file_.c_str(), line_, "NodeLite exception", [&](std::ostream& os) {
+              os << "Exception: NodeLiteException\n"
+                 << "     Code: " << ex.error_code() << '\n'
+                 << "  Message: " << ex.what() << '\n'
+                 << "     Expr: " << ex.expr();
+            });
       }
     } catch (std::exception const& ex) {
       return FormatExitMessage(
@@ -972,8 +965,7 @@ int NodeLiteErrorHandler::HandleAtProcessExit() noexcept {
             os << "Exception thrown: " << ex.what();
           });
     } catch (...) {
-      return FormatExitMessage(
-          file_.c_str(), line_, "Unexpected test exception");
+      return FormatExitMessage(file_.c_str(), line_, "Unexpected exception");
     }
   }
   return 0;
@@ -1004,15 +996,15 @@ int NodeLiteErrorHandler::FormatExitMessage(
 }
 
 std::string NodeLiteErrorHandler::GetSourceCodeSliceForError(
-    int32_t lineIndex, int32_t extraLineCount) noexcept {
+    int32_t lineIndex, int32_t extra_line_count) noexcept {
   std::string sourceCode;
   auto sourceStream = std::istringstream(script_ + '\n');
   std::string sourceLine;
   int32_t currentLineIndex = 1;  // The line index is 1-based.
 
   while (std::getline(sourceStream, sourceLine, '\n')) {
-    if (currentLineIndex > lineIndex + extraLineCount) break;
-    if (currentLineIndex >= lineIndex - extraLineCount) {
+    if (currentLineIndex > lineIndex + extra_line_count) break;
+    if (currentLineIndex >= lineIndex - extra_line_count) {
       sourceCode += currentLineIndex == lineIndex ? "===> " : "     ";
       sourceCode += sourceLine;
       sourceCode += "\n";
