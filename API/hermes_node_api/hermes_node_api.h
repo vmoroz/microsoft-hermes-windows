@@ -18,14 +18,14 @@ namespace hermes::node_api {
 
 // Get or create a Node API environment associated with the given Hermes
 // runtime. The Node API environment is deleted by the runtime destructor.
-vm::CallResult<napi_env> GetOrCreateRuntimeNodeApiEnvironment(
+vm::CallResult<napi_env> getOrCreateRuntimeNodeApiEnvironment(
     vm::Runtime &runtime,
     int32_t apiVersion) noexcept;
 
 // Create new Node API environment for the given Hermes runtime.
 // This environment is to be used for modules.
 // The Node API environment is deleted by the runtime destructor.
-vm::CallResult<napi_env> CreateModuleNodeApiEnvironment(
+vm::CallResult<napi_env> createModuleNodeApiEnvironment(
     vm::Runtime &runtime,
     int32_t apiVersion) noexcept;
 

@@ -3074,7 +3074,7 @@ class NodeApiEnvironmentHolder {
   std::vector<std::unique_ptr<NodeApiEnvironment>> modelEnvs_;
 };
 
-vm::CallResult<napi_env> GetOrCreateRuntimeNodeApiEnvironment(
+vm::CallResult<napi_env> getOrCreateRuntimeNodeApiEnvironment(
     vm::Runtime &runtime,
     int32_t apiVersion) noexcept {
   vm::CallResult<NodeApiEnvironmentHolder *> holderRes =
@@ -3085,7 +3085,7 @@ vm::CallResult<napi_env> GetOrCreateRuntimeNodeApiEnvironment(
   return (*holderRes)->getOrCreateEnvironment(runtime, apiVersion);
 }
 
-vm::CallResult<napi_env> CreateModuleNodeApiEnvironment(
+vm::CallResult<napi_env> createModuleNodeApiEnvironment(
     vm::Runtime &runtime,
     int32_t apiVersion) noexcept {
   vm::CallResult<NodeApiEnvironmentHolder *> holderRes =

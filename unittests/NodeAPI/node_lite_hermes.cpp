@@ -1,45 +1,107 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+#include "../../API/hermes_node_api/hermes_node_api.h"
+#include "../../include/hermes/VM/Runtime.h"
 #include "node_lite.h"
-// #include "v8_api.h"
 
 namespace node_lite {
-#if 0
-class V8RuntimeHolder : public IEnvHolder {
+
+class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
  public:
-  V8RuntimeHolder(std::shared_ptr<NodeApiTaskRunner> taskRunner) noexcept {
-    jsr_config config{};
-    jsr_create_config(&config);
-    jsr_config_enable_gc_api(config, true);
-    std::shared_ptr<NodeApiTaskRunner>* taskRunnerPtr =
-        new std::shared_ptr<NodeApiTaskRunner>(std::move(taskRunner));
-    jsr_config_set_task_runner(config,
-                               taskRunnerPtr,
-                               NodeApiTaskRunner::PostTaskCallback,
-                               NodeApiTaskRunner::DeleteCallback,
-                               nullptr);
-    jsr_create_runtime(config, &runtime_);
-    jsr_delete_config(config);
-    jsr_runtime_get_node_api_env(runtime_, &env_);
+  HermesNodeLiteAdapter()
+      : runtime_(
+            hermes::vm::Runtime::create(hermes::vm::RuntimeConfig::Builder()
+                                            .withMicrotaskQueue(true)
+                                            .build())) {}
+
+  napi_env GetEnv() override {
+    hermes::vm::CallResult<napi_env> env_result =
+        hermes::node_api::getOrCreateRuntimeNodeApiEnvironment(*runtime_,
+                                                               NAPI_VERSION);
+    if (env_result.getStatus() == hermes::vm::ExecutionStatus::EXCEPTION) {
+      throwPendingError();
+    }
+    return env_result.getValue();
   }
 
-  ~V8RuntimeHolder() { jsr_delete_runtime(runtime_); }
+  napi_env CreateModuleEnv(int32_t api_version) override {
+    hermes::vm::CallResult<napi_env> env_result =
+        hermes::node_api::createModuleNodeApiEnvironment(*runtime_,
+                                                               NAPI_VERSION);
+    if (env_result.getStatus() == hermes::vm::ExecutionStatus::EXCEPTION) {
+      throwPendingError();
+    }
+    return env_result.getValue();
+  }
 
-  V8RuntimeHolder(const V8RuntimeHolder&) = delete;
-  V8RuntimeHolder& operator=(const V8RuntimeHolder&) = delete;
+  [[noreturn]] void throwPendingError() {
+    hermes::vm::GCScope scope{*runtime_};
 
-  napi_env getEnv() override { return env_; }
+    // Retrieve the exception value and clear as we will rethrow it as a C++
+    // exception.
+    auto hv = runtime_->getThrownValue();
+    runtime_->clearThrownValue();
+    //auto jsiVal = valueFromHermesValue(hv);
+    //auto hnd = vmHandleFromValue(jsiVal);
+
+    std::string msg = "No message";
+    std::string stack = "No stack";
+    //if (auto str = vm::Handle<vm::StringPrimitive>::dyn_vmcast(hnd)) {
+    //  // If the exception is a string, use it as the message.
+    //  msg = utf8FromStringView(
+    //      vm::StringPrimitive::createStringView(runtime_, str));
+    //} else if (auto obj = vm::Handle<vm::JSObject>::dyn_vmcast(hnd)) {
+    //  // If the exception is an object try to retrieve its message and stack
+    //  // properties.
+
+    //  /// Attempt to retrieve a string property \p sym from \c obj and store it
+    //  /// in \p out. Ignore any catchable errors and non-string properties.
+    //  auto getStrProp = [this, obj](vm::SymbolID sym, std::string& out) {
+    //    auto propRes = vm::JSObject::getNamed_RJS(obj, runtime_, sym);
+    //    if (LLVM_UNLIKELY(propRes == vm::ExecutionStatus::EXCEPTION)) {
+    //      // An exception was thrown while retrieving the property, if it is
+    //      // catchable, suppress it. Otherwise, rethrow this exception without
+    //      // trying to invoke any more JavaScript.
+    //      auto propExHv = runtime_.getThrownValue();
+    //      runtime_.clearThrownValue();
+
+    //      if (!vm::isUncatchableError(propExHv)) return;
+
+    //      // An uncatchable error occurred, it is unsafe to do anything that
+    //      // might execute more JavaScript.
+    //      throw jsi::JSError(
+    //          valueFromHermesValue(propExHv),
+    //          "Uncatchable exception thrown while creating error",
+    //          "No stack");
+    //    }
+
+    //    // If the property is a string, update out. Otherwise ignore it.
+    //    auto prop = propRes->get();
+    //    if (prop.isString()) {
+    //      auto view = vm::StringPrimitive::createStringView(
+    //          runtime_, runtime_.makeHandle(prop.getString()));
+    //      out = utf8FromStringView(view);
+    //    }
+    //  };
+
+    //  getStrProp(vm::Predefined::getSymbolID(vm::Predefined::message), msg);
+    //  getStrProp(vm::Predefined::getSymbolID(vm::Predefined::stack), stack);
+    //}
+
+    // Use the constructor of jsi::JSError that cannot run additional
+    // JS, since that may then result in additional exceptions and infinite
+    // recursion.
+    throw NodeLiteException(msg, stack);
+  }
 
  private:
-  jsr_runtime runtime_{};
-  napi_env env_{};
+  std::shared_ptr<hermes::vm::Runtime> runtime_;
 };
 
-std::unique_ptr<IEnvHolder> CreateEnvHolder(
-    std::shared_ptr<NodeApiTaskRunner> taskRunner) {
-  return std::unique_ptr<IEnvHolder>(
-      new V8RuntimeHolder(std::move(taskRunner)));
-}
-#endif
 }  // namespace node_lite
+
+int32_t main(int32_t argc, char* argv[]) {
+  return node_lite::NodeLiteRuntime::Run(
+      argc, argv, std::make_unique<node_lite::HermesNodeLiteAdapter>());
+}

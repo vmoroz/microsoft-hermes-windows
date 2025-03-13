@@ -8,6 +8,7 @@
 #define NODE_API_TEST_NODE_LITE_H
 
 #include <algorithm>
+#include <cassert>
 #include <exception>
 #include <filesystem>
 #include <functional>
@@ -24,12 +25,14 @@ extern "C" {
 #include "js-native-api/common.h"
 }
 
+// TODO: Do the fatal process exit instead.
 // Crash if the condition is false.
 #define CRASH_IF_FALSE(condition)                                              \
   do {                                                                         \
     if (!(condition)) {                                                        \
-      *((int*)nullptr) = 1;                                                    \
+      assert(condition);                                                       \
       std::abort();                                                            \
+      *((int*)nullptr) = 1;                                                    \
     }                                                                          \
   } while (false)
 
@@ -81,6 +84,13 @@ struct NodeLiteScriptInfo {
   int32_t line;
 };
 
+class INodeLiteRuntimeAdapter {
+ public:
+  virtual ~INodeLiteRuntimeAdapter() = default;
+  virtual napi_env GetEnv() = 0;
+  virtual napi_env CreateModuleEnv(int32_t api_version) = 0;
+};
+
 // The exception used to propagate Node-API and script errors.
 class NodeLiteException : std::exception {
  public:
@@ -89,6 +99,9 @@ class NodeLiteException : std::exception {
   NodeLiteException(napi_env env,
                     napi_status error_code,
                     char const* expr) noexcept;
+
+  NodeLiteException(std::string const& message,
+                    std::string const& stack) noexcept;
 
   NodeLiteException(napi_env env, napi_value error) noexcept;
 
@@ -214,9 +227,11 @@ class NodeLiteTaskRunner {
 // The runtime to run test scripts.
 class NodeLiteRuntime {
  public:
-  static int32_t Run(int32_t argc, char* argv[]);
+  static int32_t Run(int32_t argc,
+                     char* argv[],
+                     std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter);
 
-  NodeLiteRuntime(napi_env env,
+  NodeLiteRuntime(std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter,
                   std::shared_ptr<NodeLiteTaskRunner> task_runner,
                   std::string const& script_dir,
                   std::vector<std::string> argv);
@@ -224,9 +239,12 @@ class NodeLiteRuntime {
   static std::map<std::string, NodeLiteScriptInfo, std::less<>>
   GetCommonScripts(std::string const& script_dir) noexcept;
 
-  napi_value RunScript(std::string const& code,
-                       char const* source_url = nullptr);
-  napi_value GetModule(std::string const& module_name);
+  NodeApiRef RunModuleScript(std::string const& code) noexcept;
+  napi_value GetModuleExports(napi_env env,
+                              std::string const& module_name) noexcept;
+  NodeApiRef InitializeNativeModule(
+      int32_t api_version,
+      std::function<napi_value(napi_env, napi_value)> init_module) noexcept;
   NodeLiteScriptInfo* GetScriptInfo(std::string const& module_name);
 
   NodeLiteErrorHandler RunScript(char const* script,
@@ -243,8 +261,7 @@ class NodeLiteRuntime {
       char const* module_name,
       std::function<napi_value(napi_env, napi_value)> init_module);
 
-  static std::string NodeLiteRuntime::ToStdString(napi_env env,
-                                                  napi_value value);
+  static std::string ToStdString(napi_env env, napi_value value);
   static std::vector<std::string> ToStdStringArray(napi_env env,
                                                    napi_value value);
   static NodeLiteRuntime* GetRuntime(napi_env env);
@@ -272,6 +289,9 @@ class NodeLiteRuntime {
                              char const* name,
                              std::string const& value);
   static void SetNullProperty(napi_env env, napi_value obj, char const* name);
+  static napi_status GetUtf8String(napi_env env,
+                                   napi_value value,
+                                   std::string& result);
 
   void RunCallChecks();
   void HandleUnhandledPromiseRejections();
@@ -287,15 +307,21 @@ class NodeLiteRuntime {
   napi_value SpawnSync(std::string command, std::vector<std::string> args);
 
  private:
-  napi_env env;
+  std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter_;
+  napi_env env_;
   std::string script_dir_;
-  NodeApiHandleScope handle_scope_;
   std::shared_ptr<NodeLiteTaskRunner> task_runner_;
   std::map<std::string, NodeApiRef, std::less<>> initialized_modules_;
   std::map<std::string, NodeLiteScriptInfo, std::less<>> script_modules_;
   std::map<std::string, std::function<napi_value(napi_env, napi_value)>>
       native_modules_;
   std::vector<std::string> argv_;
+};
+
+// The helper class to simplify some Node-API usage.
+class NodeApi {
+ public:
+  static bool IsExceptionPending(napi_env env) noexcept;
 };
 
 }  // namespace node_lite
