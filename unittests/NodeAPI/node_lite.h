@@ -260,10 +260,7 @@ class NodeLiteRuntime {
   void DefineGlobalFunctions();
   void DefineChildProcessModule();
 
-  static napi_value NAPI_CDECL SetImmediateCallback(napi_env env,
-                                                    napi_callback_info info);
   void RunCallChecks();
-  void HandleUnhandledPromiseRejections();
 
   std::string ProcessStack(std::string const& stack,
                            std::string const& assert_method);

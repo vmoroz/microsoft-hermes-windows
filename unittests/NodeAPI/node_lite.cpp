@@ -575,7 +575,6 @@ NodeLiteErrorHandler NodeLiteRuntime::RunScript(char const* script,
     }
     DrainTaskQueue();
     RunCallChecks();
-    HandleUnhandledPromiseRejections();
     return NodeLiteErrorHandler(this, std::exception_ptr(), "", file, line, 0);
   } catch (...) {
     return NodeLiteErrorHandler(this,
@@ -585,19 +584,6 @@ NodeLiteErrorHandler NodeLiteRuntime::RunScript(char const* script,
                                 line,
                                 module_prefix_line_count);
   }
-}
-
-void NodeLiteRuntime::HandleUnhandledPromiseRejections() {
-  bool hasException{false};
-#if 0
-  THROW_IF_NOT_OK(jsr_has_unhandled_promise_rejection(env, &hasException));
-  if (hasException) {
-    napi_value error{};
-    THROW_IF_NOT_OK(
-        jsr_get_and_clear_last_unhandled_promise_rejection(env, &error));
-    throw NodeLiteException(env, error);
-  }
-#endif
 }
 
 NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
