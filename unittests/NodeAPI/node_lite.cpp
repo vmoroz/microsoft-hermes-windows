@@ -119,10 +119,23 @@ std::array<napi_value, N> GetArgs(napi_env env,
 
 }  // namespace
 
+void NodeApiRefDeleter::operator()(napi_ref ref) {
+  EXIT_IF_FAILED(napi_delete_reference(env, ref));
+}
+
+NodeApiHandleScope::NodeApiHandleScope(napi_env env) noexcept : env_(env) {
+  EXIT_IF_FAILED(napi_open_handle_scope(env, &handle_scope_));
+}
+
+NodeApiHandleScope::~NodeApiHandleScope() noexcept {
+  napi_env env = env_;
+  EXIT_IF_FAILED(napi_close_handle_scope(env_, handle_scope_));
+}
+
 //=============================================================================
 // NodeLiteException implementation
 //=============================================================================
-
+#if 0
 NodeLiteException::NodeLiteException(napi_env env,
                                      napi_status error_code,
                                      const char* expr) noexcept
@@ -183,11 +196,12 @@ void NodeLiteException::ApplyScriptErrorData(napi_env env, napi_value error) {
     error_info_->message = NodeApi::CoerceToString(env, error);
   }
 }
+#endif
 
 //=============================================================================
 // NodeLiteErrorHandler implementation
 //=============================================================================
-
+#if 0
 NodeLiteErrorHandler::NodeLiteErrorHandler(NodeLiteRuntime* runtime,
                                            std::exception_ptr const& exception,
                                            std::string script,
@@ -320,6 +334,7 @@ std::string NodeLiteErrorHandler::GetSourceCodeSliceForError(
 
   return sourceCode;
 }
+#endif
 
 //=============================================================================
 // NodeLiteTaskRunner implementation
@@ -777,6 +792,12 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   }
 
   return processedStack;
+}
+
+/*static*/ void NodeLiteRuntime::Fail(napi_env env,
+                                      napi_status error_code,
+                                      char const* expr) noexcept {
+  // TODO: implement
 }
 
 //=============================================================================

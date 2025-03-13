@@ -99,7 +99,7 @@ class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
     // Use the constructor of jsi::JSError that cannot run additional
     // JS, since that may then result in additional exceptions and infinite
     // recursion.
-    throw NodeLiteException(msg, stack);
+    //throw NodeLiteException(msg, stack);
   }
 
  private:
