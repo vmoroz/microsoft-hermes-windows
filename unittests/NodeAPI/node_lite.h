@@ -87,6 +87,8 @@ class INodeLiteRuntimeAdapter {
   virtual void CollectGarbage() = 0;
 };
 
+// TODO: Remove the exception and the handler classes.
+
 // The exception used to propagate Node-API and script errors.
 class NodeLiteException : std::exception {
  public:
@@ -255,15 +257,6 @@ class NodeLiteRuntime {
 
   static NodeLiteRuntime* GetRuntime(napi_env env);
 
-  void DefineObjectMethod(napi_value obj,
-                          std::string_view utf8_func_name,
-                          napi_callback cb) noexcept;
-  void DefineGlobalRequire(napi_value global);
-  void DefineGlobalGC(napi_value global);
-  void DefineGlobalSetImmediate(napi_value global);
-  void DefineGlobalSetTimeout(napi_value global);
-  void DefineGlobalClearTimeout(napi_value global);
-  void DefineGlobalProcess(napi_value global);
   void DefineGlobalFunctions();
   void DefineChildProcessModule();
 
@@ -362,6 +355,11 @@ class NodeApi {
   static void SetPropertyNull(napi_env env,
                               napi_value obj,
                               std::string_view utf8_name);
+
+  static void SetMethod(napi_env env,
+                        napi_value obj,
+                        std::string_view utf8_name,
+                        napi_callback cb) noexcept;
 
   static std::string CoerceToString(napi_env env, napi_value value) noexcept;
 
