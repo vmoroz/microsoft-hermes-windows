@@ -241,12 +241,6 @@ class NodeLiteRuntime {
       std::function<napi_value(napi_env, napi_value)> init_module) noexcept;
   NodeLiteScriptInfo* GetScriptInfo(std::string const& module_name);
 
-  NodeLiteErrorHandler RunScript(char const* script,
-                                 char const* file,
-                                 int32_t line);
-  NodeLiteErrorHandler RunScriptFile(NodeLiteScriptInfo const& script_info);
-  NodeLiteErrorHandler RunScriptFile(std::string const& script_file);
-
   static std::string ReadScriptText(std::string const& script_dir,
                                     std::string const& script_file);
   static std::string ReadFileText(std::string const& filename);

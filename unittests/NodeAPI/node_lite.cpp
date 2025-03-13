@@ -373,27 +373,48 @@ int32_t NodeLiteRuntime::Run(
     args.push_back(argv[i]);
   }
 
-  try {
-    std::shared_ptr<NodeLiteTaskRunner> taskRunner =
-        std::make_shared<NodeLiteTaskRunner>();
-    napi_env env = nullptr;  // Placeholder for the actual environment holder.
+  std::shared_ptr<NodeLiteTaskRunner> taskRunner =
+      std::make_shared<NodeLiteTaskRunner>();
+  napi_env env = nullptr;  // Placeholder for the actual environment holder.
 
-    std::string js_file_path = args[1];
-    fs::path js_path = fs::path(js_file_path);
-    fs::path js_root_dir = js_path.parent_path().parent_path();
-    {
-      NodeLiteRuntime runtime(std::move(runtime_adapter),
-                              std::move(taskRunner),
-                              js_root_dir.string(),
-                              std::move(args));
-      return runtime.RunScriptFile(js_file_path).HandleAtProcessExit();
-    }
+  std::string js_file_path = args[1];
+  fs::path js_path = fs::path(js_file_path);
+  fs::path js_root_dir = js_path.parent_path().parent_path();
+  {
+    NodeLiteRuntime runtime(std::move(runtime_adapter),
+                            std::move(taskRunner),
+                            js_root_dir.string(),
+                            std::move(args));
+    // NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
+    //     NodeLiteScriptInfo const& script_info) {
+    //   return RunScript(script_info.script.c_str(),
+    //                    script_info.file_path.string().c_str(),
+    //                    script_info.line);
+    // }
 
-    return 0;
-  } catch (...) {
-    return NodeLiteErrorHandler(nullptr, std::current_exception(), "", "", 0, 0)
-        .HandleAtProcessExit();
+    // NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
+    //     std::string const& script_file) {
+    //   return RunScript(
+    //       ReadFileText(script_file).c_str(), script_file.c_str(), 1);
+    // }
+
+    //    std::string scriptText = GetJSModuleText(script, file);
+    // script_modules_["MainScript"] =
+    //    NodeLiteScriptInfo{scriptText.c_str(), file, line};
+
+    // NodeApiHandleScope scope{env_};
+    //{
+    //   NodeApiHandleScope scope{env_};
+    //   // TODO: Should we use different function here?
+    //   RunModuleScript(scriptText.c_str());
+    // }
+    // DrainTaskQueue();
+    // RunCallChecks();
+
+    // return runtime.RunScriptFile(js_file_path).HandleAtProcessExit();
   }
+
+  return 0;
 }
 
 NodeLiteRuntime::NodeLiteRuntime(
@@ -440,10 +461,6 @@ NodeApiRef NodeLiteRuntime::RunModuleScript(std::string const& code) noexcept {
     return result;
   }());
 }
-
-using ModuleRegisterFuncCallback = napi_value(NAPI_CDECL*)(napi_env env,
-                                                           napi_value exports);
-using ModuleApiVersionCallback = int32_t(NAPI_CDECL*)();
 
 napi_value NodeLiteRuntime::GetModuleExports(
     napi_env env, std::string const& module_name) noexcept {
@@ -493,6 +510,10 @@ napi_value NodeLiteRuntime::GetModuleExports(
   // Check if it is a native module.
   constexpr std::string_view native_module_prefix{"./build/x86/"};
   if (module_name.find(native_module_prefix) == 0) {
+    using ModuleRegisterFuncCallback =
+        napi_value(NAPI_CDECL*)(napi_env env, napi_value exports);
+    using ModuleApiVersionCallback = int32_t(NAPI_CDECL*)();
+
     std::string dll_name = module_name.substr(native_module_prefix.size());
     HMODULE dll_module = ::LoadLibraryA(dll_name.c_str());
     if (dll_module != NULL) {
@@ -559,45 +580,6 @@ void NodeLiteRuntime::AddNativeModule(
   native_modules_.try_emplace(module_name, std::move(init_module));
 }
 
-NodeLiteErrorHandler NodeLiteRuntime::RunScript(char const* script,
-                                                char const* file,
-                                                int32_t line) {
-  try {
-    std::string scriptText = GetJSModuleText(script, file);
-    script_modules_["MainScript"] =
-        NodeLiteScriptInfo{scriptText.c_str(), file, line};
-
-    NodeApiHandleScope scope{env_};
-    {
-      NodeApiHandleScope scope{env_};
-      // TODO: Should we use different function here?
-      RunModuleScript(scriptText.c_str());
-    }
-    DrainTaskQueue();
-    RunCallChecks();
-    return NodeLiteErrorHandler(this, std::exception_ptr(), "", file, line, 0);
-  } catch (...) {
-    return NodeLiteErrorHandler(this,
-                                std::current_exception(),
-                                script,
-                                file,
-                                line,
-                                module_prefix_line_count);
-  }
-}
-
-NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
-    NodeLiteScriptInfo const& script_info) {
-  return RunScript(script_info.script.c_str(),
-                   script_info.file_path.string().c_str(),
-                   script_info.line);
-}
-
-NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
-    std::string const& script_file) {
-  return RunScript(ReadFileText(script_file).c_str(), script_file.c_str(), 1);
-}
-
 std::string NodeLiteRuntime::ReadScriptText(std::string const& script_dir,
                                             std::string const& script_file) {
   return ReadFileText(script_dir + "/" + script_file);
@@ -614,7 +596,7 @@ std::string NodeLiteRuntime::ReadFileText(std::string const& filename) {
   return text;
 }
 
-NodeLiteRuntime* NodeLiteRuntime::GetRuntime(napi_env env) {
+/*static*/ NodeLiteRuntime* NodeLiteRuntime::GetRuntime(napi_env env) {
   napi_value global = NodeApi::GetGlobal(env);
   return static_cast<NodeLiteRuntime*>(NodeApi::GetValueExternal(
       env, NodeApi::GetProperty(env, global, "__NodeLiteRuntime__")));
