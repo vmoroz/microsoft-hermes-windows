@@ -90,7 +90,7 @@ static std::string UseSrcFilePath(std::string const& file) {
 
 NodeApiRef MakeNodeApiRef(napi_env env, napi_value value) {
   napi_ref ref{};
-  THROW_IF_NOT_OK(napi_create_reference(env, value, 1, &ref));
+  EXIT_IF_FAILED(napi_create_reference(env, value, 1, &ref));
   return NodeApiRef(ref, NodeApiRefDeleter(env));
 }
 
@@ -663,49 +663,22 @@ void NodeLiteRuntime::DefineGlobalRequire(napi_value global) {
 
 // global.gc()
 void NodeLiteRuntime::DefineGlobalGC(napi_value global) {
-#if 0
   DefineObjectMethod(
       global,
       "gc",
       [](napi_env env, napi_callback_info /*info*/) -> napi_value {
-        NODE_API_CALL(env, jsr_collect_garbage(env));
+        NodeLiteRuntime* self = GetRuntime(env);
+        self->runtime_adapter_->CollectGarbage();
         return nullptr;
       });
-#endif
 }
 
 /*static*/ napi_value NAPI_CDECL
 NodeLiteRuntime::SetImmediateCallback(napi_env env, napi_callback_info info) {
-  size_t argc{1};
-  napi_value immediateCallback{};
-  NODE_API_CALL(
-      env,
-      napi_get_cb_info(env, info, &argc, &immediateCallback, nullptr, nullptr));
-
-  // TODO: use a different macro that does not throw
-  NODE_API_ASSERT(env,
-                  argc >= 1,
-                  "Wrong number of arguments. Expects at least one argument.");
-  napi_valuetype immediateCallbackType;
-  NODE_API_CALL(env,
-                napi_typeof(env, immediateCallback, &immediateCallbackType));
-  NODE_API_ASSERT(env,
-                  immediateCallbackType == napi_function,
-                  "Wrong type of arguments. Expects a function.");
-
-  napi_value global = NodeApi::GetGlobal(env);
-  napi_value selfValue{};
-  NODE_API_CALL(
-      env,
-      napi_get_named_property(env, global, "__NodeLiteRuntime__", &selfValue));
-  NodeLiteRuntime* self;
-  NODE_API_CALL(env, napi_get_value_external(env, selfValue, (void**)&self));
-
-  uint32_t task_id = self->AddTask(immediateCallback);
-
-  napi_value taskIdValue{};
-  NODE_API_CALL(env, napi_create_uint32(env, task_id, &taskIdValue));
-  return taskIdValue;
+  std::array<napi_value, 1> args = GetArgs<1>(env, info);
+  NodeLiteRuntime* self = GetRuntime(env);
+  uint32_t task_id = self->AddTask(args[0]);
+  return NodeApi::CreateUInt32(env, task_id);
 }
 
 // global.setImmediate()
@@ -720,41 +693,17 @@ void NodeLiteRuntime::DefineGlobalSetTimeout(napi_value global) {
 
 // global.clearTimeout()
 void NodeLiteRuntime::DefineGlobalClearTimeout(napi_value global) {
-  DefineObjectMethod(
-      global,
-      "clearTimeout",
-      [](napi_env env, napi_callback_info info) -> napi_value {
-        size_t argc{1};
-        napi_value taskIdValue{};
-        NODE_API_CALL(
-            env,
-            napi_get_cb_info(env, info, &argc, &taskIdValue, nullptr, nullptr));
+  DefineObjectMethod(global,
+                     "clearTimeout",
+                     [](napi_env env, napi_callback_info info) -> napi_value {
+                       std::array<napi_value, 1> args = GetArgs<1>(env, info);
+                       uint32_t task_id = NodeApi::GetValueUInt32(env, args[0]);
 
-        NODE_API_ASSERT(
-            env,
-            argc >= 1,
-            "Wrong number of arguments. Expects at least one argument.");
-        napi_valuetype taskIdType;
-        NODE_API_CALL(env, napi_typeof(env, taskIdValue, &taskIdType));
-        NODE_API_ASSERT(env,
-                        taskIdType == napi_number,
-                        "Wrong type of argument. Expects a number.");
-        uint32_t task_id;
-        NODE_API_CALL(env, napi_get_value_uint32(env, taskIdValue, &task_id));
+                       NodeLiteRuntime* self = GetRuntime(env);
+                       self->RemoveTask(task_id);
 
-        napi_value global = NodeApi::GetGlobal(env);
-        napi_value selfValue{};
-        NODE_API_CALL(env,
-                      napi_get_named_property(
-                          env, global, "__NodeLiteRuntime__", &selfValue));
-        NodeLiteRuntime* self;
-        NODE_API_CALL(env,
-                      napi_get_value_external(env, selfValue, (void**)&self));
-
-        self->RemoveTask(task_id);
-
-        return NodeApi::GetUndefined(env);
-      });
+                       return nullptr;
+                     });
 }
 
 NodeLiteRuntime* NodeLiteRuntime::GetRuntime(napi_env env) {
@@ -771,28 +720,14 @@ NodeLiteRuntime* NodeLiteRuntime::GetRuntime(napi_env env) {
 
 // global.process
 void NodeLiteRuntime::DefineGlobalProcess(napi_value global) {
-  napi_env env = env_;
-  napi_value processObject{};
-  EXIT_IF_FAILED(napi_create_object(env, &processObject));
-  EXIT_IF_FAILED(
-      napi_set_named_property(env, global, "process", processObject));
+  napi_value processObject = NodeApi::CreateObject(env_);
+  NodeApi::SetProperty(env_, global, "process", processObject);
 
   // process.argv
-  napi_value argvArray{};
-  EXIT_IF_FAILED(napi_create_array(env, &argvArray));
-  EXIT_IF_FAILED(
-      napi_set_named_property(env, processObject, "argv", argvArray));
-
-  uint32_t index = 0;
-  for (const std::string& arg : argv_) {
-    napi_value argValue{};
-    THROW_IF_NOT_OK(
-        napi_create_string_utf8(env, arg.c_str(), arg.size(), &argValue));
-    THROW_IF_NOT_OK(napi_set_element(env, argvArray, index++, argValue));
-  }
+  NodeApi::SetPropertyStringArray(env_, processObject, "argv", argv_);
 
   // process.execPath
-  NodeApi::SetPropertyString(env, processObject, "execPath", argv_[0]);
+  NodeApi::SetPropertyString(env_, processObject, "execPath", argv_[0]);
 }
 
 void NodeLiteRuntime::DefineChildProcessModule() {
@@ -818,12 +753,12 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
   napi_value global = NodeApi::GetGlobal(env);
 
   // Add global
-  THROW_IF_NOT_OK(napi_set_named_property(env, global, "global", global));
+  EXIT_IF_FAILED(napi_set_named_property(env, global, "global", global));
 
   // Add __NodeLiteRuntime__
   napi_value self{};
-  THROW_IF_NOT_OK(napi_create_external(env, this, nullptr, nullptr, &self));
-  THROW_IF_NOT_OK(
+  EXIT_IF_FAILED(napi_create_external(env, this, nullptr, nullptr, &self));
+  EXIT_IF_FAILED(
       napi_set_named_property(env, global, "__NodeLiteRuntime__", self));
 
   DefineGlobalRequire(global);
@@ -838,13 +773,11 @@ napi_value NodeLiteRuntime::SpawnSync(std::string command,
                                       std::vector<std::string> args) {
   child_process::ProcessResult procResult =
       child_process::spawnSync(command, args);
-  napi_env env = env_;
-  napi_value result{};
-  THROW_IF_NOT_OK(napi_create_object(env, &result));
-  NodeApi::SetPropertyUInt32(env, result, "status", procResult.status);
-  NodeApi::SetPropertyString(env, result, "stderr", procResult.std_error);
-  NodeApi::SetPropertyString(env, result, "stdout", procResult.std_output);
-  NodeApi::SetPropertyNull(env, result, "signal");
+  napi_value result = NodeApi::CreateObject(env_);
+  NodeApi::SetPropertyUInt32(env_, result, "status", procResult.status);
+  NodeApi::SetPropertyString(env_, result, "stderr", procResult.std_error);
+  NodeApi::SetPropertyString(env_, result, "stdout", procResult.std_output);
+  NodeApi::SetPropertyNull(env_, result, "signal");
   return result;
 }
 
@@ -854,8 +787,8 @@ uint32_t NodeLiteRuntime::AddTask(napi_value callback) noexcept {
       std::make_shared<NodeApiRef>(MakeNodeApiRef(env, callback));
   return task_runner_->PostTask([env = env_, ref = std::move(ref)]() {
     napi_value callback{};
-    THROW_IF_NOT_OK(napi_get_reference_value(env, ref->get(), &callback));
-    THROW_IF_NOT_OK(napi_call_function(
+    EXIT_IF_FAILED(napi_get_reference_value(env, ref->get(), &callback));
+    EXIT_IF_FAILED(napi_call_function(
         env, NodeApi::GetUndefined(env), callback, 0, nullptr, nullptr));
   });
 }
@@ -873,9 +806,9 @@ void NodeLiteRuntime::RunCallChecks() {
   NodeApiHandleScope handle_scope{env};
   napi_value assert_exports = GetModuleExports(env, "assert");
   napi_value runCallChecks{};
-  THROW_IF_NOT_OK(napi_get_named_property(
+  EXIT_IF_FAILED(napi_get_named_property(
       env, assert_exports, "runCallChecks", &runCallChecks));
-  THROW_IF_NOT_OK(napi_call_function(
+  EXIT_IF_FAILED(napi_call_function(
       env, NodeApi::GetUndefined(env), runCallChecks, 0, nullptr, nullptr));
 }
 
@@ -988,10 +921,23 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   return result;
 }
 
+/*static*/ napi_value NodeApi::CreateObject(napi_env env) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_create_object(env, &result));
+  return result;
+}
+
 /*static*/ int32_t NodeApi::GetValueInt32(napi_env env,
                                           napi_value value) noexcept {
   int32_t result{};
   EXIT_IF_FAILED(napi_get_value_int32(env, value, &result));
+  return result;
+}
+
+/*static*/ uint32_t NodeApi::GetValueUInt32(napi_env env,
+                                            napi_value value) noexcept {
+  uint32_t result{};
+  EXIT_IF_FAILED(napi_get_value_uint32(env, value, &result));
   return result;
 }
 

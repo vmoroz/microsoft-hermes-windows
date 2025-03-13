@@ -29,11 +29,16 @@ class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
   napi_env CreateModuleEnv(int32_t api_version) override {
     hermes::vm::CallResult<napi_env> env_result =
         hermes::node_api::createModuleNodeApiEnvironment(*runtime_,
-                                                               NAPI_VERSION);
+                                                         NAPI_VERSION);
     if (env_result.getStatus() == hermes::vm::ExecutionStatus::EXCEPTION) {
       throwPendingError();
     }
     return env_result.getValue();
+  }
+
+  void CollectGarbage() override {
+    hermes::vm::GCScope scope{*runtime_};
+    runtime_->collect("Unit test");
   }
 
   [[noreturn]] void throwPendingError() {
@@ -43,20 +48,21 @@ class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
     // exception.
     auto hv = runtime_->getThrownValue();
     runtime_->clearThrownValue();
-    //auto jsiVal = valueFromHermesValue(hv);
-    //auto hnd = vmHandleFromValue(jsiVal);
+    // auto jsiVal = valueFromHermesValue(hv);
+    // auto hnd = vmHandleFromValue(jsiVal);
 
     std::string msg = "No message";
     std::string stack = "No stack";
-    //if (auto str = vm::Handle<vm::StringPrimitive>::dyn_vmcast(hnd)) {
-    //  // If the exception is a string, use it as the message.
-    //  msg = utf8FromStringView(
-    //      vm::StringPrimitive::createStringView(runtime_, str));
-    //} else if (auto obj = vm::Handle<vm::JSObject>::dyn_vmcast(hnd)) {
-    //  // If the exception is an object try to retrieve its message and stack
-    //  // properties.
+    // if (auto str = vm::Handle<vm::StringPrimitive>::dyn_vmcast(hnd)) {
+    //   // If the exception is a string, use it as the message.
+    //   msg = utf8FromStringView(
+    //       vm::StringPrimitive::createStringView(runtime_, str));
+    // } else if (auto obj = vm::Handle<vm::JSObject>::dyn_vmcast(hnd)) {
+    //   // If the exception is an object try to retrieve its message and stack
+    //   // properties.
 
-    //  /// Attempt to retrieve a string property \p sym from \c obj and store it
+    //  /// Attempt to retrieve a string property \p sym from \c obj and store
+    //  it
     //  /// in \p out. Ignore any catchable errors and non-string properties.
     //  auto getStrProp = [this, obj](vm::SymbolID sym, std::string& out) {
     //    auto propRes = vm::JSObject::getNamed_RJS(obj, runtime_, sym);

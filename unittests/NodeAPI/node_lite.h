@@ -25,27 +25,6 @@ extern "C" {
 #include "js-native-api/common.h"
 }
 
-// TODO: Do the fatal process exit instead.
-// Crash if the condition is false.
-#define CRASH_IF_FALSE(condition)                                              \
-  do {                                                                         \
-    if (!(condition)) {                                                        \
-      assert(condition);                                                       \
-      std::abort();                                                            \
-      *((int*)nullptr) = 1;                                                    \
-    }                                                                          \
-  } while (false)
-
-// Use this macro to handle Node-API function results.
-// It throws NodeLiteException.
-#define THROW_IF_NOT_OK(expr)                                                  \
-  do {                                                                         \
-    napi_status temp_status__ = (expr);                                        \
-    if (temp_status__ != napi_status::napi_ok) {                               \
-      throw NodeLiteException(env, temp_status__, #expr);                      \
-    }                                                                          \
-  } while (false)
-
 #define EXIT_IF_FAILED(expr)                                                   \
   do {                                                                         \
     napi_status temp_status__ = (expr);                                        \
@@ -105,6 +84,7 @@ class INodeLiteRuntimeAdapter {
   virtual ~INodeLiteRuntimeAdapter() = default;
   virtual napi_env GetEnv() = 0;
   virtual napi_env CreateModuleEnv(int32_t api_version) = 0;
+  virtual void CollectGarbage() = 0;
 };
 
 // The exception used to propagate Node-API and script errors.
@@ -197,7 +177,7 @@ class NodeApiRefDeleter {
   NodeApiRefDeleter(napi_env env) noexcept : env(env) {}
 
   void operator()(napi_ref ref) {
-    THROW_IF_NOT_OK(napi_delete_reference(env, ref));
+    EXIT_IF_FAILED(napi_delete_reference(env, ref));
   }
 
  private:
@@ -209,11 +189,12 @@ using NodeApiRef = std::unique_ptr<napi_ref__, NodeApiRefDeleter>;
 class NodeApiHandleScope {
  public:
   NodeApiHandleScope(napi_env env) noexcept : env_(env) {
-    CRASH_IF_FALSE(napi_open_handle_scope(env, &handle_scope_) == napi_ok);
+    EXIT_IF_FAILED(napi_open_handle_scope(env, &handle_scope_));
   }
 
   ~NodeApiHandleScope() noexcept {
-    CRASH_IF_FALSE(napi_close_handle_scope(env_, handle_scope_) == napi_ok);
+    napi_env env = env_;
+    EXIT_IF_FAILED(napi_close_handle_scope(env_, handle_scope_));
   }
 
   NodeApiHandleScope(const NodeApiHandleScope&) = delete;
@@ -331,7 +312,11 @@ class NodeApi {
   static napi_value CreateStringArray(
       napi_env env, std::vector<std::string> const& value) noexcept;
 
+  static napi_value CreateObject(napi_env env) noexcept;
+
   static int32_t GetValueInt32(napi_env env, napi_value value) noexcept;
+
+  static uint32_t GetValueUInt32(napi_env env, napi_value value) noexcept;
 
   static bool HasProperty(napi_env env,
                           napi_value obj,
