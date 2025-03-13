@@ -85,92 +85,6 @@ class INodeLiteRuntimeAdapter {
   virtual void CollectGarbage() = 0;
 };
 
-// TODO: Remove the exception and the handler classes.
-
-// The exception used to propagate Node-API and script errors.
-// class NodeLiteException : std::exception {
-// public:
-//  NodeLiteException() noexcept = default;
-//
-//  NodeLiteException(napi_env env,
-//                    napi_status error_code,
-//                    char const* expr) noexcept;
-//
-//  NodeLiteException(std::string const& message,
-//                    std::string const& stack) noexcept;
-//
-//  NodeLiteException(napi_env env, napi_value error) noexcept;
-//
-//  static void Exit(napi_env env,
-//                   napi_status error_code,
-//                   char const* expr) noexcept;
-//
-//  const char* what() const noexcept override { return what_.c_str(); }
-//
-//  napi_status error_code() const noexcept { return error_code_; }
-//
-//  std::string const& expr() const noexcept { return expr_; }
-//
-//  NodeLiteErrorInfo const* error_info() const noexcept {
-//    return error_info_.get();
-//  }
-//
-//  NodeLiteAssertionErrorInfo const* assertion_error_info() const noexcept {
-//    return assertion_error_info_.get();
-//  }
-//
-// private:
-//  void ApplyScriptErrorData(napi_env env, napi_value error);
-//
-// private:
-//  napi_status error_code_{};
-//  std::string expr_;
-//  std::string what_;
-//  std::shared_ptr<NodeLiteErrorInfo> error_info_;
-//  std::shared_ptr<NodeLiteAssertionErrorInfo> assertion_error_info_;
-//};
-
-// Handles the exceptions after running scripts.
-// class NodeLiteErrorHandler {
-// public:
-//  NodeLiteErrorHandler(NodeLiteRuntime* runtime,
-//                       std::exception_ptr const& exception,
-//                       std::string script,
-//                       std::string file,
-//                       int32_t line,
-//                       int32_t script_line_offset) noexcept;
-//  ~NodeLiteErrorHandler() noexcept;
-//
-//  int HandleAtProcessExit() noexcept;
-//
-//  NodeLiteErrorHandler(NodeLiteErrorHandler const&) = delete;
-//  NodeLiteErrorHandler& operator=(NodeLiteErrorHandler const&) = delete;
-//
-//  NodeLiteErrorHandler(NodeLiteErrorHandler&&) = default;
-//  NodeLiteErrorHandler& operator=(NodeLiteErrorHandler&&) = default;
-//
-// private:
-//  std::string GetSourceCodeSliceForError(int32_t lineIndex,
-//                                         int32_t extraLineCount) noexcept;
-//
-//  int FormatExitMessage(const std::string& file,
-//                        int line,
-//                        const std::string& message) noexcept;
-//  int FormatExitMessage(const std::string& file,
-//                        int line,
-//                        const std::string& message,
-//                        std::function<void(std::ostream&)> getDetails)
-//                        noexcept;
-//
-// private:
-//  NodeLiteRuntime* runtime_;
-//  std::exception_ptr exception_;
-//  std::string script_;
-//  std::string file_;
-//  int32_t line_;
-//  int32_t script_line_offset_;
-//};
-
 // Define NodeApiRef "smart pointer" for napi_ref as unique_ptr with a custom
 // deleter.
 class NodeApiRefDeleter {
@@ -248,11 +162,6 @@ class NodeLiteRuntime {
 
   std::string ProcessStack(std::string const& stack,
                            std::string const& assert_method);
-
-  // The callback function to be executed after the script completion.
-  uint32_t AddTask(napi_value callback) noexcept;
-  void RemoveTask(uint32_t task_id) noexcept;
-  void DrainTaskQueue();
 
   static void Fail(napi_env env,
                    napi_status error_code,

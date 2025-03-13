@@ -677,7 +677,16 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
 
   auto set_immediate_cb = [](napi_env env, napi_callback_info info) {
     std::array<napi_value, 1> args = GetArgs<1>(env, info);
-    uint32_t task_id = GetRuntime(env)->AddTask(args[0]);
+    std::shared_ptr<NodeApiRef> callback_ref =
+        std::make_shared<NodeApiRef>(MakeNodeApiRef(env, args[0]));
+    uint32_t task_id = GetRuntime(env)->task_runner_->PostTask(
+        [env, callback_ref = std::move(callback_ref)]() {
+          napi_value callback{};
+          EXIT_IF_FAILED(
+              napi_get_reference_value(env, callback_ref->get(), &callback));
+          EXIT_IF_FAILED(napi_call_function(
+              env, NodeApi::GetUndefined(env), callback, 0, nullptr, nullptr));
+        });
     return NodeApi::CreateUInt32(env, task_id);
   };
 
@@ -694,7 +703,7 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
                      [](napi_env env, napi_callback_info info) -> napi_value {
                        std::array<napi_value, 1> args = GetArgs<1>(env, info);
                        uint32_t task_id = NodeApi::GetValueUInt32(env, args[0]);
-                       GetRuntime(env)->RemoveTask(task_id);
+                       GetRuntime(env)->task_runner_->RemoveTask(task_id);
                        return nullptr;
                      });
 
@@ -709,25 +718,6 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
     // process.execPath
     NodeApi::SetPropertyString(env_, process_obj, "execPath", argv_[0]);
   }
-}
-
-uint32_t NodeLiteRuntime::AddTask(napi_value callback) noexcept {
-  std::shared_ptr<NodeApiRef> ref =
-      std::make_shared<NodeApiRef>(MakeNodeApiRef(env_, callback));
-  return task_runner_->PostTask([env = env_, ref = std::move(ref)]() {
-    napi_value callback{};
-    EXIT_IF_FAILED(napi_get_reference_value(env, ref->get(), &callback));
-    EXIT_IF_FAILED(napi_call_function(
-        env, NodeApi::GetUndefined(env), callback, 0, nullptr, nullptr));
-  });
-}
-
-void NodeLiteRuntime::RemoveTask(uint32_t task_id) noexcept {
-  task_runner_->RemoveTask(task_id);
-}
-
-void NodeLiteRuntime::DrainTaskQueue() {
-  task_runner_->DrainTaskQueue();
 }
 
 void NodeLiteRuntime::RunCallChecks() {
