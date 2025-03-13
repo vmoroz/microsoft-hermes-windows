@@ -54,6 +54,14 @@ extern "C" {
     }                                                                          \
   } while (false)
 
+// TODO: Implement
+#define EXIT_IF_FALSE(expr, message)                                           \
+  do {                                                                         \
+    if (!(expr)) {                                                             \
+      NodeLiteException::Exit(env, napi_generic_failure, #expr);               \
+    }                                                                          \
+  } while (false)
+
 // Define operator '|' to allow "or-ing" napi_property_attributes.
 constexpr napi_property_attributes operator|(napi_property_attributes left,
                                              napi_property_attributes right) {
@@ -264,13 +272,11 @@ class NodeLiteRuntime {
       char const* module_name,
       std::function<napi_value(napi_env, napi_value)> init_module);
 
-  static std::vector<std::string> ToStdStringArray(napi_env env,
-                                                   napi_value value);
   static NodeLiteRuntime* GetRuntime(napi_env env);
 
   void DefineObjectMethod(napi_value obj,
-                          char const* func_name,
-                          napi_callback cb);
+                          std::string_view utf8_func_name,
+                          napi_callback cb) noexcept;
   void DefineGlobalRequire(napi_value global);
   void DefineGlobalGC(napi_value global);
   void DefineGlobalSetImmediate(napi_value global);
@@ -310,7 +316,26 @@ class NodeLiteRuntime {
 // The helper class to simplify some Node-API usage.
 class NodeApi {
  public:
+  static napi_value GetNull(napi_env env) noexcept;
+
+  static napi_value GetUndefined(napi_env env) noexcept;
+
+  static napi_value GetGlobal(napi_env env) noexcept;
+
   static bool IsExceptionPending(napi_env env) noexcept;
+
+  static napi_value CreateUInt32(napi_env env, std::uint32_t value) noexcept;
+
+  static napi_value CreateString(napi_env env, std::string_view value) noexcept;
+
+  static napi_value CreateStringArray(
+      napi_env env, std::vector<std::string> const& value) noexcept;
+
+  static int32_t GetValueInt32(napi_env env, napi_value value) noexcept;
+
+  static bool HasProperty(napi_env env,
+                          napi_value obj,
+                          std::string_view utf8_name) noexcept;
 
   static napi_value GetProperty(napi_env env,
                                 napi_value obj,
@@ -324,9 +349,10 @@ class NodeApi {
                                   napi_value obj,
                                   std::string_view utf8_name) noexcept;
 
-  static std::string CoerceToString(napi_env env, napi_value value) noexcept;
-
-  static std::string ToStdString(napi_env env, napi_value value) noexcept;
+  static void SetProperty(napi_env env,
+                          napi_value obj,
+                          std::string_view utf8_name,
+                          napi_value value) noexcept;
 
   static void SetPropertyUInt32(napi_env env,
                                 napi_value obj,
@@ -338,9 +364,22 @@ class NodeApi {
                                 std::string_view utf8_name,
                                 std::string_view value) noexcept;
 
+  static void SetPropertyStringArray(
+      napi_env env,
+      napi_value obj,
+      std::string_view utf8_name,
+      std::vector<std::string> const& value) noexcept;
+
   static void SetPropertyNull(napi_env env,
                               napi_value obj,
                               std::string_view utf8_name);
+
+  static std::string CoerceToString(napi_env env, napi_value value) noexcept;
+
+  static std::string ToStdString(napi_env env, napi_value value) noexcept;
+
+  static std::vector<std::string> ToStdStringArray(napi_env env,
+                                                   napi_value value) noexcept;
 };
 
 }  // namespace node_lite

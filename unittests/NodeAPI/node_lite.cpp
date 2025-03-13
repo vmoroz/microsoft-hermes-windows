@@ -4,6 +4,7 @@
 #include "node_lite.h"
 #include <windows.h>
 #include <algorithm>
+#include <array>
 #include <cstdarg>
 #include <filesystem>
 #include <fstream>
@@ -91,6 +92,29 @@ NodeApiRef MakeNodeApiRef(napi_env env, napi_value value) {
   napi_ref ref{};
   THROW_IF_NOT_OK(napi_create_reference(env, value, 1, &ref));
   return NodeApiRef(ref, NodeApiRefDeleter(env));
+}
+
+template <int32_t N>
+std::array<napi_value, N> GetArgs(napi_env env,
+                                  napi_callback_info info,
+                                  size_t min_argc = N) {
+  std::array<napi_value, N> result;
+  size_t argc = N;
+  EXIT_IF_FAILED(
+      napi_get_cb_info(env, info, &argc, &result[0], nullptr, nullptr));
+  if (min_argc < N) {
+    EXIT_IF_FALSE(argc >= min_argc,
+                  "Wrong number of arguments. Less then minimum provided.s");
+    if (argc < N) {
+      napi_value undefined = NodeApi::GetUndefined(env);
+      for (size_t i = argc; i < N; ++i) {
+        result[i] = undefined;
+      }
+    }
+  } else {
+    EXIT_IF_FALSE(argc == N, "Wrong number of arguments");
+  }
+  return result;
 }
 
 }  // namespace
@@ -506,8 +530,7 @@ napi_value NodeLiteRuntime::GetModuleExports(
             ReadScriptText(script_dir_, script_file), script_path)));
   }
 
-  NODE_API_CALL(env, napi_get_undefined(env, &result));
-  return result;
+  return NodeApi::GetUndefined(env);
 }
 
 NodeApiRef NodeLiteRuntime::InitializeNativeModule(
@@ -606,13 +629,14 @@ std::string NodeLiteRuntime::ReadFileText(std::string const& filename) {
 }
 
 void NodeLiteRuntime::DefineObjectMethod(napi_value obj,
-                                         char const* func_name,
-                                         napi_callback cb) {
+                                         std::string_view utf8_func_name,
+                                         napi_callback cb) noexcept {
   napi_env env = env_;
   napi_value func{};
-  THROW_IF_NOT_OK(
-      napi_create_function(env, func_name, NAPI_AUTO_LENGTH, cb, this, &func));
-  THROW_IF_NOT_OK(napi_set_named_property(env, obj, func_name, func));
+  EXIT_IF_FAILED(napi_create_function(
+      env, utf8_func_name.data(), utf8_func_name.size(), cb, this, &func));
+  EXIT_IF_FAILED(
+      napi_set_named_property(env, obj, utf8_func_name.data(), func));
 }
 
 // global.require("module_name")
@@ -669,8 +693,7 @@ NodeLiteRuntime::SetImmediateCallback(napi_env env, napi_callback_info info) {
                   immediateCallbackType == napi_function,
                   "Wrong type of arguments. Expects a function.");
 
-  napi_value global{};
-  NODE_API_CALL(env, napi_get_global(env, &global));
+  napi_value global = NodeApi::GetGlobal(env);
   napi_value selfValue{};
   NODE_API_CALL(
       env,
@@ -719,8 +742,7 @@ void NodeLiteRuntime::DefineGlobalClearTimeout(napi_value global) {
         uint32_t task_id;
         NODE_API_CALL(env, napi_get_value_uint32(env, taskIdValue, &task_id));
 
-        napi_value global{};
-        NODE_API_CALL(env, napi_get_global(env, &global));
+        napi_value global = NodeApi::GetGlobal(env);
         napi_value selfValue{};
         NODE_API_CALL(env,
                       napi_get_named_property(
@@ -731,33 +753,12 @@ void NodeLiteRuntime::DefineGlobalClearTimeout(napi_value global) {
 
         self->RemoveTask(task_id);
 
-        napi_value undefined{};
-        NODE_API_CALL(env, napi_get_undefined(env, &undefined));
-        return undefined;
+        return NodeApi::GetUndefined(env);
       });
 }
 
-std::vector<std::string> NodeLiteRuntime::ToStdStringArray(napi_env env,
-                                                           napi_value value) {
-  std::vector<std::string> result;
-  bool is_array;
-  THROW_IF_NOT_OK(napi_is_array(env, value, &is_array));
-  if (is_array) {
-    uint32_t length;
-    THROW_IF_NOT_OK(napi_get_array_length(env, value, &length));
-    result.reserve(length);
-    for (uint32_t i = 0; i < length; i++) {
-      napi_value element;
-      THROW_IF_NOT_OK(napi_get_element(env, value, i, &element));
-      result.push_back(NodeApi::ToStdString(env, element));
-    }
-  }
-  return result;
-}
-
 NodeLiteRuntime* NodeLiteRuntime::GetRuntime(napi_env env) {
-  napi_value global{};
-  NODE_API_CALL(env, napi_get_global(env, &global));
+  napi_value global = NodeApi::GetGlobal(env);
   napi_value contextValue{};
   NODE_API_CALL(env,
                 napi_get_named_property(
@@ -772,14 +773,14 @@ NodeLiteRuntime* NodeLiteRuntime::GetRuntime(napi_env env) {
 void NodeLiteRuntime::DefineGlobalProcess(napi_value global) {
   napi_env env = env_;
   napi_value processObject{};
-  THROW_IF_NOT_OK(napi_create_object(env, &processObject));
-  THROW_IF_NOT_OK(
+  EXIT_IF_FAILED(napi_create_object(env, &processObject));
+  EXIT_IF_FAILED(
       napi_set_named_property(env, global, "process", processObject));
 
   // process.argv
   napi_value argvArray{};
-  THROW_IF_NOT_OK(napi_create_array(env, &argvArray));
-  THROW_IF_NOT_OK(
+  EXIT_IF_FAILED(napi_create_array(env, &argvArray));
+  EXIT_IF_FAILED(
       napi_set_named_property(env, processObject, "argv", argvArray));
 
   uint32_t index = 0;
@@ -791,11 +792,7 @@ void NodeLiteRuntime::DefineGlobalProcess(napi_value global) {
   }
 
   // process.execPath
-  napi_value execPath{};
-  THROW_IF_NOT_OK(napi_create_string_utf8(
-      env, argv_[0].c_str(), argv_[0].size(), &execPath));
-  THROW_IF_NOT_OK(
-      napi_set_named_property(env, processObject, "execPath", execPath));
+  NodeApi::SetPropertyString(env, processObject, "execPath", argv_[0]);
 }
 
 void NodeLiteRuntime::DefineChildProcessModule() {
@@ -804,20 +801,11 @@ void NodeLiteRuntime::DefineChildProcessModule() {
         exports,
         "spawnSync",
         [](napi_env env, napi_callback_info info) -> napi_value {
-          size_t argc{2};
-          napi_value argv[2] = {};
-          NODE_API_CALL(
-              env, napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr));
-
-          NODE_API_ASSERT(
-              env,
-              argc >= 1,
-              "Wrong number of arguments. Expects at least one argument.");
-          std::string command = NodeApi::ToStdString(env, argv[0]);
-          std::vector<std::string> args = ToStdStringArray(env, argv[1]);
-
-          NodeLiteRuntime* self = GetRuntime(env);
-          return self->SpawnSync(command, args);
+          std::array<napi_value, 2> args = GetArgs<2>(env, info, 1);
+          std::string command = NodeApi::ToStdString(env, args[0]);
+          std::vector<std::string> command_args =
+              NodeApi::ToStdStringArray(env, args[1]);
+          return GetRuntime(env)->SpawnSync(command, command_args);
         });
     return exports;
   });
@@ -827,8 +815,7 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
   napi_env env = env_;
   NodeApiHandleScope scope{env};
 
-  napi_value global{};
-  THROW_IF_NOT_OK(napi_get_global(env, &global));
+  napi_value global = NodeApi::GetGlobal(env);
 
   // Add global
   THROW_IF_NOT_OK(napi_set_named_property(env, global, "global", global));
@@ -866,11 +853,10 @@ uint32_t NodeLiteRuntime::AddTask(napi_value callback) noexcept {
   std::shared_ptr<NodeApiRef> ref =
       std::make_shared<NodeApiRef>(MakeNodeApiRef(env, callback));
   return task_runner_->PostTask([env = env_, ref = std::move(ref)]() {
-    napi_value callback{}, undefined{};
-    THROW_IF_NOT_OK(napi_get_undefined(env, &undefined));
+    napi_value callback{};
     THROW_IF_NOT_OK(napi_get_reference_value(env, ref->get(), &callback));
-    THROW_IF_NOT_OK(
-        napi_call_function(env, undefined, callback, 0, nullptr, nullptr));
+    THROW_IF_NOT_OK(napi_call_function(
+        env, NodeApi::GetUndefined(env), callback, 0, nullptr, nullptr));
   });
 }
 
@@ -886,12 +872,11 @@ void NodeLiteRuntime::RunCallChecks() {
   napi_env env = env_;
   NodeApiHandleScope handle_scope{env};
   napi_value assert_exports = GetModuleExports(env, "assert");
-  napi_value undefined{}, runCallChecks{};
+  napi_value runCallChecks{};
   THROW_IF_NOT_OK(napi_get_named_property(
       env, assert_exports, "runCallChecks", &runCallChecks));
-  THROW_IF_NOT_OK(napi_get_undefined(env, &undefined));
-  THROW_IF_NOT_OK(
-      napi_call_function(env, undefined, runCallChecks, 0, nullptr, nullptr));
+  THROW_IF_NOT_OK(napi_call_function(
+      env, NodeApi::GetUndefined(env), runCallChecks, 0, nullptr, nullptr));
 }
 
 std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
@@ -957,6 +942,67 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   return result;
 }
 
+/*static*/ napi_value NodeApi::GetNull(napi_env env) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_get_null(env, &result));
+  return result;
+}
+
+/*static*/ napi_value NodeApi::GetUndefined(napi_env env) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_get_undefined(env, &result));
+  return result;
+}
+
+/*static*/ napi_value NodeApi::GetGlobal(napi_env env) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_get_global(env, &result));
+  return result;
+}
+
+/*static*/ napi_value NodeApi::CreateUInt32(napi_env env,
+                                            std::uint32_t value) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_create_uint32(env, value, &result));
+  return result;
+}
+
+/*static*/ napi_value NodeApi::CreateString(napi_env env,
+                                            std::string_view value) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(
+      napi_create_string_utf8(env, value.data(), value.size(), &result));
+  return result;
+}
+
+/*static*/ napi_value NodeApi::CreateStringArray(
+    napi_env env, std::vector<std::string> const& value) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_create_array(env, &result));
+
+  uint32_t index = 0;
+  for (const std::string& item : value) {
+    EXIT_IF_FAILED(
+        napi_set_element(env, result, index++, CreateString(env, item)));
+  }
+  return result;
+}
+
+/*static*/ int32_t NodeApi::GetValueInt32(napi_env env,
+                                          napi_value value) noexcept {
+  int32_t result{};
+  EXIT_IF_FAILED(napi_get_value_int32(env, value, &result));
+  return result;
+}
+
+/*static*/ bool NodeApi::HasProperty(napi_env env,
+                                     napi_value obj,
+                                     std::string_view utf8_name) noexcept {
+  bool result{};
+  EXIT_IF_FAILED(napi_has_named_property(env, obj, utf8_name.data(), &result));
+  return result;
+}
+
 /*static*/ napi_value NodeApi::GetProperty(
     napi_env env, napi_value obj, std::string_view utf8_name) noexcept {
   napi_value result{};
@@ -966,12 +1012,8 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 
 /*static*/ std::string NodeApi::GetPropertyString(
     napi_env env, napi_value obj, std::string_view utf8_name) noexcept {
-  bool has_property{};
-  EXIT_IF_FAILED(
-      napi_has_named_property(env, obj, utf8_name.data(), &has_property));
-  if (has_property) {
-    napi_value property_value = GetProperty(env, obj, utf8_name);
-    return ToStdString(env, property_value);
+  if (HasProperty(env, obj, utf8_name)) {
+    return ToStdString(env, GetProperty(env, obj, utf8_name));
   } else {
     return "";
   }
@@ -979,10 +1021,7 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 
 /*static*/ int32_t NodeApi::GetPropertyInt32(
     napi_env env, napi_value obj, std::string_view utf8_name) noexcept {
-  napi_value property_value = GetProperty(env, obj, utf8_name);
-  int32_t result{};
-  EXIT_IF_FAILED(napi_get_value_int32(env, property_value, &result));
-  return result;
+  return GetValueInt32(env, GetProperty(env, obj, utf8_name));
 }
 
 /*static*/ std::string NodeApi::CoerceToString(napi_env env,
@@ -990,6 +1029,41 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   napi_value str_value;
   EXIT_IF_FAILED(napi_coerce_to_string(env, value, &str_value));
   return ToStdString(env, str_value);
+}
+
+/*static*/ void NodeApi::SetProperty(napi_env env,
+                                     napi_value obj,
+                                     std::string_view utf8_name,
+                                     napi_value value) noexcept {
+  EXIT_IF_FAILED(napi_set_named_property(env, obj, utf8_name.data(), value));
+}
+
+/*static*/ void NodeApi::SetPropertyUInt32(napi_env env,
+                                           napi_value obj,
+                                           std::string_view utf8_name,
+                                           uint32_t value) noexcept {
+  SetProperty(env, obj, utf8_name, CreateUInt32(env, value));
+}
+
+/*static*/ void NodeApi::SetPropertyString(napi_env env,
+                                           napi_value obj,
+                                           std::string_view utf8_name,
+                                           std::string_view value) noexcept {
+  SetProperty(env, obj, utf8_name, CreateString(env, value));
+}
+
+/*static*/ void NodeApi::SetPropertyStringArray(
+    napi_env env,
+    napi_value obj,
+    std::string_view utf8_name,
+    std::vector<std::string> const& value) noexcept {
+  SetProperty(env, obj, utf8_name, CreateStringArray(env, value));
+}
+
+/*static*/ void NodeApi::SetPropertyNull(napi_env env,
+                                         napi_value obj,
+                                         std::string_view utf8_name) {
+  SetProperty(env, obj, utf8_name, GetNull(env));
 }
 
 /*static*/ std::string NodeApi::ToStdString(napi_env env,
@@ -1002,34 +1076,22 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   return result;
 }
 
-/*static*/ void NodeApi::SetPropertyUInt32(napi_env env,
-                                           napi_value obj,
-                                           std::string_view utf8_name,
-                                           uint32_t value) noexcept {
-  napi_value uint32_value{};
-  EXIT_IF_FAILED(napi_create_uint32(env, value, &uint32_value));
-  EXIT_IF_FAILED(
-      napi_set_named_property(env, obj, utf8_name.data(), uint32_value));
-}
-
-/*static*/ void NodeApi::SetPropertyString(napi_env env,
-                                           napi_value obj,
-                                           std::string_view utf8_name,
-                                           std::string_view value) noexcept {
-  napi_value string_value{};
-  EXIT_IF_FAILED(
-      napi_create_string_utf8(env, value.data(), value.size(), &string_value));
-  EXIT_IF_FAILED(
-      napi_set_named_property(env, obj, utf8_name.data(), string_value));
-}
-
-/*static*/ void NodeApi::SetPropertyNull(napi_env env,
-                                         napi_value obj,
-                                         std::string_view utf8_name) {
-  napi_value null_value{};
-  EXIT_IF_FAILED(napi_get_null(env, &null_value));
-  EXIT_IF_FAILED(
-      napi_set_named_property(env, obj, utf8_name.data(), null_value));
+/*static*/ std::vector<std::string> NodeApi::ToStdStringArray(
+    napi_env env, napi_value value) noexcept {
+  std::vector<std::string> result;
+  bool is_array;
+  EXIT_IF_FAILED(napi_is_array(env, value, &is_array));
+  if (is_array) {
+    uint32_t length;
+    EXIT_IF_FAILED(napi_get_array_length(env, value, &length));
+    result.reserve(length);
+    for (uint32_t i = 0; i < length; i++) {
+      napi_value element;
+      EXIT_IF_FAILED(napi_get_element(env, value, i, &element));
+      result.push_back(CoerceToString(env, element));
+    }
+  }
+  return result;
 }
 
 }  // namespace node_lite
