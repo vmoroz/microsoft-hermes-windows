@@ -631,7 +631,16 @@ void NodeLiteRuntime::DefineChildProcessModule() {
           std::string command = NodeApi::ToStdString(env, args[0]);
           std::vector<std::string> command_args =
               NodeApi::ToStdStringArray(env, args[1]);
-          return GetRuntime(env)->SpawnSync(command, command_args);
+          child_process::ProcessResult call_result =
+              child_process::spawnSync(command, command_args);
+          napi_value result = NodeApi::CreateObject(env);
+          NodeApi::SetPropertyUInt32(env, result, "status", call_result.status);
+          NodeApi::SetPropertyString(
+              env, result, "stderr", call_result.std_error);
+          NodeApi::SetPropertyString(
+              env, result, "stdout", call_result.std_output);
+          NodeApi::SetPropertyNull(env, result, "signal");
+          return result;
         });
     return exports;
   });
@@ -703,18 +712,6 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
     // process.execPath
     NodeApi::SetPropertyString(env_, process_obj, "execPath", argv_[0]);
   }
-}
-
-napi_value NodeLiteRuntime::SpawnSync(std::string command,
-                                      std::vector<std::string> args) {
-  child_process::ProcessResult procResult =
-      child_process::spawnSync(command, args);
-  napi_value result = NodeApi::CreateObject(env_);
-  NodeApi::SetPropertyUInt32(env_, result, "status", procResult.status);
-  NodeApi::SetPropertyString(env_, result, "stderr", procResult.std_error);
-  NodeApi::SetPropertyString(env_, result, "stdout", procResult.std_output);
-  NodeApi::SetPropertyNull(env_, result, "signal");
-  return result;
 }
 
 uint32_t NodeLiteRuntime::AddTask(napi_value callback) noexcept {

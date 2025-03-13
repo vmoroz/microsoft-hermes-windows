@@ -270,8 +270,6 @@ class NodeLiteRuntime {
   void RemoveTask(uint32_t task_id) noexcept;
   void DrainTaskQueue();
 
-  napi_value SpawnSync(std::string command, std::vector<std::string> args);
-
  private:
   std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter_;
   napi_env env_;
