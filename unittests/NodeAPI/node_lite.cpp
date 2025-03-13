@@ -122,84 +122,42 @@ NodeLiteException::NodeLiteException(std::string const& message,
       error_info_(std::make_shared<NodeLiteErrorInfo>(
           NodeLiteErrorInfo{"Error", message, stack})) {}
 
+/*static*/ void NodeLiteException::Exit(napi_env env,
+                                        napi_status error_code,
+                                        char const* expr) noexcept {
+  // TODO: implement
+  abort();
+}
+
 void NodeLiteException::ApplyScriptErrorData(napi_env env, napi_value error) {
   error_info_ = std::make_shared<NodeLiteErrorInfo>();
   napi_valuetype errorType{};
   napi_typeof(env, error, &errorType);
   if (errorType == napi_object) {
-    error_info_->name = GetPropertyString(env, error, "name");
-    error_info_->message = GetPropertyString(env, error, "message");
-    error_info_->stack = GetPropertyString(env, error, "stack");
+    error_info_->name = NodeApi::GetPropertyString(env, error, "name");
+    error_info_->message = NodeApi::GetPropertyString(env, error, "message");
+    error_info_->stack = NodeApi::GetPropertyString(env, error, "stack");
     if (error_info_->name == "AssertionError") {
       assertion_error_info_ = std::make_shared<NodeLiteAssertionErrorInfo>();
-      assertion_error_info_->method = GetPropertyString(env, error, "method");
+      assertion_error_info_->method =
+          NodeApi::GetPropertyString(env, error, "method");
       assertion_error_info_->expected =
-          GetPropertyString(env, error, "expected");
-      assertion_error_info_->actual = GetPropertyString(env, error, "actual");
+          NodeApi::GetPropertyString(env, error, "expected");
+      assertion_error_info_->actual =
+          NodeApi::GetPropertyString(env, error, "actual");
       assertion_error_info_->source_file =
-          GetPropertyString(env, error, "sourceFile");
+          NodeApi::GetPropertyString(env, error, "sourceFile");
       assertion_error_info_->source_line =
-          GetPropertyInt32(env, error, "sourceLine");
+          NodeApi::GetPropertyInt32(env, error, "sourceLine");
       assertion_error_info_->error_stack =
-          GetPropertyString(env, error, "errorStack");
+          NodeApi::GetPropertyString(env, error, "errorStack");
       if (assertion_error_info_->error_stack.empty()) {
         assertion_error_info_->error_stack = error_info_->stack;
       }
     }
   } else {
-    error_info_->message = CoerceToString(env, error);
+    error_info_->message = NodeApi::CoerceToString(env, error);
   }
-}
-
-/*static*/ napi_value NodeLiteException::GetProperty(napi_env env,
-                                                     napi_value obj,
-                                                     char const* name) {
-  napi_value result{};
-  napi_get_named_property(env, obj, name, &result);
-  return result;
-}
-
-/*static*/ std::string NodeLiteException::GetPropertyString(napi_env env,
-                                                            napi_value obj,
-                                                            char const* name) {
-  bool hasProperty{};
-  napi_has_named_property(env, obj, name, &hasProperty);
-  if (hasProperty) {
-    napi_value napiValue = GetProperty(env, obj, name);
-    size_t valueSize{};
-    napi_get_value_string_utf8(env, napiValue, nullptr, 0, &valueSize);
-    std::string value(valueSize, '\0');
-    napi_get_value_string_utf8(
-        env, napiValue, &value[0], valueSize + 1, nullptr);
-    return value;
-  } else {
-    return "";
-  }
-}
-
-/*static*/ int32_t NodeLiteException::GetPropertyInt32(napi_env env,
-                                                       napi_value obj,
-                                                       char const* name) {
-  napi_value napiValue = GetProperty(env, obj, name);
-  int32_t value{};
-  napi_get_value_int32(env, napiValue, &value);
-  return value;
-}
-
-/*static*/ std::string NodeLiteException::CoerceToString(napi_env env,
-                                                         napi_value value) {
-  napi_value strValue;
-  napi_coerce_to_string(env, value, &strValue);
-  return ToString(env, strValue);
-}
-
-/*static*/ std::string NodeLiteException::ToString(napi_env env,
-                                                   napi_value value) {
-  size_t valueSize{};
-  napi_get_value_string_utf8(env, value, nullptr, 0, &valueSize);
-  std::string str(valueSize, '\0');
-  napi_get_value_string_utf8(env, value, &str[0], valueSize + 1, nullptr);
-  return str;
 }
 
 //=============================================================================
@@ -1048,7 +1006,52 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 
 /*static*/ bool NodeApi::IsExceptionPending(napi_env env) noexcept {
   bool result{};
-  CRASH_IF_FALSE(napi_is_exception_pending(env, &result) == napi_ok);
+  EXIT_IF_FAILED(napi_is_exception_pending(env, &result));
+  return result;
+}
+
+/*static*/ napi_value NodeApi::GetProperty(
+    napi_env env, napi_value obj, std::string_view utf8_name) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_get_named_property(env, obj, utf8_name.data(), &result));
+  return result;
+}
+
+/*static*/ std::string NodeApi::GetPropertyString(
+    napi_env env, napi_value obj, std::string_view utf8_name) noexcept {
+  bool has_property{};
+  EXIT_IF_FAILED(
+      napi_has_named_property(env, obj, utf8_name.data(), &has_property));
+  if (has_property) {
+    napi_value property_value = GetProperty(env, obj, utf8_name);
+    return ToStdString(env, property_value);
+  } else {
+    return "";
+  }
+}
+
+/*static*/ int32_t NodeApi::GetPropertyInt32(
+    napi_env env, napi_value obj, std::string_view utf8_name) noexcept {
+  napi_value property_value = GetProperty(env, obj, utf8_name);
+  int32_t result{};
+  EXIT_IF_FAILED(napi_get_value_int32(env, property_value, &result));
+  return result;
+}
+
+/*static*/ std::string NodeApi::CoerceToString(napi_env env,
+                                               napi_value value) noexcept {
+  napi_value str_value;
+  EXIT_IF_FAILED(napi_coerce_to_string(env, value, &str_value));
+  return ToStdString(env, str_value);
+}
+
+/*static*/ std::string NodeApi::ToStdString(napi_env env,
+                                            napi_value value) noexcept {
+  size_t str_size{};
+  EXIT_IF_FAILED(napi_get_value_string_utf8(env, value, nullptr, 0, &str_size));
+  std::string result(str_size, '\0');
+  EXIT_IF_FAILED(napi_get_value_string_utf8(
+      env, value, &result[0], str_size + 1, nullptr));
   return result;
 }
 

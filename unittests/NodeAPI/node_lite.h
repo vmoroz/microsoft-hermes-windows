@@ -46,6 +46,14 @@ extern "C" {
     }                                                                          \
   } while (false)
 
+#define EXIT_IF_FAILED(expr)                                                   \
+  do {                                                                         \
+    napi_status temp_status__ = (expr);                                        \
+    if (temp_status__ != napi_status::napi_ok) {                               \
+      NodeLiteException::Exit(env, temp_status__, #expr);                      \
+    }                                                                          \
+  } while (false)
+
 // Define operator '|' to allow "or-ing" napi_property_attributes.
 constexpr napi_property_attributes operator|(napi_property_attributes left,
                                              napi_property_attributes right) {
@@ -105,6 +113,10 @@ class NodeLiteException : std::exception {
 
   NodeLiteException(napi_env env, napi_value error) noexcept;
 
+  static void Exit(napi_env env,
+                                napi_status error_code,
+                                char const* expr) noexcept;
+
   const char* what() const noexcept override { return what_.c_str(); }
 
   napi_status error_code() const noexcept { return error_code_; }
@@ -121,15 +133,6 @@ class NodeLiteException : std::exception {
 
  private:
   void ApplyScriptErrorData(napi_env env, napi_value error);
-  static napi_value GetProperty(napi_env env, napi_value obj, char const* name);
-  static std::string GetPropertyString(napi_env env,
-                                       napi_value obj,
-                                       char const* name);
-  static int32_t GetPropertyInt32(napi_env env,
-                                  napi_value obj,
-                                  char const* name);
-  static std::string CoerceToString(napi_env env, napi_value value);
-  static std::string ToString(napi_env env, napi_value value);
 
  private:
   napi_status error_code_{};
@@ -322,6 +325,22 @@ class NodeLiteRuntime {
 class NodeApi {
  public:
   static bool IsExceptionPending(napi_env env) noexcept;
+
+  static napi_value GetProperty(napi_env env,
+                                napi_value obj,
+                                std::string_view utf8_name) noexcept;
+
+  static std::string GetPropertyString(napi_env env,
+                                       napi_value obj,
+                                       std::string_view utf8_name) noexcept;
+
+  static int32_t GetPropertyInt32(napi_env env,
+                                  napi_value obj,
+                                  std::string_view utf8_name) noexcept;
+
+  static std::string CoerceToString(napi_env env, napi_value value) noexcept;
+
+  static std::string ToStdString(napi_env env, napi_value value) noexcept;
 };
 
 }  // namespace node_lite

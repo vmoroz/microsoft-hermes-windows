@@ -25,6 +25,7 @@ class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
     return env_result.getValue();
   }
 
+  // TODO: Should it be removed?
   napi_env CreateModuleEnv(int32_t api_version) override {
     hermes::vm::CallResult<napi_env> env_result =
         hermes::node_api::createModuleNodeApiEnvironment(*runtime_,
