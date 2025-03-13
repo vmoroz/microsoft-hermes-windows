@@ -314,6 +314,8 @@ class NodeApi {
 
   static napi_value CreateObject(napi_env env) noexcept;
 
+  static napi_value CreateExternal(napi_env env, void* data) noexcept;
+
   static int32_t GetValueInt32(napi_env env, napi_value value) noexcept;
 
   static uint32_t GetValueUInt32(napi_env env, napi_value value) noexcept;

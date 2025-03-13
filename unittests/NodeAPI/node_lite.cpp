@@ -402,7 +402,7 @@ NodeLiteRuntime::NodeLiteRuntime(
     std::string const& script_dir,
     std::vector<std::string> argv)
     : runtime_adapter_(std::move(runtime_adapter)),
-      env_(runtime_adapter->GetEnv()),
+      env_(runtime_adapter_->GetEnv()),
       script_dir_(script_dir),
       task_runner_(std::move(task_runner)),
       script_modules_(GetCommonScripts(script_dir)),
@@ -730,18 +730,16 @@ void NodeLiteRuntime::DefineChildProcessModule() {
 }
 
 void NodeLiteRuntime::DefineGlobalFunctions() {
-  napi_env env = env_;
-  NodeApiHandleScope scope{env};
+  NodeApiHandleScope scope{env_};
 
-  napi_value global = NodeApi::GetGlobal(env);
+  napi_value global = NodeApi::GetGlobal(env_);
 
   // Add global.global
-  NodeApi::SetProperty(env, global, "global", global);
+  NodeApi::SetProperty(env_, global, "global", global);
 
   // Add global.__NodeLiteRuntime__
-  napi_value self{};
-  EXIT_IF_FAILED(napi_create_external(env, this, nullptr, nullptr, &self));
-  NodeApi::SetProperty(env, global, "__NodeLiteRuntime__", self);
+  NodeApi::SetProperty(
+      env_, global, "__NodeLiteRuntime__", NodeApi::CreateExternal(env_, this));
 
   DefineGlobalRequire(global);
   DefineGlobalGC(global);
@@ -764,9 +762,8 @@ napi_value NodeLiteRuntime::SpawnSync(std::string command,
 }
 
 uint32_t NodeLiteRuntime::AddTask(napi_value callback) noexcept {
-  napi_env env = env_;
   std::shared_ptr<NodeApiRef> ref =
-      std::make_shared<NodeApiRef>(MakeNodeApiRef(env, callback));
+      std::make_shared<NodeApiRef>(MakeNodeApiRef(env_, callback));
   return task_runner_->PostTask([env = env_, ref = std::move(ref)]() {
     napi_value callback{};
     EXIT_IF_FAILED(napi_get_reference_value(env, ref->get(), &callback));
@@ -906,6 +903,13 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 /*static*/ napi_value NodeApi::CreateObject(napi_env env) noexcept {
   napi_value result{};
   EXIT_IF_FAILED(napi_create_object(env, &result));
+  return result;
+}
+
+/*static*/ napi_value NodeApi::CreateExternal(napi_env env,
+                                              void* data) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_create_external(env, data, nullptr, nullptr, &result));
   return result;
 }
 
