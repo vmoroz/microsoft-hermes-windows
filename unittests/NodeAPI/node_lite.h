@@ -114,8 +114,8 @@ class NodeLiteException : std::exception {
   NodeLiteException(napi_env env, napi_value error) noexcept;
 
   static void Exit(napi_env env,
-                                napi_status error_code,
-                                char const* expr) noexcept;
+                   napi_status error_code,
+                   char const* expr) noexcept;
 
   const char* what() const noexcept override { return what_.c_str(); }
 
@@ -264,7 +264,6 @@ class NodeLiteRuntime {
       char const* module_name,
       std::function<napi_value(napi_env, napi_value)> init_module);
 
-  static std::string ToStdString(napi_env env, napi_value value);
   static std::vector<std::string> ToStdStringArray(napi_env env,
                                                    napi_value value);
   static NodeLiteRuntime* GetRuntime(napi_env env);
@@ -283,19 +282,6 @@ class NodeLiteRuntime {
 
   static napi_value NAPI_CDECL SetImmediateCallback(napi_env env,
                                                     napi_callback_info info);
-  static void SetUIntProperty(napi_env env,
-                              napi_value obj,
-                              char const* name,
-                              uint32_t value);
-  static void SetStrProperty(napi_env env,
-                             napi_value obj,
-                             char const* name,
-                             std::string const& value);
-  static void SetNullProperty(napi_env env, napi_value obj, char const* name);
-  static napi_status GetUtf8String(napi_env env,
-                                   napi_value value,
-                                   std::string& result);
-
   void RunCallChecks();
   void HandleUnhandledPromiseRejections();
 
@@ -341,6 +327,20 @@ class NodeApi {
   static std::string CoerceToString(napi_env env, napi_value value) noexcept;
 
   static std::string ToStdString(napi_env env, napi_value value) noexcept;
+
+  static void SetPropertyUInt32(napi_env env,
+                                napi_value obj,
+                                std::string_view utf8_name,
+                                uint32_t value) noexcept;
+
+  static void SetPropertyString(napi_env env,
+                                napi_value obj,
+                                std::string_view utf8_name,
+                                std::string_view value) noexcept;
+
+  static void SetPropertyNull(napi_env env,
+                              napi_value obj,
+                              std::string_view utf8_name);
 };
 
 }  // namespace node_lite
