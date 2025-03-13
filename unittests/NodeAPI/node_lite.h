@@ -318,6 +318,8 @@ class NodeApi {
 
   static uint32_t GetValueUInt32(napi_env env, napi_value value) noexcept;
 
+  static void* GetValueExternal(napi_env env, napi_value value) noexcept;
+
   static bool HasProperty(napi_env env,
                           napi_value obj,
                           std::string_view utf8_name) noexcept;

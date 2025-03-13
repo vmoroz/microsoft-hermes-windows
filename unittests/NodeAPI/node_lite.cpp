@@ -635,8 +635,7 @@ void NodeLiteRuntime::DefineObjectMethod(napi_value obj,
   napi_value func{};
   EXIT_IF_FAILED(napi_create_function(
       env, utf8_func_name.data(), utf8_func_name.size(), cb, this, &func));
-  EXIT_IF_FAILED(
-      napi_set_named_property(env, obj, utf8_func_name.data(), func));
+  NodeApi::SetProperty(env, obj, utf8_func_name, func);
 }
 
 // global.require("module_name")
@@ -645,19 +644,9 @@ void NodeLiteRuntime::DefineGlobalRequire(napi_value global) {
       global,
       "require",
       [](napi_env env, napi_callback_info info) -> napi_value {
-        size_t argc = 1;
-        napi_value arg0{};
-        void* data{};
-        NODE_API_CALL(
-            env, napi_get_cb_info(env, info, &argc, &arg0, nullptr, &data));
-        NODE_API_ASSERT(env, argc == 1, "Wrong number of arguments");
-        NODE_API_ASSERT(env, data != nullptr, "No runtime data");
-
-        // Extract the name of the requested module
-        std::string module_name = NodeApi::ToStdString(env, arg0);
-
-        NodeLiteRuntime* runtime = static_cast<NodeLiteRuntime*>(data);
-        return runtime->GetModuleExports(env, module_name);
+        std::array<napi_value, 1> args = GetArgs<1>(env, info);
+        std::string module_name = NodeApi::ToStdString(env, args[0]);
+        return GetRuntime(env)->GetModuleExports(env, module_name);
       });
 }
 
@@ -708,14 +697,8 @@ void NodeLiteRuntime::DefineGlobalClearTimeout(napi_value global) {
 
 NodeLiteRuntime* NodeLiteRuntime::GetRuntime(napi_env env) {
   napi_value global = NodeApi::GetGlobal(env);
-  napi_value contextValue{};
-  NODE_API_CALL(env,
-                napi_get_named_property(
-                    env, global, "__NodeLiteRuntime__", &contextValue));
-  NodeLiteRuntime* context{};
-  NODE_API_CALL(env,
-                napi_get_value_external(env, contextValue, (void**)&context));
-  return context;
+  return static_cast<NodeLiteRuntime*>(NodeApi::GetValueExternal(
+      env, NodeApi::GetProperty(env, global, "__NodeLiteRuntime__")));
 }
 
 // global.process
@@ -752,14 +735,13 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
 
   napi_value global = NodeApi::GetGlobal(env);
 
-  // Add global
-  EXIT_IF_FAILED(napi_set_named_property(env, global, "global", global));
+  // Add global.global
+  NodeApi::SetProperty(env, global, "global", global);
 
-  // Add __NodeLiteRuntime__
+  // Add global.__NodeLiteRuntime__
   napi_value self{};
   EXIT_IF_FAILED(napi_create_external(env, this, nullptr, nullptr, &self));
-  EXIT_IF_FAILED(
-      napi_set_named_property(env, global, "__NodeLiteRuntime__", self));
+  NodeApi::SetProperty(env, global, "__NodeLiteRuntime__", self);
 
   DefineGlobalRequire(global);
   DefineGlobalGC(global);
@@ -938,6 +920,13 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
                                             napi_value value) noexcept {
   uint32_t result{};
   EXIT_IF_FAILED(napi_get_value_uint32(env, value, &result));
+  return result;
+}
+
+/*static*/ void* NodeApi::GetValueExternal(napi_env env,
+                                           napi_value value) noexcept {
+  void* result{};
+  EXIT_IF_FAILED(napi_get_value_external(env, value, &result));
   return result;
 }
 
