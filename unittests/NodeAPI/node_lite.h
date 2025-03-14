@@ -127,8 +127,8 @@ using StringVector = std::vector<std::string>;
 // The runtime to run test scripts.
 class NodeLiteRuntime {
  public:
-  static int32_t Run(StringVector argv,
-                     std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter);
+  static void Run(StringVector argv,
+                  std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter);
 
   NodeLiteRuntime(std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter,
                   std::shared_ptr<NodeLiteTaskRunner> task_runner,
@@ -136,7 +136,7 @@ class NodeLiteRuntime {
                   StringVector argv);
 
   static StringVector ParseArgs(StringVector argv) noexcept;
-  
+
   static std::map<std::string, NodeLiteScriptInfo, std::less<>>
   GetCommonScripts(std::string const& script_dir) noexcept;
 
@@ -150,7 +150,7 @@ class NodeLiteRuntime {
 
   static std::string ReadScriptText(std::string const& script_dir,
                                     std::string const& script_file);
-  static std::string ReadFileText(std::string const& filename);
+  static std::string ReadFileText(std::filesystem::path const& file_path);
 
   void AddNativeModule(
       char const* module_name,

@@ -109,7 +109,7 @@ class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
 }  // namespace node_lite
 
 int32_t main(int32_t argc, char* argv[]) {
-  return node_lite::NodeLiteRuntime::Run(
+  node_lite::NodeLiteRuntime::Run(
       std::vector<std::string>(argv, argv + argc),
       std::make_unique<node_lite::HermesNodeLiteAdapter>());
 }

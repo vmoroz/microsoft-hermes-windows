@@ -366,53 +366,28 @@ void NodeLiteTaskRunner::DrainTaskQueue() {
 // NodeLiteRuntime implementation
 //=============================================================================
 
-int32_t NodeLiteRuntime::Run(
+void NodeLiteRuntime::Run(
     StringVector argv,
     std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter) {
-  // Convert arguments to vector of strings and skip all options before the JS
-  // file name.
   StringVector args = ParseArgs(argv);
   std::shared_ptr<NodeLiteTaskRunner> taskRunner =
       std::make_shared<NodeLiteTaskRunner>();
 
-  std::string js_file_path = args[1];
-  fs::path js_path = fs::path(js_file_path);
-  fs::path js_root_dir = js_path.parent_path().parent_path();
+  fs::path js_file_path = fs::path(args[1]);
+  fs::path js_root_dir = js_file_path.parent_path().parent_path();
   NodeLiteRuntime runtime(std::move(runtime_adapter),
                           std::move(taskRunner),
                           js_root_dir.string(),
                           std::move(args));
   NodeApiHandleScope scope{runtime.env_};
 
-  // NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
-  //     NodeLiteScriptInfo const& script_info) {
-  //   return RunScript(script_info.script.c_str(),
-  //                    script_info.file_path.string().c_str(),
-  //                    script_info.line);
-  // }
-
-  // NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
-  //     std::string const& script_file) {
-  //   return RunScript(
-  //       ReadFileText(script_file).c_str(), script_file.c_str(), 1);
-  // }
-
-  //    std::string scriptText = GetJSModuleText(script, file);
-  // script_modules_["MainScript"] =
-  //    NodeLiteScriptInfo{scriptText.c_str(), file, line};
-
-  // NodeApiHandleScope scope{env_};
-  //{
-  //   NodeApiHandleScope scope{env_};
-  //   // TODO: Should we use different function here?
-  //   RunModuleScript(scriptText.c_str());
-  // }
-  // DrainTaskQueue();
-  // RunCallChecks();
-
-  // return runtime.RunScriptFile(js_file_path).HandleAtProcessExit();
-
-  return 0;
+  std::string script_text =
+      GetJSModuleText(ReadFileText(js_file_path), js_file_path);
+  runtime.script_modules_["MainScript"] =
+      NodeLiteScriptInfo{script_text.c_str(), js_file_path, 1};
+  runtime.RunModuleScript(script_text.c_str());
+  runtime.task_runner_->DrainTaskQueue();
+  runtime.RunCallChecks();
 }
 
 NodeLiteRuntime::NodeLiteRuntime(
@@ -430,6 +405,8 @@ NodeLiteRuntime::NodeLiteRuntime(
   DefineChildProcessModule();
 }
 
+// Convert arguments to vector of strings and skip all options before the JS
+// file name.
 /*static*/ StringVector NodeLiteRuntime::ParseArgs(StringVector argv) noexcept {
   if (argv.size() < 2) {
     std::cerr << "Usage: " << argv[0] << " <js_file>" << std::endl;
@@ -606,9 +583,9 @@ std::string NodeLiteRuntime::ReadScriptText(std::string const& script_dir,
   return ReadFileText(script_dir + "/" + script_file);
 }
 
-std::string NodeLiteRuntime::ReadFileText(std::string const& filename) {
+std::string NodeLiteRuntime::ReadFileText(fs::path const& file_path) {
   std::string text;
-  std::ifstream file_stream(filename);
+  std::ifstream file_stream(file_path);
   if (file_stream) {
     std::ostringstream ss;
     ss << file_stream.rdbuf();
