@@ -99,7 +99,7 @@ class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
     // Use the constructor of jsi::JSError that cannot run additional
     // JS, since that may then result in additional exceptions and infinite
     // recursion.
-    //throw NodeLiteException(msg, stack);
+    // throw NodeLiteException(msg, stack);
   }
 
  private:
@@ -110,5 +110,6 @@ class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
 
 int32_t main(int32_t argc, char* argv[]) {
   return node_lite::NodeLiteRuntime::Run(
-      argc, argv, std::make_unique<node_lite::HermesNodeLiteAdapter>());
+      std::vector<std::string>(argv, argv + argc),
+      std::make_unique<node_lite::HermesNodeLiteAdapter>());
 }

@@ -367,67 +367,50 @@ void NodeLiteTaskRunner::DrainTaskQueue() {
 //=============================================================================
 
 int32_t NodeLiteRuntime::Run(
-    int32_t argc,
-    char* argv[],
+    StringVector argv,
     std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter) {
   // Convert arguments to vector of strings and skip all options before the JS
   // file name.
-  std::vector<std::string> args;
-  args.reserve(argc);
-  bool skipOptions = true;
-  if (argc < 2) {
-    std::cerr << "Usage: " << argv[0] << " <js_file>" << std::endl;
-    return 1;
-  }
-  args.push_back(argv[0]);
-  for (int i = 1; i < argc; i++) {
-    if (skipOptions && std::string_view(argv[i]).find("--") == 0) {
-      continue;
-    }
-    skipOptions = false;
-    args.push_back(argv[i]);
-  }
-
+  StringVector args = ParseArgs(argv);
   std::shared_ptr<NodeLiteTaskRunner> taskRunner =
       std::make_shared<NodeLiteTaskRunner>();
-  napi_env env = nullptr;  // Placeholder for the actual environment holder.
 
   std::string js_file_path = args[1];
   fs::path js_path = fs::path(js_file_path);
   fs::path js_root_dir = js_path.parent_path().parent_path();
-  {
-    NodeLiteRuntime runtime(std::move(runtime_adapter),
-                            std::move(taskRunner),
-                            js_root_dir.string(),
-                            std::move(args));
-    // NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
-    //     NodeLiteScriptInfo const& script_info) {
-    //   return RunScript(script_info.script.c_str(),
-    //                    script_info.file_path.string().c_str(),
-    //                    script_info.line);
-    // }
+  NodeLiteRuntime runtime(std::move(runtime_adapter),
+                          std::move(taskRunner),
+                          js_root_dir.string(),
+                          std::move(args));
+  NodeApiHandleScope scope{runtime.env_};
 
-    // NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
-    //     std::string const& script_file) {
-    //   return RunScript(
-    //       ReadFileText(script_file).c_str(), script_file.c_str(), 1);
-    // }
+  // NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
+  //     NodeLiteScriptInfo const& script_info) {
+  //   return RunScript(script_info.script.c_str(),
+  //                    script_info.file_path.string().c_str(),
+  //                    script_info.line);
+  // }
 
-    //    std::string scriptText = GetJSModuleText(script, file);
-    // script_modules_["MainScript"] =
-    //    NodeLiteScriptInfo{scriptText.c_str(), file, line};
+  // NodeLiteErrorHandler NodeLiteRuntime::RunScriptFile(
+  //     std::string const& script_file) {
+  //   return RunScript(
+  //       ReadFileText(script_file).c_str(), script_file.c_str(), 1);
+  // }
 
-    // NodeApiHandleScope scope{env_};
-    //{
-    //   NodeApiHandleScope scope{env_};
-    //   // TODO: Should we use different function here?
-    //   RunModuleScript(scriptText.c_str());
-    // }
-    // DrainTaskQueue();
-    // RunCallChecks();
+  //    std::string scriptText = GetJSModuleText(script, file);
+  // script_modules_["MainScript"] =
+  //    NodeLiteScriptInfo{scriptText.c_str(), file, line};
 
-    // return runtime.RunScriptFile(js_file_path).HandleAtProcessExit();
-  }
+  // NodeApiHandleScope scope{env_};
+  //{
+  //   NodeApiHandleScope scope{env_};
+  //   // TODO: Should we use different function here?
+  //   RunModuleScript(scriptText.c_str());
+  // }
+  // DrainTaskQueue();
+  // RunCallChecks();
+
+  // return runtime.RunScriptFile(js_file_path).HandleAtProcessExit();
 
   return 0;
 }
@@ -445,6 +428,29 @@ NodeLiteRuntime::NodeLiteRuntime(
       argv_(std::move(argv)) {
   DefineGlobalFunctions();
   DefineChildProcessModule();
+}
+
+/*static*/ StringVector NodeLiteRuntime::ParseArgs(StringVector argv) noexcept {
+  if (argv.size() < 2) {
+    std::cerr << "Usage: " << argv[0] << " <js_file>" << std::endl;
+    exit(1);
+  }
+
+  // Skip all options before the JS file name.
+  StringVector args;
+  args.reserve(argv.size());
+  args.push_back(std::move(argv[0]));
+  bool skip_options = true;
+  for (int i = 1; i < argv.size(); i++) {
+    std::string arg = std::move(argv[i]);
+    if (skip_options && arg.find("--") == 0) {
+      continue;
+    }
+    skip_options = false;
+    args.push_back(std::move(arg));
+  }
+
+  return args;
 }
 
 std::map<std::string, NodeLiteScriptInfo, std::less<>>

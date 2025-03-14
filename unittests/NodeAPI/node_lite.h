@@ -122,18 +122,21 @@ class NodeLiteTaskRunner {
   uint32_t next_task_id_{1};
 };
 
+using StringVector = std::vector<std::string>;
+
 // The runtime to run test scripts.
 class NodeLiteRuntime {
  public:
-  static int32_t Run(int32_t argc,
-                     char* argv[],
+  static int32_t Run(StringVector argv,
                      std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter);
 
   NodeLiteRuntime(std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter,
                   std::shared_ptr<NodeLiteTaskRunner> task_runner,
                   std::string const& script_dir,
-                  std::vector<std::string> argv);
+                  StringVector argv);
 
+  static StringVector ParseArgs(StringVector argv) noexcept;
+  
   static std::map<std::string, NodeLiteScriptInfo, std::less<>>
   GetCommonScripts(std::string const& script_dir) noexcept;
 
