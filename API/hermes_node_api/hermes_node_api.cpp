@@ -6456,20 +6456,34 @@ napi_status NodeApiEnvironment::getInstanceData(void **nativeData) noexcept {
 //---------------------------------------------------------------------------
 
 napi_status NodeApiEnvironment::runScript(
-    napi_value /*source*/,
-    napi_value * /*result*/) noexcept {
-  // CHECK_NAPI(checkPendingJSError());
-  // NodeApiHandleScope scope{*this, result};
+    napi_value source,
+    napi_value *result) noexcept {
+  class StringBuffer : public Buffer {
+   public:
+    StringBuffer(std::string buffer) : string_(std::move(buffer)) {
+      data_ = reinterpret_cast<const uint8_t *>(string_.c_str());
+      size_ = string_.size();
+    }
 
-  // size_t sourceSize{};
-  // CHECK_NAPI(getStringValueUTF8(source, nullptr, 0, &sourceSize));
-  // std::unique_ptr<char[]> buffer =
-  //     std::unique_ptr<char[]>(new char[sourceSize + 1]);
-  // CHECK_NAPI(getStringValueUTF8(source, buffer.get(), sourceSize + 1,
-  // nullptr));
+   private:
+    std::string string_;
+  };
 
-  // return scope.setResult(runPreparedScript(preparedScript, result));
-  return napi_ok;
+  CHECK_NAPI(checkPendingJSError());
+  NodeApiHandleScope scope{*this, result};
+
+  // Convert the code into UTF8.
+  size_t sourceSize{};
+  CHECK_NAPI(getStringValueUTF8(source, nullptr, 0, &sourceSize));
+  std::string code(sourceSize, '\0');
+  CHECK_NAPI(getStringValueUTF8(source, &code[0], sourceSize + 1, nullptr));
+
+  // Create a buffer for the code.
+  std::unique_ptr<hermes::Buffer> codeBuffer(new StringBuffer(std::move(code)));
+
+  hermes::vm::CallResult<hermes::vm::HermesValue> runResult =
+      runtime_.run(std::move(codeBuffer), llvh::StringRef(), compileFlags_);
+  return scope.setResult(std::move(runResult));
 }
 
 /*static*/ bool NodeApiEnvironment::isHermesBytecode(

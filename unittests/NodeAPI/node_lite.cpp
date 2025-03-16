@@ -701,6 +701,24 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
     // process.execPath
     NodeApi::SetPropertyString(env_, process_obj, "execPath", argv_[0]);
   }
+
+  // global.console
+  {
+    napi_value console_obj = NodeApi::CreateObject(env_);
+    NodeApi::SetProperty(env_, global, "console", console_obj);
+
+    // console.log()
+    NodeApi::SetMethod(env_,
+                       console_obj,
+                       "log",
+                       [](napi_env env, napi_callback_info info) -> napi_value {
+                         std::array<napi_value, 1> args = GetArgs<1>(env, info);
+                         std::string message =
+                             NodeApi::ToStdString(env, args[0]);
+                         std::cout << message << std::endl;
+                         return nullptr;
+                       });
+  }
 }
 
 void NodeLiteRuntime::RunCallChecks() {
