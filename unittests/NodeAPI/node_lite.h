@@ -21,10 +21,6 @@
 #define NAPI_EXPERIMENTAL
 #include "../../API/hermes_node_api/node_api/js_native_api.h"
 
-extern "C" {
-#include "js-native-api/common.h"
-}
-
 #define EXIT_IF_FAILED(expr)                                                   \
   do {                                                                         \
     napi_status temp_status__ = (expr);                                        \
@@ -191,6 +187,8 @@ class NodeApi {
 
   static napi_value GetGlobal(napi_env env) noexcept;
 
+  static napi_value GetReferenceValue(napi_env env, napi_ref ref) noexcept;
+
   static bool IsExceptionPending(napi_env env) noexcept;
 
   static napi_value CreateUInt32(napi_env env, std::uint32_t value) noexcept;
@@ -262,6 +260,8 @@ class NodeApi {
 
   static std::vector<std::string> ToStdStringArray(napi_env env,
                                                    napi_value value) noexcept;
+
+  static napi_value RunScript(napi_env env, napi_value script) noexcept;
 };
 
 }  // namespace node_lite

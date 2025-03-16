@@ -448,16 +448,8 @@ NodeLiteRuntime::GetCommonScripts(std::string const& script_dir) noexcept {
 
 NodeApiRef NodeLiteRuntime::RunModuleScript(std::string const& code) noexcept {
   NodeApiHandleScope handle_scope{env_};
-  // Use immediately invoked function expression (IIFE) for Node-API macros.
-  return MakeNodeApiRef(env_, [&]() -> napi_value {
-    napi_value script{};
-    NODE_API_CALL(
-        env_,
-        napi_create_string_utf8(env_, code.c_str(), code.size(), &script));
-    napi_value result{};
-    NODE_API_CALL(env_, napi_run_script(env_, script, &result));
-    return result;
-  }());
+  return MakeNodeApiRef(
+      env_, NodeApi::RunScript(env_, NodeApi::CreateString(env_, code)));
 }
 
 napi_value NodeLiteRuntime::GetModuleExports(
@@ -467,24 +459,20 @@ napi_value NodeLiteRuntime::GetModuleExports(
   // Check if the module has already been initialized.
   auto module_it = initialized_modules_.find(module_name);
   if (module_it != initialized_modules_.end()) {
-    NODE_API_CALL(
-        env, napi_get_reference_value(env, module_it->second.get(), &result));
-    return result;
+    return NodeApi::GetReferenceValue(env, module_it->second.get());
   }
 
   auto register_module = [this](std::string const& module_name,
                                 NodeApiRef module_exports) -> napi_value {
+    napi_env env = env_;
     if (NodeApi::IsExceptionPending(env_)) {
       return nullptr;
     }
-    napi_value exports_value{};
-    NODE_API_CALL(
-        env_,
-        napi_get_reference_value(env_, module_exports.get(), &exports_value));
+    napi_value exports_value =
+        NodeApi::GetReferenceValue(env_, module_exports.get());
     auto emplace_result = initialized_modules_.try_emplace(
         module_name, std::move(module_exports));
-    NODE_API_ASSERT(
-        env_, emplace_result.second == true, "Failed to register module");
+    EXIT_IF_FALSE(emplace_result.second == true, "Failed to register module");
     return exports_value;
   };
 
@@ -559,8 +547,7 @@ NodeApiRef NodeLiteRuntime::InitializeNativeModule(
   NodeApiHandleScope handle_scope{module_env};
   // Use immediately invoked function expression (IIFE) for Node-API macros.
   return MakeNodeApiRef(env_, [&]() -> napi_value {
-    napi_value exports{};
-    NODE_API_CALL(module_env, napi_create_object(module_env, &exports));
+    napi_value exports = NodeApi::CreateObject(module_env);
     napi_value new_exports = init_module(module_env, exports);
     return (new_exports != nullptr) ? new_exports : exports;
   }());
@@ -664,9 +651,8 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
         std::make_shared<NodeApiRef>(MakeNodeApiRef(env, args[0]));
     uint32_t task_id = GetRuntime(env)->task_runner_->PostTask(
         [env, callback_ref = std::move(callback_ref)]() {
-          napi_value callback{};
-          EXIT_IF_FAILED(
-              napi_get_reference_value(env, callback_ref->get(), &callback));
+          napi_value callback =
+              NodeApi::GetReferenceValue(env, callback_ref->get());
           EXIT_IF_FAILED(napi_call_function(
               env, NodeApi::GetUndefined(env), callback, 0, nullptr, nullptr));
         });
@@ -725,9 +711,8 @@ void NodeLiteRuntime::RunCallChecks() {
   napi_env env = env_;
   NodeApiHandleScope handle_scope{env};
   napi_value assert_exports = GetModuleExports(env, "assert");
-  napi_value runCallChecks{};
-  EXIT_IF_FAILED(napi_get_named_property(
-      env, assert_exports, "runCallChecks", &runCallChecks));
+  napi_value runCallChecks =
+      NodeApi::GetProperty(env, assert_exports, "runCallChecks");
   EXIT_IF_FAILED(napi_call_function(
       env, NodeApi::GetUndefined(env), runCallChecks, 0, nullptr, nullptr));
 }
@@ -816,6 +801,13 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 /*static*/ napi_value NodeApi::GetGlobal(napi_env env) noexcept {
   napi_value result{};
   EXIT_IF_FAILED(napi_get_global(env, &result));
+  return result;
+}
+
+/*static*/ napi_value NodeApi::GetReferenceValue(napi_env env,
+                                                 napi_ref ref) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_get_reference_value(env, ref, &result));
   return result;
 }
 
@@ -990,4 +982,10 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   return result;
 }
 
+/*static*/ napi_value NodeApi::RunScript(napi_env env,
+                                         napi_value script) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_run_script(env, script, &result));
+  return result;
+}
 }  // namespace node_lite
