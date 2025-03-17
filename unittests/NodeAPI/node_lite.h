@@ -25,15 +25,16 @@
   do {                                                                         \
     napi_status temp_status__ = (expr);                                        \
     if (temp_status__ != napi_status::napi_ok) {                               \
-      NodeLiteRuntime::Fail(env, temp_status__, #expr);                        \
+      NodeLiteErrorHandler::OnNodeApiFailed(                                   \
+          env, temp_status__, #expr, __FILE__, __LINE__);                      \
     }                                                                          \
   } while (false)
 
-// TODO: Implement
 #define EXIT_IF_FALSE(expr, message)                                           \
   do {                                                                         \
     if (!(expr)) {                                                             \
-      NodeLiteRuntime::Fail(env, napi_generic_failure, #expr);                 \
+      NodeLiteErrorHandler::OnAssertFailed(                                    \
+          #expr, message, __FILE__, __LINE__);                                 \
     }                                                                          \
   } while (false)
 
@@ -118,6 +119,30 @@ class NodeLiteTaskRunner {
   uint32_t next_task_id_{1};
 };
 
+class NodeLiteErrorHandler {
+ public:
+  static void OnNodeApiFailed(napi_env env,
+                              napi_status error_code,
+                              char const* expr,
+                              const char* file,
+                              int32_t line) noexcept;
+
+  static void OnAssertFailed(char const* expr,
+                             char const* message,
+                             const char* file,
+                             int32_t line) noexcept;
+
+  static void ExitWithJSError(napi_env env, napi_value error) noexcept;
+
+  static void ExitWithJSAssertError(napi_env env, napi_value error) noexcept;
+
+  static void ExitWithMessage(
+      const std::string& file,
+      int line,
+      const std::string& message,
+      std::function<void(std::ostream&)> get_error_details) noexcept;
+};
+
 using StringVector = std::vector<std::string>;
 
 // The runtime to run test scripts.
@@ -162,10 +187,6 @@ class NodeLiteRuntime {
   std::string ProcessStack(std::string const& stack,
                            std::string const& assert_method);
 
-  static void Fail(napi_env env,
-                   napi_status error_code,
-                   char const* expr) noexcept;
-
  private:
   std::unique_ptr<INodeLiteRuntimeAdapter> runtime_adapter_;
   napi_env env_;
@@ -181,6 +202,10 @@ class NodeLiteRuntime {
 // The helper class to simplify some Node-API usage.
 class NodeApi {
  public:
+  static bool IsExceptionPending(napi_env env) noexcept;
+
+  static napi_value GetAndClearLastException(napi_env env) noexcept;
+
   static napi_value GetNull(napi_env env) noexcept;
 
   static napi_value GetUndefined(napi_env env) noexcept;
@@ -188,8 +213,6 @@ class NodeApi {
   static napi_value GetGlobal(napi_env env) noexcept;
 
   static napi_value GetReferenceValue(napi_env env, napi_ref ref) noexcept;
-
-  static bool IsExceptionPending(napi_env env) noexcept;
 
   static napi_value CreateUInt32(napi_env env, std::uint32_t value) noexcept;
 
@@ -262,6 +285,8 @@ class NodeApi {
                                                    napi_value value) noexcept;
 
   static napi_value RunScript(napi_env env, napi_value script) noexcept;
+
+  static napi_valuetype TypeOf(napi_env env, napi_value value) noexcept;
 };
 
 }  // namespace node_lite

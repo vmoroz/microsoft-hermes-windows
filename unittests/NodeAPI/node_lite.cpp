@@ -132,76 +132,10 @@ NodeApiHandleScope::~NodeApiHandleScope() noexcept {
   EXIT_IF_FAILED(napi_close_handle_scope(env_, handle_scope_));
 }
 
-//=============================================================================
-// NodeLiteException implementation
-//=============================================================================
 #if 0
-NodeLiteException::NodeLiteException(napi_env env,
-                                     napi_status error_code,
-                                     const char* expr) noexcept
-    : error_code_(error_code), expr_(expr) {
-  if (NodeApi::IsExceptionPending(env)) {
-    napi_value error{};
-    if (napi_get_and_clear_last_exception(env, &error) == napi_ok) {
-      ApplyScriptErrorData(env, error);
-    }
-  }
-}
-
-NodeLiteException::NodeLiteException(napi_env env, napi_value error) noexcept {
-  ApplyScriptErrorData(env, error);
-}
-
-NodeLiteException::NodeLiteException(std::string const& message,
-                                     std::string const& stack) noexcept
-    : error_code_(napi_generic_failure),
-      what_(message),
-      error_info_(std::make_shared<NodeLiteErrorInfo>(
-          NodeLiteErrorInfo{"Error", message, stack})) {}
-
-/*static*/ void NodeLiteException::Exit(napi_env env,
-                                        napi_status error_code,
-                                        char const* expr) noexcept {
-  // TODO: implement
-  abort();
-}
-
-void NodeLiteException::ApplyScriptErrorData(napi_env env, napi_value error) {
-  error_info_ = std::make_shared<NodeLiteErrorInfo>();
-  napi_valuetype errorType{};
-  napi_typeof(env, error, &errorType);
-  if (errorType == napi_object) {
-    error_info_->name = NodeApi::GetPropertyString(env, error, "name");
-    error_info_->message = NodeApi::GetPropertyString(env, error, "message");
-    error_info_->stack = NodeApi::GetPropertyString(env, error, "stack");
-    if (error_info_->name == "AssertionError") {
-      assertion_error_info_ = std::make_shared<NodeLiteAssertionErrorInfo>();
-      assertion_error_info_->method =
-          NodeApi::GetPropertyString(env, error, "method");
-      assertion_error_info_->expected =
-          NodeApi::GetPropertyString(env, error, "expected");
-      assertion_error_info_->actual =
-          NodeApi::GetPropertyString(env, error, "actual");
-      assertion_error_info_->source_file =
-          NodeApi::GetPropertyString(env, error, "sourceFile");
-      assertion_error_info_->source_line =
-          NodeApi::GetPropertyInt32(env, error, "sourceLine");
-      assertion_error_info_->error_stack =
-          NodeApi::GetPropertyString(env, error, "errorStack");
-      if (assertion_error_info_->error_stack.empty()) {
-        assertion_error_info_->error_stack = error_info_->stack;
-      }
-    }
-  } else {
-    error_info_->message = NodeApi::CoerceToString(env, error);
-  }
-}
-#endif
-
 //=============================================================================
 // NodeLiteErrorHandler implementation
 //=============================================================================
-#if 0
 NodeLiteErrorHandler::NodeLiteErrorHandler(NodeLiteRuntime* runtime,
                                            std::exception_ptr const& exception,
                                            std::string script,
@@ -770,10 +704,155 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   return processedStack;
 }
 
-/*static*/ void NodeLiteRuntime::Fail(napi_env env,
-                                      napi_status error_code,
-                                      char const* expr) noexcept {
-  // TODO: implement
+/*static*/ [[noreturn]] void NodeLiteErrorHandler::OnNodeApiFailed(
+    napi_env env,
+    napi_status error_code,
+    char const* expr,
+    const char* file,
+    int32_t line) noexcept {
+  // TODO: protect from stack overflow
+  if (NodeApi::IsExceptionPending(env)) {
+    napi_value error = NodeApi::GetAndClearLastException(env);
+    ExitWithJSError(env, error);
+  }
+  std::cerr << "NodeLiteErrorHandler::OnNodeApiFailed" << std::endl;
+  exit(1);
+  // FormatExitMessage(
+  //     file_.c_str(), line_, "NodeLite exception", [&](std::ostream& os) {
+  //       os << "Exception: NodeLiteException\n"
+  //          << "     Code: " << error_code << '\n'
+  //          << "  Message: " << what << '\n'
+  //          << "     Expr: " << expr;
+  //     });
+  //  catch (std::exception const& ex) {
+  //    return FormatExitMessage(
+  //        file_.c_str(), line_, "C++ exception", [&](std::ostream& os) {
+  //          os << "Exception thrown: " << ex.what();
+  //        });
+  //  }
+  //  catch (...) {
+  //    return FormatExitMessage(file_.c_str(), line_, "Unexpected exception");
+  //  }
+}
+
+/*static*/ void NodeLiteErrorHandler::OnAssertFailed(char const* expr,
+                                                     char const* message,
+                                                     const char* file,
+                                                     int32_t line) noexcept {
+  std::cerr << "NodeLiteErrorHandler::OnAssertFailed" << std::endl;
+  exit(1);
+  //// TODO: protect from stack overflow
+  // if (NodeApi::IsExceptionPending(env)) {
+  //   napi_value error = NodeApi::GetAndClearLastException(env);
+  //   FailWithJSError(env, error);
+  // }
+  // FormatExitMessage(
+  //     file_.c_str(), line_, "NodeLite exception", [&](std::ostream& os) {
+  //       os << "Exception: NodeLiteException\n"
+  //          << "     Code: " << error_code << '\n'
+  //          << "  Message: " << what << '\n'
+  //          << "     Expr: " << expr;
+  //     });
+  //// catch (std::exception const& ex) {
+  ////   return FormatExitMessage(
+  ////       file_.c_str(), line_, "C++ exception", [&](std::ostream& os) {
+  ////         os << "Exception thrown: " << ex.what();
+  ////       });
+  //// }
+  //// catch (...) {
+  ////   return FormatExitMessage(file_.c_str(), line_, "Unexpected exception");
+  //// }
+}
+
+/*static*/ [[noreturn]] void NodeLiteErrorHandler::ExitWithJSError(
+    napi_env env, napi_value error) noexcept {
+  // TODO: protect from stack overflow
+  napi_valuetype error_value_type = NodeApi::TypeOf(env, error);
+  if (error_value_type == napi_object) {
+    std::string name = NodeApi::GetPropertyString(env, error, "name");
+    std::string message = NodeApi::GetPropertyString(env, error, "message");
+    std::string stack = NodeApi::GetPropertyString(env, error, "stack");
+    if (name == "AssertionError") {
+      ExitWithJSAssertError(env, error);
+    }
+    ExitWithMessage("file_", 1, "JavaScript error", [&](std::ostream& os) {
+      os << "Exception: " << name << '\n'
+         << "  Message: " << message << '\n'
+         << "Callstack: " << stack;
+    });
+  } else {
+    std::string message = NodeApi::CoerceToString(env, error);
+    std::cerr << "NodeLiteErrorHandler::ExitWithJSError" << std::endl;
+    std::cerr << message << std::endl;
+    exit(1);
+  }
+}
+
+/*static*/ [[noreturn]] void NodeLiteErrorHandler::ExitWithJSAssertError(
+    napi_env env, napi_value error) noexcept {
+  std::string message = NodeApi::GetPropertyString(env, error, "message");
+  std::string method = NodeApi::GetPropertyString(env, error, "method");
+  std::string expected = NodeApi::GetPropertyString(env, error, "expected");
+  std::string actual = NodeApi::GetPropertyString(env, error, "actual");
+  std::string source_file =
+      NodeApi::GetPropertyString(env, error, "sourceFile");
+  int32_t source_line = NodeApi::GetPropertyInt32(env, error, "sourceLine");
+  std::string error_stack =
+      NodeApi::GetPropertyString(env, error, "errorStack");
+  if (error_stack.empty()) {
+    error_stack = NodeApi::GetPropertyString(env, error, "stack");
+  }
+  std::string source_code = "<Source is unavailable>";
+  /*if (source_file == "MainScript") {
+    source_file = UseSrcFilePath(file_);
+    source_code = GetSourceCodeSliceForError(sourceLine, 2);
+    source_line += line_ - 1;
+  } else if (source_file.empty()) {
+    source_file = "<Unknown>";
+  }
+  */
+  std::string method_name = "assert." + method;
+  std::stringstream error_details;
+  if (method_name != "assert.fail") {
+    error_details << " Expected: " << expected << '\n'
+                  << "   Actual: " << actual << '\n';
+  }
+
+  std::string processed_stack = error_stack;
+  // ProcessStack(assertion_error_info->error_stack,
+  //                                           assertion_error_info->method);
+
+  ExitWithMessage(
+      "File", source_line, "JavaScript assertion error", [&](std::ostream& os) {
+        os << "Exception: " << "AssertionError" << '\n'
+           << "   Method: " << method_name << '\n'
+           << "  Message: " << message << '\n'
+           << error_details.str(/*a filler for formatting*/)
+           << "     File: " << source_file << ":" << source_line << '\n'
+           << source_code << '\n'
+           << "Callstack: " << '\n'
+           << processed_stack /*   a filler for formatting    */
+           << "Raw stack: " << '\n'
+           << "  " << error_stack;
+      });
+}
+
+/*static*/ [[noreturn]] void NodeLiteErrorHandler::ExitWithMessage(
+    const std::string& file,
+    int line,
+    const std::string& message,
+    std::function<void(std::ostream&)> get_error_details) noexcept {
+  std::ostringstream details_stream;
+  get_error_details(details_stream);
+  std::string details = details_stream.str();
+  std::cerr << "file:" << file << "\n";
+  std::cerr << "line:" << line << "\n";
+  std::cerr << message;
+  if (!details.empty()) {
+    std::cerr << "\n" << details;
+  }
+  std::cerr << std::endl;
+  exit(1);
 }
 
 //=============================================================================
@@ -783,6 +862,12 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 /*static*/ bool NodeApi::IsExceptionPending(napi_env env) noexcept {
   bool result{};
   EXIT_IF_FAILED(napi_is_exception_pending(env, &result));
+  return result;
+}
+
+/*static*/ napi_value NodeApi::GetAndClearLastException(napi_env env) noexcept {
+  napi_value result{};
+  EXIT_IF_FAILED(napi_get_and_clear_last_exception(env, &result));
   return result;
 }
 
@@ -988,4 +1073,12 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   EXIT_IF_FAILED(napi_run_script(env, script, &result));
   return result;
 }
+
+/*static*/ napi_valuetype NodeApi::TypeOf(napi_env env,
+                                          napi_value value) noexcept {
+  napi_valuetype result{};
+  EXIT_IF_FAILED(napi_typeof(env, value, &result));
+  return result;
+}
+
 }  // namespace node_lite
