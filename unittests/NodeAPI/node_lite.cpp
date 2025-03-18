@@ -17,9 +17,9 @@
 
 namespace fs = std::filesystem;
 
-namespace node_lite {
+// TODO: Move standalone functions to classes.
 
-namespace {
+namespace node_lite {
 
 std::string FormatString(const char* format, ...) {
   va_list args1;
@@ -33,6 +33,8 @@ std::string FormatString(const char* format, ...) {
   va_end(args2);
   return result;
 }
+
+namespace {
 
 std::string ReplaceAll(std::string str,
                        std::string_view from,
@@ -90,21 +92,24 @@ static std::string UseSrcFilePath(std::string const& file) {
 
 NodeApiRef MakeNodeApiRef(napi_env env, napi_value value) {
   napi_ref ref{};
-  EXIT_IF_FAILED(napi_create_reference(env, value, 1, &ref));
+  NODE_LITE_CALL(napi_create_reference(env, value, 1, &ref));
   return NodeApiRef(ref, NodeApiRefDeleter(env));
 }
 
-template <int32_t N>
+template <size_t N>
 std::array<napi_value, N> GetArgs(napi_env env,
                                   napi_callback_info info,
                                   size_t min_argc = N) {
   std::array<napi_value, N> result;
   size_t argc = N;
-  EXIT_IF_FAILED(
+  NODE_LITE_CALL(
       napi_get_cb_info(env, info, &argc, &result[0], nullptr, nullptr));
   if (min_argc < N) {
-    EXIT_IF_FALSE(argc >= min_argc,
-                  "Wrong number of arguments. Less then minimum provided.s");
+    NODE_LITE_ASSERT(
+        argc >= min_argc,
+        "Wrong number of arguments: %zu. Expected not more than %zu.",
+        argc,
+        min_argc);
     if (argc < N) {
       napi_value undefined = NodeApi::GetUndefined(env);
       for (size_t i = argc; i < N; ++i) {
@@ -112,7 +117,8 @@ std::array<napi_value, N> GetArgs(napi_env env,
       }
     }
   } else {
-    EXIT_IF_FALSE(argc == N, "Wrong number of arguments");
+    NODE_LITE_ASSERT(
+        argc == N, "Wrong number of arguments: %zu. Expected: %zu", argc, N);
   }
   return result;
 }
@@ -120,155 +126,17 @@ std::array<napi_value, N> GetArgs(napi_env env,
 }  // namespace
 
 void NodeApiRefDeleter::operator()(napi_ref ref) {
-  EXIT_IF_FAILED(napi_delete_reference(env, ref));
+  NODE_LITE_CALL(napi_delete_reference(env, ref));
 }
 
 NodeApiHandleScope::NodeApiHandleScope(napi_env env) noexcept : env_(env) {
-  EXIT_IF_FAILED(napi_open_handle_scope(env, &handle_scope_));
+  NODE_LITE_CALL(napi_open_handle_scope(env, &handle_scope_));
 }
 
 NodeApiHandleScope::~NodeApiHandleScope() noexcept {
   napi_env env = env_;
-  EXIT_IF_FAILED(napi_close_handle_scope(env_, handle_scope_));
+  NODE_LITE_CALL(napi_close_handle_scope(env_, handle_scope_));
 }
-
-#if 0
-//=============================================================================
-// NodeLiteErrorHandler implementation
-//=============================================================================
-NodeLiteErrorHandler::NodeLiteErrorHandler(NodeLiteRuntime* runtime,
-                                           std::exception_ptr const& exception,
-                                           std::string script,
-                                           std::string file,
-                                           int32_t line,
-                                           int32_t script_line_offset) noexcept
-    : runtime_(runtime),
-      exception_(exception),
-      script_(std::move(script)),
-      file_(std::move(file)),
-      line_(line),
-      script_line_offset_(script_line_offset) {}
-
-NodeLiteErrorHandler::~NodeLiteErrorHandler() noexcept = default;
-
-int NodeLiteErrorHandler::HandleAtProcessExit() noexcept {
-  if (exception_) {
-    try {
-      std::rethrow_exception(exception_);
-    } catch (NodeLiteException const& ex) {
-      if (auto assertionError = ex.assertion_error_info()) {
-        auto sourceFile = assertionError->source_file;
-        auto sourceLine = assertionError->source_line - script_line_offset_;
-        auto sourceCode = std::string("<Source is unavailable>");
-        if (sourceFile == "MainScript") {
-          sourceFile = UseSrcFilePath(file_);
-          sourceCode = GetSourceCodeSliceForError(sourceLine, 2);
-          sourceLine += line_ - 1;
-        } else if (sourceFile.empty()) {
-          sourceFile = "<Unknown>";
-        }
-
-        std::string methodName = "assert." + ex.assertion_error_info()->method;
-        std::stringstream errorDetails;
-        if (methodName != "assert.fail") {
-          errorDetails << " Expected: " << ex.assertion_error_info()->expected
-                       << '\n'
-                       << "   Actual: " << ex.assertion_error_info()->actual
-                       << '\n';
-        }
-
-        std::string processedStack =
-            runtime_->ProcessStack(ex.assertion_error_info()->error_stack,
-                                   ex.assertion_error_info()->method);
-
-        return FormatExitMessage(
-            file_.c_str(),
-            sourceLine,
-            "JavaScript assertion error",
-            [&](std::ostream& os) {
-              os << "Exception: " << ex.error_info()->name << '\n'
-                 << "   Method: " << methodName << '\n'
-                 << "  Message: " << ex.error_info()->message << '\n'
-                 << errorDetails.str(/*a filler for formatting*/)
-                 << "     File: " << sourceFile << ":" << sourceLine << '\n'
-                 << sourceCode << '\n'
-                 << "Callstack: " << '\n'
-                 << processedStack /*   a filler for formatting    */
-                 << "Raw stack: " << '\n'
-                 << "  " << ex.assertion_error_info()->error_stack;
-            });
-      } else if (ex.error_info()) {
-        return FormatExitMessage(
-            file_.c_str(), line_, "JavaScript error", [&](std::ostream& os) {
-              os << "Exception: " << ex.error_info()->name << '\n'
-                 << "  Message: " << ex.error_info()->message << '\n'
-                 << "Callstack: " << ex.error_info()->stack;
-            });
-      } else {
-        return FormatExitMessage(
-            file_.c_str(), line_, "NodeLite exception", [&](std::ostream& os) {
-              os << "Exception: NodeLiteException\n"
-                 << "     Code: " << ex.error_code() << '\n'
-                 << "  Message: " << ex.what() << '\n'
-                 << "     Expr: " << ex.expr();
-            });
-      }
-    } catch (std::exception const& ex) {
-      return FormatExitMessage(
-          file_.c_str(), line_, "C++ exception", [&](std::ostream& os) {
-            os << "Exception thrown: " << ex.what();
-          });
-    } catch (...) {
-      return FormatExitMessage(file_.c_str(), line_, "Unexpected exception");
-    }
-  }
-  return 0;
-}
-
-int NodeLiteErrorHandler::FormatExitMessage(
-    const std::string& file, int line, const std::string& message) noexcept {
-  return FormatExitMessage(
-      file, line, message, [](std::ostream&) { return ""; });
-}
-
-int NodeLiteErrorHandler::FormatExitMessage(
-    const std::string& file,
-    int line,
-    const std::string& message,
-    std::function<void(std::ostream&)> getDetails) noexcept {
-  std::ostringstream detailsStream;
-  getDetails(detailsStream);
-  std::string details = detailsStream.str();
-  std::cerr << "file:" << file << "\n";
-  std::cerr << "line:" << line << "\n";
-  std::cerr << message;
-  if (!details.empty()) {
-    std::cerr << "\n" << details;
-  }
-  std::cerr << std::endl;
-  return 1;
-}
-
-std::string NodeLiteErrorHandler::GetSourceCodeSliceForError(
-    int32_t lineIndex, int32_t extra_line_count) noexcept {
-  std::string sourceCode;
-  auto sourceStream = std::istringstream(script_ + '\n');
-  std::string sourceLine;
-  int32_t currentLineIndex = 1;  // The line index is 1-based.
-
-  while (std::getline(sourceStream, sourceLine, '\n')) {
-    if (currentLineIndex > lineIndex + extra_line_count) break;
-    if (currentLineIndex >= lineIndex - extra_line_count) {
-      sourceCode += currentLineIndex == lineIndex ? "===> " : "     ";
-      sourceCode += sourceLine;
-      sourceCode += "\n";
-    }
-    ++currentLineIndex;
-  }
-
-  return sourceCode;
-}
-#endif
 
 //=============================================================================
 // NodeLiteTaskRunner implementation
@@ -406,7 +274,9 @@ napi_value NodeLiteRuntime::GetModuleExports(
         NodeApi::GetReferenceValue(env_, module_exports.get());
     auto emplace_result = initialized_modules_.try_emplace(
         module_name, std::move(module_exports));
-    EXIT_IF_FALSE(emplace_result.second == true, "Failed to register module");
+    NODE_LITE_ASSERT(emplace_result.second == true,
+                     "Module is already registered: %s",
+                     module_name.c_str());
     return exports_value;
   };
 
@@ -587,7 +457,7 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
         [env, callback_ref = std::move(callback_ref)]() {
           napi_value callback =
               NodeApi::GetReferenceValue(env, callback_ref->get());
-          EXIT_IF_FAILED(napi_call_function(
+          NODE_LITE_CALL(napi_call_function(
               env, NodeApi::GetUndefined(env), callback, 0, nullptr, nullptr));
         });
     return NodeApi::CreateUInt32(env, task_id);
@@ -647,7 +517,7 @@ void NodeLiteRuntime::RunCallChecks() {
   napi_value assert_exports = GetModuleExports(env, "assert");
   napi_value runCallChecks =
       NodeApi::GetProperty(env, assert_exports, "runCallChecks");
-  EXIT_IF_FAILED(napi_call_function(
+  NODE_LITE_CALL(napi_call_function(
       env, NodeApi::GetUndefined(env), runCallChecks, 0, nullptr, nullptr));
 }
 
@@ -715,6 +585,7 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
     napi_value error = NodeApi::GetAndClearLastException(env);
     ExitWithJSError(env, error);
   }
+  // TODO: implement
   std::cerr << "NodeLiteErrorHandler::OnNodeApiFailed" << std::endl;
   exit(1);
   // FormatExitMessage(
@@ -739,6 +610,7 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
                                                      char const* message,
                                                      const char* file,
                                                      int32_t line) noexcept {
+  // TODO: implement
   std::cerr << "NodeLiteErrorHandler::OnAssertFailed" << std::endl;
   exit(1);
   //// TODO: protect from stack overflow
@@ -861,52 +733,52 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 
 /*static*/ bool NodeApi::IsExceptionPending(napi_env env) noexcept {
   bool result{};
-  EXIT_IF_FAILED(napi_is_exception_pending(env, &result));
+  NODE_LITE_CALL(napi_is_exception_pending(env, &result));
   return result;
 }
 
 /*static*/ napi_value NodeApi::GetAndClearLastException(napi_env env) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_get_and_clear_last_exception(env, &result));
+  NODE_LITE_CALL(napi_get_and_clear_last_exception(env, &result));
   return result;
 }
 
 /*static*/ napi_value NodeApi::GetNull(napi_env env) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_get_null(env, &result));
+  NODE_LITE_CALL(napi_get_null(env, &result));
   return result;
 }
 
 /*static*/ napi_value NodeApi::GetUndefined(napi_env env) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_get_undefined(env, &result));
+  NODE_LITE_CALL(napi_get_undefined(env, &result));
   return result;
 }
 
 /*static*/ napi_value NodeApi::GetGlobal(napi_env env) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_get_global(env, &result));
+  NODE_LITE_CALL(napi_get_global(env, &result));
   return result;
 }
 
 /*static*/ napi_value NodeApi::GetReferenceValue(napi_env env,
                                                  napi_ref ref) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_get_reference_value(env, ref, &result));
+  NODE_LITE_CALL(napi_get_reference_value(env, ref, &result));
   return result;
 }
 
 /*static*/ napi_value NodeApi::CreateUInt32(napi_env env,
                                             std::uint32_t value) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_create_uint32(env, value, &result));
+  NODE_LITE_CALL(napi_create_uint32(env, value, &result));
   return result;
 }
 
 /*static*/ napi_value NodeApi::CreateString(napi_env env,
                                             std::string_view value) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(
+  NODE_LITE_CALL(
       napi_create_string_utf8(env, value.data(), value.size(), &result));
   return result;
 }
@@ -914,11 +786,11 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 /*static*/ napi_value NodeApi::CreateStringArray(
     napi_env env, std::vector<std::string> const& value) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_create_array(env, &result));
+  NODE_LITE_CALL(napi_create_array(env, &result));
 
   uint32_t index = 0;
   for (const std::string& item : value) {
-    EXIT_IF_FAILED(
+    NODE_LITE_CALL(
         napi_set_element(env, result, index++, CreateString(env, item)));
   }
   return result;
@@ -926,35 +798,35 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 
 /*static*/ napi_value NodeApi::CreateObject(napi_env env) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_create_object(env, &result));
+  NODE_LITE_CALL(napi_create_object(env, &result));
   return result;
 }
 
 /*static*/ napi_value NodeApi::CreateExternal(napi_env env,
                                               void* data) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_create_external(env, data, nullptr, nullptr, &result));
+  NODE_LITE_CALL(napi_create_external(env, data, nullptr, nullptr, &result));
   return result;
 }
 
 /*static*/ int32_t NodeApi::GetValueInt32(napi_env env,
                                           napi_value value) noexcept {
   int32_t result{};
-  EXIT_IF_FAILED(napi_get_value_int32(env, value, &result));
+  NODE_LITE_CALL(napi_get_value_int32(env, value, &result));
   return result;
 }
 
 /*static*/ uint32_t NodeApi::GetValueUInt32(napi_env env,
                                             napi_value value) noexcept {
   uint32_t result{};
-  EXIT_IF_FAILED(napi_get_value_uint32(env, value, &result));
+  NODE_LITE_CALL(napi_get_value_uint32(env, value, &result));
   return result;
 }
 
 /*static*/ void* NodeApi::GetValueExternal(napi_env env,
                                            napi_value value) noexcept {
   void* result{};
-  EXIT_IF_FAILED(napi_get_value_external(env, value, &result));
+  NODE_LITE_CALL(napi_get_value_external(env, value, &result));
   return result;
 }
 
@@ -962,14 +834,14 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
                                      napi_value obj,
                                      std::string_view utf8_name) noexcept {
   bool result{};
-  EXIT_IF_FAILED(napi_has_named_property(env, obj, utf8_name.data(), &result));
+  NODE_LITE_CALL(napi_has_named_property(env, obj, utf8_name.data(), &result));
   return result;
 }
 
 /*static*/ napi_value NodeApi::GetProperty(
     napi_env env, napi_value obj, std::string_view utf8_name) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_get_named_property(env, obj, utf8_name.data(), &result));
+  NODE_LITE_CALL(napi_get_named_property(env, obj, utf8_name.data(), &result));
   return result;
 }
 
@@ -990,7 +862,7 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 /*static*/ std::string NodeApi::CoerceToString(napi_env env,
                                                napi_value value) noexcept {
   napi_value str_value;
-  EXIT_IF_FAILED(napi_coerce_to_string(env, value, &str_value));
+  NODE_LITE_CALL(napi_coerce_to_string(env, value, &str_value));
   return ToStdString(env, str_value);
 }
 
@@ -998,7 +870,7 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
                                      napi_value obj,
                                      std::string_view utf8_name,
                                      napi_value value) noexcept {
-  EXIT_IF_FAILED(napi_set_named_property(env, obj, utf8_name.data(), value));
+  NODE_LITE_CALL(napi_set_named_property(env, obj, utf8_name.data(), value));
 }
 
 /*static*/ void NodeApi::SetPropertyUInt32(napi_env env,
@@ -1034,7 +906,7 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
                                    std::string_view utf8_name,
                                    napi_callback cb) noexcept {
   napi_value func{};
-  EXIT_IF_FAILED(napi_create_function(
+  NODE_LITE_CALL(napi_create_function(
       env, utf8_name.data(), utf8_name.size(), cb, nullptr, &func));
   NodeApi::SetProperty(env, obj, utf8_name, func);
 }
@@ -1042,9 +914,9 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 /*static*/ std::string NodeApi::ToStdString(napi_env env,
                                             napi_value value) noexcept {
   size_t str_size{};
-  EXIT_IF_FAILED(napi_get_value_string_utf8(env, value, nullptr, 0, &str_size));
+  NODE_LITE_CALL(napi_get_value_string_utf8(env, value, nullptr, 0, &str_size));
   std::string result(str_size, '\0');
-  EXIT_IF_FAILED(napi_get_value_string_utf8(
+  NODE_LITE_CALL(napi_get_value_string_utf8(
       env, value, &result[0], str_size + 1, nullptr));
   return result;
 }
@@ -1053,14 +925,14 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
     napi_env env, napi_value value) noexcept {
   std::vector<std::string> result;
   bool is_array;
-  EXIT_IF_FAILED(napi_is_array(env, value, &is_array));
+  NODE_LITE_CALL(napi_is_array(env, value, &is_array));
   if (is_array) {
     uint32_t length;
-    EXIT_IF_FAILED(napi_get_array_length(env, value, &length));
+    NODE_LITE_CALL(napi_get_array_length(env, value, &length));
     result.reserve(length);
     for (uint32_t i = 0; i < length; i++) {
       napi_value element;
-      EXIT_IF_FAILED(napi_get_element(env, value, i, &element));
+      NODE_LITE_CALL(napi_get_element(env, value, i, &element));
       result.push_back(CoerceToString(env, element));
     }
   }
@@ -1070,14 +942,14 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
 /*static*/ napi_value NodeApi::RunScript(napi_env env,
                                          napi_value script) noexcept {
   napi_value result{};
-  EXIT_IF_FAILED(napi_run_script(env, script, &result));
+  NODE_LITE_CALL(napi_run_script(env, script, &result));
   return result;
 }
 
 /*static*/ napi_valuetype NodeApi::TypeOf(napi_env env,
                                           napi_value value) noexcept {
   napi_valuetype result{};
-  EXIT_IF_FAILED(napi_typeof(env, value, &result));
+  NODE_LITE_CALL(napi_typeof(env, value, &result));
   return result;
 }
 

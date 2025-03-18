@@ -21,7 +21,7 @@
 #define NAPI_EXPERIMENTAL
 #include "../../API/hermes_node_api/node_api/js_native_api.h"
 
-#define EXIT_IF_FAILED(expr)                                                   \
+#define NODE_LITE_CALL(expr)                                                   \
   do {                                                                         \
     napi_status temp_status__ = (expr);                                        \
     if (temp_status__ != napi_status::napi_ok) {                               \
@@ -30,11 +30,11 @@
     }                                                                          \
   } while (false)
 
-#define EXIT_IF_FALSE(expr, message)                                           \
+#define NODE_LITE_ASSERT(expr, ...)                                            \
   do {                                                                         \
     if (!(expr)) {                                                             \
       NodeLiteErrorHandler::OnAssertFailed(                                    \
-          #expr, message, __FILE__, __LINE__);                                 \
+          #expr, FormatString("" __VA_ARGS__).c_str(), __FILE__, __LINE__);    \
     }                                                                          \
   } while (false)
 
@@ -51,22 +51,7 @@ namespace node_lite {
 class NodeApiHandleScope;
 class NodeLiteRuntime;
 
-// Properties from JavaScript Error object.
-struct NodeLiteErrorInfo {
-  std::string name;
-  std::string message;
-  std::string stack;
-};
-
-// Properties from JavaScript AssertionError object.
-struct NodeLiteAssertionErrorInfo {
-  std::string method;
-  std::string expected;
-  std::string actual;
-  std::string source_file;
-  int32_t source_line;
-  std::string error_stack;
-};
+std::string FormatString(const char* format, ...);
 
 struct NodeLiteScriptInfo {
   std::string script;
