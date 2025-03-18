@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-#add_subdirectory(js)
+add_subdirectory(js)
 #add_subdirectory(js-native-api)
 
 # set(NodeApiTests
@@ -102,4 +102,8 @@ set(NodeApiTestsSources
   test_basics.cpp
 )
 
-add_hermes_unittest(node_api_tests ${NodeApiTestsSources})
+add_hermes_unittest(nodeApiTests ${NodeApiTestsSources})
+
+# transform test JS files to be Hermes-compatible
+#add_dependencies(nodeApiTests transformJSFiles copyBabelFiles)
+add_dependencies(nodeApiTests copyNodeApiJSToolsFiles)
