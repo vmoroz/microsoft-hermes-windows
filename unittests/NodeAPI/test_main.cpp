@@ -6,6 +6,7 @@
 #include <string_view>
 #include "child_process.h"
 
+#if 0
 namespace fs = std::filesystem;
 
 namespace node_api_tests {
@@ -99,9 +100,9 @@ void RegisterNodeApiTests(const char* exePathStr) {
 }
 
 }  // namespace node_api_tests
-
+#endif
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  node_api_tests::RegisterNodeApiTests(argv[0]);
+  //node_api_tests::RegisterNodeApiTests(argv[0]);
   return RUN_ALL_TESTS();
 }

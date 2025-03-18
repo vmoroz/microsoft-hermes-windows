@@ -95,4 +95,11 @@ target_include_directories(node_lite
     ../../API/hermes_node_api/node_api
 )
 
-#//"//testing/gtest",
+set(NodeApiTestsSources
+  child_process.cpp
+  child_process.h
+  test_main.cpp
+  test_basics.cpp
+)
+
+add_hermes_unittest(node_api_tests ${NodeApiTestsSources})
