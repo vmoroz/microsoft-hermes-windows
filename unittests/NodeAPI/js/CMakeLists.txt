@@ -1,48 +1,58 @@
 set(testJSFiles
   basics/hello.js
-  # 2_function_arguments/test.js
-  # 3_callbacks/test.js
-  # 4_object_factory/test.js
-  # 5_function_factory/test.js
-  # 6_object_wrap/test.js
-  # 7_factory_wrap/test.js
-  # 8_passing_wrapped/test.js
-  # common/assert.js
-  # common/common.js
-  # test_array/test.js
-  # test_bigint/test.js
-  # test_constructor/test.js
-  # test_constructor/test2.js
-  # test_conversions/test.js
-  # test_dataview/test.js
-  # test_date/test.js
-  # test_error/test.js
-  # test_exception/test.js
-  # test_exception/testFinalizerException.js
-  # test_finalizer/test.js
-  # test_function/test.js
-  # test_general/test.js
-  # test_general/testEnvCleanup.js
-  # test_general/testFinalizer.js
-  # test_general/testGlobals.js
-  # test_general/testInstanceOf.js
-  # test_general/testNapiRun.js
-  # test_general/testNapiStatus.js
-  # test_handle_scope/test.js
-  # test_instance_data/test.js
-  # test_new_target/test.js
-  # test_number/test.js
-  # test_object/test.js
-  # test_object/test_null.js
-  # test_promise/test.js
-  # test_properties/test.js
-  # test_reference/test.js
-  # test_reference_double_free/test.js
-  # test_string/test.js
-  # test_symbol/test1.js
-  # test_symbol/test2.js
-  # test_symbol/test3.js
-  # test_typedarray/test.js
+  common/assert.js
+  common/common.js
+  js-native-api/2_function_arguments/test.js
+  js-native-api/3_callbacks/test.js
+  js-native-api/4_object_factory/test.js
+  js-native-api/5_function_factory/test.js
+  js-native-api/6_object_wrap/test-basic-finalizer.js
+  js-native-api/6_object_wrap/test-object-wrap-ref.js
+  js-native-api/6_object_wrap/test.js
+  js-native-api/7_factory_wrap/test.js
+  js-native-api/8_passing_wrapped/test.js
+  js-native-api/test_array/test.js
+  js-native-api/test_bigint/test.js
+  js-native-api/test_cannot_run_js/test.js
+  js-native-api/test_constructor/test.js
+  js-native-api/test_constructor/test2.js
+  js-native-api/test_constructor/test_null.js
+  js-native-api/test_conversions/test.js
+  js-native-api/test_dataview/test.js
+  js-native-api/test_date/test.js
+  js-native-api/test_error/test.js
+  js-native-api/test_exception/test.js
+  js-native-api/test_exception/testFinalizerException.js
+  js-native-api/test_finalizer/test.js
+  js-native-api/test_finalizer/test_fatal_finalize.js
+  js-native-api/test_function/test.js
+  js-native-api/test_general/test.js
+  js-native-api/test_general/testEnvCleanup.js
+  js-native-api/test_general/testFinalizer.js
+  js-native-api/test_general/testGlobals.js
+  js-native-api/test_general/testInstanceOf.js
+  js-native-api/test_general/testNapiRun.js
+  js-native-api/test_general/testNapiStatus.js
+  js-native-api/test_handle_scope/test.js
+  js-native-api/test_instance_data/test.js
+  js-native-api/test_new_target/test.js
+  js-native-api/test_number/test.js
+  js-native-api/test_number/test_null.js
+  js-native-api/test_object/test.js
+  js-native-api/test_object/test_exceptions.js
+  js-native-api/test_object/test_null.js
+  js-native-api/test_promise/test.js
+  js-native-api/test_properties/test.js
+  js-native-api/test_reference/test.js
+  js-native-api/test_reference/test_finalizer.js
+  js-native-api/test_reference_double_free/test.js
+  js-native-api/test_reference_double_free/test_wrap.js
+  js-native-api/test_string/test.js
+  js-native-api/test_string/test_null.js
+  js-native-api/test_symbol/test1.js
+  js-native-api/test_symbol/test2.js
+  js-native-api/test_symbol/test3.js
+  js-native-api/test_typedarray/test.js
 )
 
 if(WIN32)
@@ -76,3 +86,41 @@ add_custom_target(installNodeApiTestJsTools
   DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/node_modules.sha1
 )
 add_dependencies(installNodeApiTestJsTools copyNodeApiJSToolsFiles)
+
+# TODO: replace "metro-react-native-babel-preset" with a modern alternative.
+# add the Babel transform commands for each test JS file
+foreach(testJSFile ${testJSFiles})
+  # create target directory
+  get_filename_component(testJSDir ${testJSFile} DIRECTORY)
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${testJSDir})
+
+  # generate Hermes-compatible JavaScript code
+  add_custom_command(
+    OUTPUT  ${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}
+            ${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}.map
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../${testJSFile}
+    COMMAND ${npx}
+      "babel"
+      "--retain-lines"
+      "--source-maps"
+        "true"
+      "--out-file"
+        "${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}"
+      "--source-map-target"
+        "${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}.map"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../${testJSFile}"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  )
+
+  # build a list of all outputs
+  list(APPEND transformedJSFiles
+    ${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}
+    ${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}.map
+  )
+endforeach()
+
+# run the Babel transforms for all required output files
+add_custom_target(transformJSFiles
+  DEPENDS ${transformedJSFiles}
+)
+add_dependencies(transformJSFiles installNodeApiTestJsTools)
