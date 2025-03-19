@@ -45,6 +45,15 @@ set(testJSFiles
   # test_typedarray/test.js
 )
 
+if(WIN32)
+  # "npx" interrupts current shell script execution without the "call"
+  set(npx "call" "npx")
+  set(yarn "call" "yarn")
+else()
+  set(npx "npx")
+  set(yarn "yarn")
+endif()
+
 # copy JS Tools package files
 add_custom_target(copyNodeApiJSToolsFiles
   COMMAND ${CMAKE_COMMAND} -E copy_if_different 
@@ -56,21 +65,14 @@ add_custom_target(copyNodeApiJSToolsFiles
 
 # run "yarn install"
 add_custom_command(
-  OUTPUT node_modules.md5
-  DEPENDS package.json yarn.lock
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/node_modules.sha1
+  DEPENDS
+    ${CMAKE_CURRENT_BINARY_DIR}/package.json
+    ${CMAKE_CURRENT_BINARY_DIR}/yarn.lock
   COMMAND ${yarn} install --frozen-lockfile
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 add_custom_target(installNodeApiTestJsTools
-  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/node_modules.md5
+  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/node_modules.sha1
 )
 add_dependencies(installNodeApiTestJsTools copyNodeApiJSToolsFiles)
-
-if(WIN32)
-  # "npx" interrupts current shell script execution without the "call"
-  set(npx "call" "npx")
-  set(yarn "call" "yarn")
-else()
-  set(npx "npx")
-  set(yarn "yarn")
-endif()

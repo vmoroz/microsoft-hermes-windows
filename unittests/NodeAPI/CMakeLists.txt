@@ -106,4 +106,4 @@ add_hermes_unittest(nodeApiTests ${NodeApiTestsSources})
 
 # transform test JS files to be Hermes-compatible
 #add_dependencies(nodeApiTests transformJSFiles copyBabelFiles)
-add_dependencies(nodeApiTests copyNodeApiJSToolsFiles)
+add_dependencies(nodeApiTests installNodeApiTestJsTools)
