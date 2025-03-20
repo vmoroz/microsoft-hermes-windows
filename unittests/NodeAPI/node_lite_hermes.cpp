@@ -5,7 +5,7 @@
 #include "../../include/hermes/VM/Runtime.h"
 #include "node_lite.h"
 
-namespace node_lite {
+namespace node_api_tests {
 
 class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
  public:
@@ -109,7 +109,7 @@ class HermesNodeLiteAdapter : public INodeLiteRuntimeAdapter {
 }  // namespace node_lite
 
 int32_t main(int32_t argc, char* argv[]) {
-  node_lite::NodeLiteRuntime::Run(
+  node_api_tests::NodeLiteRuntime::Run(
       std::vector<std::string>(argv, argv + argc),
-      std::make_unique<node_lite::HermesNodeLiteAdapter>());
+      std::make_unique<node_api_tests::HermesNodeLiteAdapter>());
 }

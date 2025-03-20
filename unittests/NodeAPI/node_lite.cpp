@@ -5,7 +5,6 @@
 #include <windows.h>
 #include <algorithm>
 #include <array>
-#include <cstdarg>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -14,41 +13,15 @@
 #include <sstream>
 #include "child_process.h"
 #include "js_native_api.h"
+#include "string_utils.h"
 
 namespace fs = std::filesystem;
 
 // TODO: Move standalone functions to classes.
 
-namespace node_lite {
-
-std::string FormatString(const char* format, ...) {
-  va_list args1;
-  va_start(args1, format);
-  va_list args2;
-  va_copy(args2, args1);
-  std::string result =
-      std::string(std::vsnprintf(nullptr, 0, format, args1), '\0');
-  va_end(args1);
-  std::vsnprintf(&result[0], result.size() + 1, format, args2);
-  va_end(args2);
-  return result;
-}
+namespace node_api_tests {
 
 namespace {
-
-std::string ReplaceAll(std::string str,
-                       std::string_view from,
-                       std::string_view to) {
-  std::string result = std::move(str);
-  if (from.empty()) return result;
-  size_t start_pos = 0;
-  while ((start_pos = result.find(from, start_pos)) != std::string::npos) {
-    result.replace(start_pos, from.length(), to);
-    start_pos += to.length();  // In case 'to' contains 'from', like replacing
-                               // 'x' with 'yx'
-  }
-  return result;
-}
 
 int32_t GetEndOfLineCount(char const* script) noexcept {
   return std::count(script, script + strlen(script), '\n');
@@ -402,8 +375,7 @@ void NodeLiteRuntime::DefineChildProcessModule() {
           std::string command = NodeApi::ToStdString(env, args[0]);
           std::vector<std::string> command_args =
               NodeApi::ToStdStringArray(env, args[1]);
-          child_process::ProcessResult call_result =
-              child_process::spawnSync(command, command_args);
+          ProcessResult call_result = SpawnSync(command, command_args);
           napi_value result = NodeApi::CreateObject(env);
           NodeApi::SetPropertyUInt32(env, result, "status", call_result.status);
           NodeApi::SetPropertyString(
@@ -953,4 +925,4 @@ std::string NodeLiteRuntime::ProcessStack(std::string const& stack,
   return result;
 }
 
-}  // namespace node_lite
+}  // namespace node_api_tests

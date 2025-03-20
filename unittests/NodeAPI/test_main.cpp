@@ -5,11 +5,21 @@
 #include <filesystem>
 #include <string_view>
 #include "child_process.h"
+#include "test_main.h"
 
-#if 0
 namespace fs = std::filesystem;
 
 namespace node_api_tests {
+
+/*static*/ std::filesystem::path TestFixtureBase::node_lite_path_;
+/*static*/ std::filesystem::path TestFixtureBase::js_root_dir_;
+
+/*static*/ void TestFixtureBase::InitializeGlobals(
+    const char* test_exe_path) noexcept {
+  fs::path test_exe_dir = fs::path(test_exe_path).parent_path();
+  TestFixtureBase::node_lite_path_ = test_exe_dir / "node_lite.exe";
+  TestFixtureBase::js_root_dir_ = test_exe_dir.parent_path() / "js";
+}
 
 // Forward declaration
 int EvaluateJSFile(int argc, char** argv);
@@ -25,7 +35,7 @@ struct NodeApiTestFixture : ::testing::Test {
 
   void TestBody() override {
     ProcessResult result =
-        spawnSync(m_testProcess.string(), {m_jsFilePath.string()});
+        SpawnSync(m_testProcess.string(), {m_jsFilePath.string()});
     if (result.status == 0) {
       return;
     }
@@ -74,35 +84,39 @@ std::string SanitizeName(const std::string& name) {
 }
 
 void RegisterNodeApiTests(const char* exePathStr) {
-  fs::path exePath = fs::path(exePathStr).replace_filename("node_lite.exe");
-  fs::path rootJsPath = fs::path(exePath).replace_filename("test-js-files");
-  for (const fs::directory_entry& dir_entry :
-       fs::recursive_directory_iterator(rootJsPath)) {
-    if (dir_entry.is_regular_file() && dir_entry.path().extension() == ".js") {
-      fs::path jsFilePath = dir_entry.path();
-      std::string testSuiteName = SanitizeName(
-          jsFilePath.parent_path().parent_path().filename().string());
-      std::string testName =
-          SanitizeName(jsFilePath.parent_path().filename().string() + "/" +
-                       jsFilePath.filename().string());
-      ::testing::RegisterTest(testSuiteName.c_str(),
-                              testName.c_str(),
-                              nullptr,
-                              nullptr,
-                              jsFilePath.string().c_str(),
-                              1,
-                              [exePath, jsFilePath]() {
-                                return new NodeApiTestFixture(exePath,
-                                                              jsFilePath);
-                              });
-    }
-  }
+  fs::path exeDir = fs::path(exePathStr).parent_path();
+  fs::path exePath = exeDir / "node_lite.exe";
+  fs::path rootJSPath = exeDir.parent_path() / "js";
+
+  // for (const fs::directory_entry& dir_entry :
+  //      fs::recursive_directory_iterator(rootJsPath)) {
+  //   if (dir_entry.is_regular_file() && dir_entry.path().extension() == ".js")
+  //   {
+  //     fs::path jsFilePath = dir_entry.path();
+  //     std::string testSuiteName = SanitizeName(
+  //         jsFilePath.parent_path().parent_path().filename().string());
+  //     std::string testName =
+  //         SanitizeName(jsFilePath.parent_path().filename().string() + "/" +
+  //                      jsFilePath.filename().string());
+  //     ::testing::RegisterTest(testSuiteName.c_str(),
+  //                             testName.c_str(),
+  //                             nullptr,
+  //                             nullptr,
+  //                             jsFilePath.string().c_str(),
+  //                             1,
+  //                             [exePath, jsFilePath]() {
+  //                               return new NodeApiTestFixture(exePath,
+  //                                                             jsFilePath);
+  //                             });
+  //   }
+  // }
 }
 
 }  // namespace node_api_tests
-#endif
+
 int main(int argc, char** argv) {
+  node_api_tests::TestFixtureBase::InitializeGlobals(argv[0]);
   ::testing::InitGoogleTest(&argc, argv);
-  //node_api_tests::RegisterNodeApiTests(argv[0]);
+  // node_api_tests::RegisterNodeApiTests(argv[0]);
   return RUN_ALL_TESTS();
 }

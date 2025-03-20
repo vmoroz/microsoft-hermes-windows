@@ -81,6 +81,8 @@ add_executable(node_lite
   node_lite.cpp
   node_lite.h
   node_lite_hermes.cpp
+  string_utils.cpp
+  string_utils.h
 )
 
 target_link_libraries(node_lite
@@ -98,7 +100,10 @@ target_include_directories(node_lite
 set(NodeApiTestsSources
   child_process.cpp
   child_process.h
+  string_utils.cpp
+  string_utils.h
   test_main.cpp
+  test_main.h
   test_basics.cpp
 )
 

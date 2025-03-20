@@ -19,20 +19,23 @@
 #include <windows.h>
 #include <cassert>
 #include <cstdio>
+#include "string_utils.h"
 
 #ifndef VerifyElseExit
 #define VerifyElseExit(condition)                                              \
   do {                                                                         \
     if (!(condition)) {                                                        \
-      exitOnError(#condition);                                                 \
+      ExitOnError(#condition);                                                 \
     }                                                                          \
   } while (false)
 #endif
 
-namespace node_lite::child_process {
+namespace node_api_tests {
 
-std::string readFromPipe(HANDLE pipeHandle);
-void exitOnError(const char* message);
+namespace {
+
+std::string ReadFromPipe(HANDLE pipeHandle);
+void ExitOnError(const char* message);
 
 struct AutoHandle {
   HANDLE handle{NULL};
@@ -49,10 +52,11 @@ struct AutoHandle {
     handle = NULL;
   }
 };
+}  // namespace
 
 // Create a child process that uses the previously created pipes for STDIN and
 // STDOUT.
-ProcessResult spawnSync(std::string_view command,
+ProcessResult SpawnSync(std::string_view command,
                         std::vector<std::string> args) {
   ProcessResult result{};
 
@@ -127,13 +131,16 @@ ProcessResult spawnSync(std::string_view command,
   err_write_handle.Close();
 
   result.status = exit_code;
-  result.std_output = readFromPipe(out_read_handle.handle);
-  result.std_error = readFromPipe(err_read_handle.handle);
+  result.std_output =
+      ReplaceAll(ReadFromPipe(out_read_handle.handle), "\r\n", "\n");
+  result.std_error =
+      ReplaceAll(ReadFromPipe(err_read_handle.handle), "\r\n", "\n");
 
   return result;
 }
 
-std::string readFromPipe(HANDLE pipeHandle) {
+namespace {
+std::string ReadFromPipe(HANDLE pipeHandle) {
   std::string result;
   constexpr size_t bufferSize = 4096;
   char buffer[bufferSize];
@@ -152,7 +159,7 @@ std::string readFromPipe(HANDLE pipeHandle) {
 
 // Format a readable error message, display a message box,
 // and exit from the application.
-void exitOnError(const char* message) {
+void ExitOnError(const char* message) {
   LPVOID lpMsgBuf;
   LPVOID lpDisplayBuf;
   DWORD dw = GetLastError();
@@ -181,4 +188,5 @@ void exitOnError(const char* message) {
   ::ExitProcess(1);
 }
 
-}  // namespace node_lite::child_process
+}  // namespace
+}  // namespace node_api_tests

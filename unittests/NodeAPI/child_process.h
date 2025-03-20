@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace node_lite::child_process {
+namespace node_api_tests {
 
 // Struct to hold the result of a child process execution.
 struct ProcessResult {
@@ -19,9 +19,9 @@ struct ProcessResult {
 
 // Creates a child process to run the given command with the specified
 // arguments.
-ProcessResult spawnSync(std::string_view command,
+ProcessResult SpawnSync(std::string_view command,
                         std::vector<std::string> args);
 
-}  // namespace node_lite::child_process
+}  // namespace node_api_tests
 
 #endif  // !NODE_API_TEST_CHILD_PROCESS_H

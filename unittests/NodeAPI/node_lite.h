@@ -3,7 +3,6 @@
 
 // A simple Node.js-like runtime that runs Node-API test scripts.
 
-#pragma once
 #ifndef NODE_API_TEST_NODE_LITE_H
 #define NODE_API_TEST_NODE_LITE_H
 
@@ -45,13 +44,11 @@ constexpr napi_property_attributes operator|(napi_property_attributes left,
                                   static_cast<int>(right));
 }
 
-namespace node_lite {
+namespace node_api_tests {
 
 // Forward declarations
 class NodeApiHandleScope;
 class NodeLiteRuntime;
-
-std::string FormatString(const char* format, ...);
 
 struct NodeLiteScriptInfo {
   std::string script;
@@ -274,6 +271,6 @@ class NodeApi {
   static napi_valuetype TypeOf(napi_env env, napi_value value) noexcept;
 };
 
-}  // namespace node_lite
+}  // namespace node_api_tests
 
 #endif  // !NODE_API_TEST_NODE_LITE_H
