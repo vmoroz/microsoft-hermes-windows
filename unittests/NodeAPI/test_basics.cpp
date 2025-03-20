@@ -15,22 +15,22 @@ namespace node_api_tests {
 class BasicsTest : public TestFixtureBase {
  protected:
   void SetUp() override { basics_js_dir_ = js_root_dir_ / "basics"; }
+  ProcessResult RunScript(std::string_view script_filename) {
+    return SpawnSync(node_lite_path_.string(),
+                     {(basics_js_dir_ / script_filename).string()});
+  }
 
   fs::path basics_js_dir_;
 };
 
-TEST_F(BasicsTest, TestBasicOperations) {
-  // Example test case for basic operations
-  int a = 5;
-  int b = 10;
-  EXPECT_EQ(a + b, 15);
-  EXPECT_NE(a, b);
+TEST_F(BasicsTest, TestHello) {
+  ProcessResult result = RunScript("hello.js");
+  ASSERT_STREQ("Hello\n", result.std_output.c_str());
 }
 
-TEST_F(BasicsTest, TestHello) {
-  ProcessResult result = SpawnSync(node_lite_path_.string(),
-                                   {(basics_js_dir_ / "hello.js").string()});
-  ASSERT_STREQ(result.std_output.c_str(), "Hello\n");
+TEST_F(BasicsTest, TestThrowString) {
+  ProcessResult result = RunScript("throw_string.js");
+  ASSERT_STREQ("Hello\n", result.std_error.c_str());
 }
 
 }  // namespace node_api_tests
