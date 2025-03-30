@@ -15,11 +15,13 @@ namespace node_api_tests {
 class BasicsTest : public TestFixtureBase {
  protected:
   void SetUp() override { basics_js_dir_ = js_root_dir_ / "basics"; }
-  ProcessResult RunScript(std::string_view script_filename) {
+
+  ProcessResult RunScript(std::string_view script_filename) noexcept {
     return SpawnSync(node_lite_path_.string(),
                      {(basics_js_dir_ / script_filename).string()});
   }
 
+ private:
   fs::path basics_js_dir_;
 };
 

@@ -287,10 +287,11 @@ if (MSVC)
     set(msvc_warning_flags
       # SDL requires these 3 checks enabled.
       # We downgrade 4149 to level 3 to keep this as a warning because the default level 2 is bumped to error
-      -w34146 # Suppress 'unary minus operator applied to unsigned type, result still unsigned'
+      # -w34146 # Suppress 'unary minus operator applied to unsigned type, result still unsigned'
+      -wd4146 # Suppress 'unary minus operator applied to unsigned type, result still unsigned'
       # We don't disable the other two
-      #-wd4244 # Suppress ''argument' : conversion from 'type1' to 'type2', possible loss of data'
-      #-wd4267 # Suppress ''var' : conversion from 'size_t' to 'type', possible loss of data'
+      -wd4244 # Suppress ''argument' : conversion from 'type1' to 'type2', possible loss of data'
+      -wd4267 # Suppress ''var' : conversion from 'size_t' to 'type', possible loss of data'
 
       # Disabled warnings.
       -wd4141 # Suppress ''modifier' : used more than once' (because of __forceinline combined with inline)

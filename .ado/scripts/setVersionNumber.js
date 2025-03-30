@@ -12,7 +12,7 @@ function main() {
   const mustPublish = env["MustPublish"] === "True";
   console.log(`MustPublish: ${mustPublish}`);
 
-  const { semanticVersion, fileVersion, isTest } = computeVersion();
+  const { semanticVersion, fileVersion, isTest } = computeVersion(mustPublish);
   console.log(`Semantic Version: ${semanticVersion}`);
   console.log(`Windows File Version: ${fileVersion}`);
 
