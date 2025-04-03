@@ -1366,7 +1366,7 @@ TEST(HermesRuntimeCreateNodeApiEnv, DefaultWeakImplementationThrows) {
         } catch (const JSINativeException &e) {
           EXPECT_STREQ(
               e.what(),
-              "Node API is not supported in Hermes by default: Make sure you're including libhermes-node-api in your build.");
+              "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
           throw;
         }
       },

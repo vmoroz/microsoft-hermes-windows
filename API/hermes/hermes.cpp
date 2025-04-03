@@ -91,7 +91,7 @@ namespace hermes::node_api {
   HERMES_WEAK void
   createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion, napi_env *env) {
     throw facebook::jsi::JSINativeException(
-        "Node API is not supported in Hermes by default: Make sure you're including hermesNodeApi in your build.");
+        "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
   }
 }
 
