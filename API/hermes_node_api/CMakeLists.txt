@@ -9,6 +9,7 @@ add_subdirectory(node_api)
 
 add_library(hermesNodeApi STATIC hermes_node_api.cpp)
 target_link_libraries(hermesNodeApi PRIVATE
+  libhermes
   hermesVMRuntime
   nodeApi
   hermesParser)
