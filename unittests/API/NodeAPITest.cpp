@@ -10,12 +10,10 @@
 #include <cstdint>
 
 #include "js_native_api.h"
-#include "js_native_api_types.h"
 
 using namespace facebook::hermes;
 using namespace facebook::jsi;
 
-namespace hermes::napi {
 namespace {
 
 TEST(NodeAPITest, CreateNodeApiEnv) {
@@ -56,6 +54,4 @@ TEST(NodeAPITest, WriteAndReadInt64) {
   EXPECT_EQ(rt->global().getProperty(*rt, "foo").asNumber(), 1337);
 }
 
-
 } // namespace
-} // namespace hermes::napi
