@@ -87,14 +87,6 @@ namespace vm = hermes::vm;
 namespace hbc = hermes::hbc;
 using ::hermes::hermesLog;
 
-namespace hermes::node_api {
-  HERMES_WEAK void*
-  createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion) {
-    throw facebook::jsi::JSINativeException(
-        "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
-  }
-}
-
 namespace facebook {
 namespace hermes {
 namespace detail {
@@ -2642,7 +2634,7 @@ void HermesRuntimeImpl::throwJSErrorWithMessage(Args &&...args) {
 }
 
 void* HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion) {
-  return ::hermes::node_api::createNodeApiEnv(*this->getVMRuntimeUnsafe(), apiVersion);
+  return hermes::createNodeApiEnv(*this->getVMRuntimeUnsafe(), apiVersion);
 }
 
 namespace {
@@ -2743,6 +2735,12 @@ jsi::Value debugger::Debugger::jsiValueFromHermesValue(vm::HermesValue hv) {
   return static_cast<HermesRuntimeImpl *>(runtime_)->valueFromHermesValue(hv);
 }
 #endif
+
+HERMES_WEAK void*
+createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion) {
+  throw facebook::jsi::JSINativeException(
+      "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
+}
 
 } // namespace hermes
 } // namespace facebook

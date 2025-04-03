@@ -6705,20 +6705,20 @@ napi_status NodeApiEnvironment::checkCallResult(const T & /*value*/) noexcept {
   return clearLastNativeError();
 }
 
-void* createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion) {
-  auto res =
-      ::hermes::node_api::createModuleNodeApiEnvironment(runtime, apiVersion);
-  if (res.getStatus() == vm::ExecutionStatus::EXCEPTION) {
-    throw std::runtime_error("Failed to create Node API environment");
-  }
-  return res.getValue();
-}
-
 } // namespace hermes::node_api
 
 namespace facebook::hermes {
 
 class HermesRuntime;
+
+void* createNodeApiEnv(::hermes::vm::Runtime &runtime, int32_t apiVersion) {
+  auto res =
+      ::hermes::node_api::createModuleNodeApiEnvironment(runtime, apiVersion);
+  if (res.getStatus() == ::hermes::vm::ExecutionStatus::EXCEPTION) {
+    throw std::runtime_error("Failed to create Node API environment");
+  }
+  return res.getValue();
+}
 
 } // namespace facebook::hermes
 
