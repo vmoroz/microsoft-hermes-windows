@@ -84,6 +84,7 @@
 #include "hermes/VM/JSTypedArray.h"
 #include "hermes/VM/PropertyAccessor.h"
 #include "hermes/VM/Runtime.h"
+#include "hermes/hermes.h"
 #include "llvh/ADT/SmallVector.h"
 #include "llvh/Support/ConvertUTF.h"
 
@@ -6705,22 +6706,25 @@ napi_status NodeApiEnvironment::checkCallResult(const T & /*value*/) noexcept {
   return clearLastNativeError();
 }
 
-} // namespace hermes::node_api
-
-namespace facebook::hermes {
-
-class HermesRuntime;
-
-void* createNodeApiEnv(::hermes::vm::Runtime &runtime, int32_t apiVersion) {
-  auto res =
-      ::hermes::node_api::createModuleNodeApiEnvironment(runtime, apiVersion);
-  if (res.getStatus() == ::hermes::vm::ExecutionStatus::EXCEPTION) {
-    throw std::runtime_error("Failed to create Node API environment");
+// Creating a static instance of a class to call setCreateNodeApiEnv when the
+// library loads and provide and implementation of the createNodeApiEnv
+// function.
+static class AutoRegisterCreateNodeApiEnv {
+ public:
+  AutoRegisterCreateNodeApiEnv() {
+    ::facebook::hermes::HermesRuntime::setCreateNodeApiEnv(
+        [](::hermes::vm::Runtime &runtime, int32_t apiVersion) -> void * {
+          auto res = ::hermes::node_api::createModuleNodeApiEnvironment(
+              runtime, apiVersion);
+          if (res.getStatus() == ::hermes::vm::ExecutionStatus::EXCEPTION) {
+            throw std::runtime_error("Failed to create Node API environment");
+          }
+          return res.getValue();
+        });
   }
-  return res.getValue();
-}
+} sAutoRegisterInstance;
 
-} // namespace facebook::hermes
+} // namespace hermes::node_api
 
 //=============================================================================
 // Node-API implementation

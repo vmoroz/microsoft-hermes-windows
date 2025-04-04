@@ -55,7 +55,6 @@
 #include <unordered_map>
 
 #include <jsi/instrumentation.h>
-#include <jsi/jsi.h>
 #include <jsi/threadsafe.h>
 
 #ifdef HERMESVM_LLVM_PROFILE_DUMP
@@ -63,14 +62,6 @@ extern "C" {
 int __llvm_profile_dump(void);
 }
 #endif
-
-#ifndef HERMES_WEAK
-#ifdef _MSC_VER
-#define HERMES_WEAK #pragma weak
-#else // _MSC_VER
-#define HERMES_WEAK __attribute__((weak))
-#endif // _MSC_VER
-#endif // !defined(HERMES_WEAK)
 
 // Android OSS has a bug where exception data can get mangled when going via
 // fbjni. This macro can be used to expose the root cause in adb log. It serves
@@ -96,6 +87,7 @@ namespace detail {
 #endif
 
 static void (*sApiFatalHandler)(const std::string &) = nullptr;
+static CreateNodeApiEnvFunc sCreateNodeApiEnv = nullptr;
 /// Handler called by HermesVM to report unrecoverable errors.
 /// This is a forward declaration to prevent a compiler warning.
 void hermesFatalErrorHandler(
@@ -1260,6 +1252,10 @@ HermesRuntime::getExecutedFunctions() {
 
 /*static*/ void HermesRuntime::disableCodeCoverageProfiler() {
   ::hermes::vm::CodeCoverageProfiler::disableGlobal();
+}
+
+/*static*/ void HermesRuntime::setCreateNodeApiEnv(CreateNodeApiEnvFunc fn) {
+  detail::sCreateNodeApiEnv = fn;
 }
 
 void HermesRuntime::setFatalHandler(void (*handler)(const std::string &)) {
@@ -2634,7 +2630,11 @@ void HermesRuntimeImpl::throwJSErrorWithMessage(Args &&...args) {
 }
 
 void* HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion) {
-  return hermes::createNodeApiEnv(*this->getVMRuntimeUnsafe(), apiVersion);
+  if (detail::sCreateNodeApiEnv == nullptr) {
+    throw facebook::jsi::JSINativeException(
+        "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
+  }
+  return detail::sCreateNodeApiEnv(*this->getVMRuntimeUnsafe(), apiVersion);
 }
 
 namespace {
@@ -2735,12 +2735,6 @@ jsi::Value debugger::Debugger::jsiValueFromHermesValue(vm::HermesValue hv) {
   return static_cast<HermesRuntimeImpl *>(runtime_)->valueFromHermesValue(hv);
 }
 #endif
-
-HERMES_WEAK void*
-createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion) {
-  throw facebook::jsi::JSINativeException(
-      "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
-}
 
 } // namespace hermes
 } // namespace facebook

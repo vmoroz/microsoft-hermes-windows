@@ -9,6 +9,7 @@
 #define HERMES_HERMES_H
 
 #include <exception>
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
@@ -44,6 +45,9 @@ namespace hermes {
 namespace debugger {
 class Debugger;
 }
+
+using CreateNodeApiEnvFunc =
+    std::function<void *(::hermes::vm::Runtime &, int32_t)>;
 
 class HermesRuntimeImpl;
 
@@ -104,6 +108,10 @@ class HERMES_EXPORT HermesRuntime : public jsi::Runtime {
 
   /// Disable code coverage profiler.
   static void disableCodeCoverageProfiler();
+
+  /// Set function called when creating a Node-API environment.
+  /// It is ment to be called once by hermesNodeApi to inject the function.
+  static void setCreateNodeApiEnv(CreateNodeApiEnvFunc fn);
 
   /// Define a destructor to serve as the key function.
   ~HermesRuntime() override;
@@ -266,10 +274,6 @@ HERMES_EXPORT std::unique_ptr<jsi::ThreadSafeRuntime>
 makeThreadSafeHermesRuntime(
     const ::hermes::vm::RuntimeConfig &runtimeConfig =
         ::hermes::vm::RuntimeConfig());
-
-HERMES_EXPORT void *createNodeApiEnv(
-    ::hermes::vm::Runtime &runtime,
-    int32_t apiVersion);
 
 } // namespace hermes
 } // namespace facebook
