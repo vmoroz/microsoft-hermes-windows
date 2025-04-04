@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 #include <hermes/hermes.h>
+#include <hermes/VM/BuildMetadata.h>
 #include <cstdint>
 
 #include "js_native_api.h"
@@ -16,12 +17,21 @@ using namespace facebook::jsi;
 
 namespace {
 
-TEST(NodeAPITest, CreateNodeApiEnv) {
+class NodeAPITest : public ::testing::Test {
+protected:
+  // Runs once before all tests in this test suite
+  void SetUp() {
+    // The metadata aren't shared across libraries, so we need to build first
+    ::hermes::vm::buildMetadataTable();
+  }
+};
+
+TEST_F(NodeAPITest, CreateNodeApiEnv) {
   auto rt = makeHermesRuntime();
   rt->createNodeApiEnv(8);
 }
 
-TEST(NodeAPITest, WriteAndReadInt64) {
+TEST_F(NodeAPITest, WriteAndReadInt64) {
   auto rt = makeHermesRuntime();
   napi_env env = static_cast<napi_env>(rt->createNodeApiEnv(8));
 
