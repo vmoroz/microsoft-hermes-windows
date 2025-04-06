@@ -267,6 +267,12 @@ class JSI_EXPORT Runtime {
   /// which returns no metrics.
   virtual Instrumentation& instrumentation();
 
+  /// Creates a Node-API environment.
+  /// \throw a \c JSINativeException if the runtime does not support Node-API.
+  /// \param apiVersion the version of Node-API to use.
+  /// \return the newly created Node-API environment.
+  virtual void* createNodeApiEnv(int32_t apiVersion);
+
  protected:
   friend class Pointer;
   friend class PropNameID;
@@ -1657,6 +1663,9 @@ class JSI_EXPORT JSError : public JSIException {
   std::string message_;
   std::string stack_;
 };
+
+/// Called by the default implementation of \c Runtime::createNodeApiEnv
+JSI_EXPORT void* createNodeApiEnvFallback(int32_t apiVersion);
 
 } // namespace jsi
 } // namespace facebook

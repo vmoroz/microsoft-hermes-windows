@@ -1356,4 +1356,21 @@ INSTANTIATE_TEST_CASE_P(
     HermesRuntimeTest,
     ::testing::ValuesIn(runtimeGenerators()));
 
+TEST(HermesRuntimeCreateNodeApiEnv, DefaultWeakImplementationThrows) {
+  napi_env env;
+  auto rt = makeHermesRuntime();
+  EXPECT_THROW(
+      {
+        try {
+          rt->createNodeApiEnv(8, &env);
+        } catch (const JSINativeException &e) {
+          EXPECT_STREQ(
+              e.what(),
+              "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
+          throw;
+        }
+      },
+      JSINativeException);
+}
+
 } // namespace

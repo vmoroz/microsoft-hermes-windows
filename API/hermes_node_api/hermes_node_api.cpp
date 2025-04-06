@@ -83,6 +83,7 @@
 #include "hermes/VM/JSProxy.h"
 #include "hermes/VM/JSTypedArray.h"
 #include "hermes/VM/PropertyAccessor.h"
+#include "hermes/VM/Runtime.h"
 #include "llvh/ADT/SmallVector.h"
 #include "llvh/Support/ConvertUTF.h"
 
@@ -6705,6 +6706,21 @@ napi_status NodeApiEnvironment::checkCallResult(const T & /*value*/) noexcept {
 }
 
 } // namespace hermes::node_api
+
+namespace facebook::hermes {
+
+class HermesRuntime;
+
+void* createNodeApiEnv(::hermes::vm::Runtime &runtime, int32_t apiVersion) {
+  auto res =
+      ::hermes::node_api::createModuleNodeApiEnvironment(runtime, apiVersion);
+  if (res.getStatus() == ::hermes::vm::ExecutionStatus::EXCEPTION) {
+    throw std::runtime_error("Failed to create Node API environment");
+  }
+  return &res.getValue();
+}
+
+} // namespace facebook::hermes
 
 //=============================================================================
 // Node-API implementation
