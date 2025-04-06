@@ -21,7 +21,7 @@ class NodeAPITest : public ::testing::Test {
 protected:
   // Runs once before all tests in this test suite
   void SetUp() {
-    // The metadata aren't shared across libraries, so we need to build first
+    // The metadata aren't shared across static libraries, so we need to build first
     ::hermes::vm::buildMetadataTable();
   }
 };

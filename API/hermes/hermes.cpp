@@ -54,6 +54,7 @@
 #include <system_error>
 #include <unordered_map>
 
+#include <hermes_node_api/hermes_node_api.h>
 #include <jsi/instrumentation.h>
 #include <jsi/threadsafe.h>
 
@@ -87,7 +88,6 @@ namespace detail {
 #endif
 
 static void (*sApiFatalHandler)(const std::string &) = nullptr;
-static CreateNodeApiEnvFunc sCreateNodeApiEnv = nullptr;
 /// Handler called by HermesVM to report unrecoverable errors.
 /// This is a forward declaration to prevent a compiler warning.
 void hermesFatalErrorHandler(
@@ -587,7 +587,7 @@ class HermesRuntimeImpl final : public HermesRuntime,
   std::string description() override;
   bool isInspectable() override;
   jsi::Instrumentation &instrumentation() override;
-  void* createNodeApiEnv(int32_t apiVersion) override;
+  void *createNodeApiEnv(int32_t apiVersion) override;
 
   PointerValue *cloneSymbol(const Runtime::PointerValue *pv) override;
   PointerValue *cloneBigInt(const Runtime::PointerValue *pv) override;
@@ -1252,10 +1252,6 @@ HermesRuntime::getExecutedFunctions() {
 
 /*static*/ void HermesRuntime::disableCodeCoverageProfiler() {
   ::hermes::vm::CodeCoverageProfiler::disableGlobal();
-}
-
-/*static*/ void HermesRuntime::setCreateNodeApiEnv(CreateNodeApiEnvFunc fn) {
-  detail::sCreateNodeApiEnv = fn;
 }
 
 void HermesRuntime::setFatalHandler(void (*handler)(const std::string &)) {
@@ -2629,12 +2625,13 @@ void HermesRuntimeImpl::throwJSErrorWithMessage(Args &&...args) {
   throwPendingError();
 }
 
-void* HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion) {
-  if (detail::sCreateNodeApiEnv == nullptr) {
-    throw facebook::jsi::JSINativeException(
-        "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
+void *HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion) {
+  auto res = ::hermes::node_api::createModuleNodeApiEnvironment(
+      *this->getVMRuntimeUnsafe(), apiVersion);
+  if (res.getStatus() == ::hermes::vm::ExecutionStatus::EXCEPTION) {
+    throw std::runtime_error("Failed to create Node API environment");
   }
-  return detail::sCreateNodeApiEnv(*this->getVMRuntimeUnsafe(), apiVersion);
+  return res.getValue();
 }
 
 namespace {

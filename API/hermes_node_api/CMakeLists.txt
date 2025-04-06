@@ -8,11 +8,10 @@ set(HERMES_ENABLE_EH_RTTI ON)
 add_subdirectory(node_api)
 
 add_library(hermesNodeApi STATIC hermes_node_api.cpp)
-target_link_libraries(hermesNodeApi PRIVATE
-  libhermes
-  hermesVMRuntime
-  nodeApi
-  hermesParser)
+target_link_libraries(hermesNodeApi
+  PUBLIC nodeApi
+  PRIVATE hermesVMRuntime hermesParser
+)
 
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
   # Same as above, but for windows. Note that there is no equivalent of -fvisibility=default.
