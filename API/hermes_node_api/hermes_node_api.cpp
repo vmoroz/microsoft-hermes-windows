@@ -507,7 +507,7 @@ class NodeApiStableAddressStack final {
  private:
   // The size of 64 entries per chunk is arbitrary at this point.
   // It can be adjusted depending on perf data.
-  static const size_t ChunkSize = 64;
+  static constexpr size_t ChunkSize = 64;
 
   llvh::SmallVector<std::unique_ptr<T[]>, ChunkSize> storage_;
   size_t size_{0};
@@ -6020,14 +6020,14 @@ napi_status NodeApiEnvironment::createTypedArray(
   return scope.setResult(std::move(typedArray));
 }
 
-template <vm::CellKind CellKind>
-/*static*/ constexpr const char *
-NodeApiEnvironment::getTypedArrayName() noexcept {
-  static constexpr const char *names[] = {
+static constexpr const char *typedArrayNames[] = {
 #define TYPED_ARRAY(name, type) #name "Array",
 #include "hermes/VM/TypedArrays.def"
-  };
-  return names
+};
+
+template <vm::CellKind CellKind>
+/*static*/ constexpr const char *NodeApiEnvironment::getTypedArrayName() noexcept {
+  return typedArrayNames
       [static_cast<int>(CellKind) -
        static_cast<int>(vm::CellKind::TypedArrayBaseKind_first)];
 }
