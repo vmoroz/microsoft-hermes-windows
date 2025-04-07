@@ -266,11 +266,6 @@ HERMES_EXPORT std::unique_ptr<jsi::ThreadSafeRuntime>
 makeThreadSafeHermesRuntime(
     const ::hermes::vm::RuntimeConfig &runtimeConfig =
         ::hermes::vm::RuntimeConfig());
-
-HERMES_EXPORT void *createNodeApiEnv(
-    ::hermes::vm::Runtime &runtime,
-    int32_t apiVersion);
-
 } // namespace hermes
 } // namespace facebook
 

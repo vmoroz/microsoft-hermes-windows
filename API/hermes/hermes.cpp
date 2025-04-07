@@ -55,7 +55,6 @@
 #include <unordered_map>
 
 #include <jsi/instrumentation.h>
-#include <jsi/jsi.h>
 #include <jsi/threadsafe.h>
 
 #ifdef HERMESVM_LLVM_PROFILE_DUMP
@@ -63,14 +62,6 @@ extern "C" {
 int __llvm_profile_dump(void);
 }
 #endif
-
-#ifndef HERMES_WEAK
-#ifdef _MSC_VER
-#define HERMES_WEAK #pragma weak
-#else // _MSC_VER
-#define HERMES_WEAK __attribute__((weak))
-#endif // _MSC_VER
-#endif // !defined(HERMES_WEAK)
 
 // Android OSS has a bug where exception data can get mangled when going via
 // fbjni. This macro can be used to expose the root cause in adb log. It serves
@@ -83,9 +74,32 @@ int __llvm_profile_dump(void);
   } while (0)
 #endif
 
+#if !defined(HERMES_WEAK_FUNCTION)
+#if defined(_MSC_VER)
+#define HERMES_WEAK_FUNCTION(function, defaultFunction) \
+  __pragma(comment(linker, "/alternatename:" #function "=" #defaultFunction))
+#elif defined(__GNUC__)
+#define HERMES_WEAK_FUNCTION(function, defaultFunction) \
+  __pragma weak function = defaultFunction
+#endif
+#endif // !defined(HERMES_WEAK_FUNCTION)
+
 namespace vm = hermes::vm;
 namespace hbc = hermes::hbc;
 using ::hermes::hermesLog;
+
+// This function is when the Node-API implementation library is not linked.
+// MSVC required the extern "C" for the function aliases to work.
+extern "C" void *defaultCreateNodeApiEnv(
+    vm::Runtime &runtime,
+    int32_t apiVersion) {
+  return nullptr;
+}
+
+// To be implemented by the Node-API implementation library.
+extern "C" void *createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion);
+
+HERMES_WEAK_FUNCTION(createNodeApiEnv, defaultCreateNodeApiEnv);
 
 namespace facebook {
 namespace hermes {
@@ -595,7 +609,7 @@ class HermesRuntimeImpl final : public HermesRuntime,
   std::string description() override;
   bool isInspectable() override;
   jsi::Instrumentation &instrumentation() override;
-  void* createNodeApiEnv(int32_t apiVersion) override;
+  void *createNodeApiEnv(int32_t apiVersion) override;
 
   PointerValue *cloneSymbol(const Runtime::PointerValue *pv) override;
   PointerValue *cloneBigInt(const Runtime::PointerValue *pv) override;
@@ -835,8 +849,9 @@ class HermesRuntimeImpl final : public HermesRuntime,
             vm::TwineChar16{"Exception in HostObject::getPropertyNames: "} +
             rt_.utf16FromErrorWhat(ex, buf));
       } catch (...) {
-        return rt_.runtime_.raiseError(vm::TwineChar16{
-            "Exception in HostObject::getPropertyNames: <unknown>"});
+        return rt_.runtime_.raiseError(
+            vm::TwineChar16{
+                "Exception in HostObject::getPropertyNames: <unknown>"});
       }
     };
   };
@@ -2069,8 +2084,9 @@ void HermesRuntimeImpl::setExternalMemoryPressure(
     // This is the first time adding external memory to this object. Create a
     // new NativeState. We use the context pointer to store the external memory
     // amount.
-    auto nsHnd = runtime_.makeHandle(vm::NativeState::create(
-        runtime_, reinterpret_cast<void *>(0), debitMem));
+    auto nsHnd = runtime_.makeHandle(
+        vm::NativeState::create(
+            runtime_, reinterpret_cast<void *>(0), debitMem));
 
     // Use defineNewOwnProperty to create the new property since we know it
     // doesn't exist. Note that this also bypasses the extensibility check on
@@ -2256,8 +2272,9 @@ jsi::Array HermesRuntimeImpl::getPropertyNames(const jsi::Object &obj) {
 }
 
 jsi::WeakObject HermesRuntimeImpl::createWeakObject(const jsi::Object &obj) {
-  return addWeak(vm::WeakRoot<vm::JSObject>(
-      static_cast<vm::JSObject *>(phv(obj).getObject()), runtime_));
+  return addWeak(
+      vm::WeakRoot<vm::JSObject>(
+          static_cast<vm::JSObject *>(phv(obj).getObject()), runtime_));
 }
 
 jsi::Value HermesRuntimeImpl::lockWeakObject(const jsi::WeakObject &wo) {
@@ -2279,9 +2296,10 @@ jsi::Array HermesRuntimeImpl::createArray(size_t length) {
 jsi::ArrayBuffer HermesRuntimeImpl::createArrayBuffer(
     std::shared_ptr<jsi::MutableBuffer> buffer) {
   vm::GCScope gcScope(runtime_);
-  auto buf = runtime_.makeHandle(vm::JSArrayBuffer::create(
-      runtime_,
-      vm::Handle<vm::JSObject>::vmcast(&runtime_.arrayBufferPrototype)));
+  auto buf = runtime_.makeHandle(
+      vm::JSArrayBuffer::create(
+          runtime_,
+          vm::Handle<vm::JSObject>::vmcast(&runtime_.arrayBufferPrototype)));
   auto size = buffer->size();
   auto *data = buffer->data();
   auto *ctx = new std::shared_ptr<jsi::MutableBuffer>(std::move(buffer));
@@ -2633,8 +2651,14 @@ void HermesRuntimeImpl::throwJSErrorWithMessage(Args &&...args) {
   throwPendingError();
 }
 
-void* HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion) {
-  return hermes::createNodeApiEnv(*this->getVMRuntimeUnsafe(), apiVersion);
+void *HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion) {
+  void *result = ::createNodeApiEnv(*rt_, apiVersion);
+  if (result == nullptr) {
+    throw jsi::JSINativeException(
+        "Node-API is not supported in Hermes by default. "
+        "Make sure you're including hermesNodeApi in your build.");
+  }
+  return result;
 }
 
 namespace {
@@ -2688,8 +2712,9 @@ std::unique_ptr<HermesRuntime> makeHermesRuntime(
   // Only HermesRuntime can create a debugger instance.  This requires
   // the setter and not using make_unique, so the call to new is here
   // in this function, which is a friend of debugger::Debugger.
-  ret->setDebugger(std::unique_ptr<debugger::Debugger>(
-      new debugger::Debugger(ret.get(), ret->runtime_)));
+  ret->setDebugger(
+      std::unique_ptr<debugger::Debugger>(
+          new debugger::Debugger(ret.get(), ret->runtime_)));
 #else
   ret->setDebugger(std::make_unique<debugger::Debugger>());
 #endif
@@ -2720,8 +2745,9 @@ std::unique_ptr<jsi::ThreadSafeRuntime> makeThreadSafeHermesRuntime(
   // Only HermesRuntime can create a debugger instance.  This requires
   // the setter and not using make_unique, so the call to new is here
   // in this function, which is a friend of debugger::Debugger.
-  hermesRt.setDebugger(std::unique_ptr<debugger::Debugger>(
-      new debugger::Debugger(&hermesRt, hermesRt.runtime_)));
+  hermesRt.setDebugger(
+      std::unique_ptr<debugger::Debugger>(
+          new debugger::Debugger(&hermesRt, hermesRt.runtime_)));
 #else
   hermesRt.setDebugger(std::make_unique<debugger::Debugger>());
 #endif
@@ -2735,12 +2761,6 @@ jsi::Value debugger::Debugger::jsiValueFromHermesValue(vm::HermesValue hv) {
   return static_cast<HermesRuntimeImpl *>(runtime_)->valueFromHermesValue(hv);
 }
 #endif
-
-HERMES_WEAK void*
-createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion) {
-  throw facebook::jsi::JSINativeException(
-      "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
-}
 
 } // namespace hermes
 } // namespace facebook

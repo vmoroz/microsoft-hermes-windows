@@ -1798,8 +1798,9 @@ class NodeApiPendingFinalizers {
 
   // Add pending finalizers from a NodeApiExternalValue destructor.
   // It can be called from JS or GC background threads.
-  void addPendingFinalizers(std::unique_ptr<NodeApiLinkedList<NodeApiFinalizer>>
-                                &&finalizers) noexcept {
+  void addPendingFinalizers(
+      std::unique_ptr<NodeApiLinkedList<NodeApiFinalizer>>
+          &&finalizers) noexcept {
     std::scoped_lock lock{mutex_};
     finalizers_.push_back(std::move(finalizers));
   }
@@ -1904,8 +1905,9 @@ class NodeApiHandleScope final {
 // Keep external data with an object.
 class NodeApiExternalValue final : public vm::DecoratedObject::Decoration {
  public:
-  NodeApiExternalValue(const NodeApiRefCountedPtr<NodeApiPendingFinalizers>
-                           &pendingFinalizers) noexcept
+  NodeApiExternalValue(
+      const NodeApiRefCountedPtr<NodeApiPendingFinalizers>
+          &pendingFinalizers) noexcept
       : pendingFinalizers_(pendingFinalizers) {}
   NodeApiExternalValue(
       const NodeApiRefCountedPtr<NodeApiPendingFinalizers> &pendingFinalizers,
@@ -2342,7 +2344,8 @@ class NodeApiComplexReference : public NodeApiReference {
     if (--refCount_ == 0) {
       weakRoot_.~WeakRoot();
       if (value_.isObject()) {
-        ::new (std::addressof(weakRoot_)) vm::WeakRoot<vm::JSObject>(env.createWeakRoot(getObjectUnsafe(value_)));
+        ::new (std::addressof(weakRoot_)) vm::WeakRoot<vm::JSObject>(
+            env.createWeakRoot(getObjectUnsafe(value_)));
       } else {
         ::new (std::addressof(weakRoot_)) vm::WeakRoot<vm::JSObject>();
       }
@@ -3589,8 +3592,9 @@ napi_status NodeApiEnvironment::throwJSError(
       vm::JSError::create(runtime_, makeHandle<vm::JSObject>(&prototype)));
   CHECK_NAPI(
       checkJSErrorStatus(vm::JSError::recordStackTrace(errorHandle, runtime_)));
-  CHECK_NAPI(checkJSErrorStatus(vm::JSError::setMessage(
-      errorHandle, runtime_, makeHandle(messageValue))));
+  CHECK_NAPI(checkJSErrorStatus(
+      vm::JSError::setMessage(
+          errorHandle, runtime_, makeHandle(messageValue))));
   CHECK_NAPI(setJSErrorCode(errorHandle, nullptr, code));
 
   runtime_.setThrownValue(errorHandle.getHermesValue());
@@ -3894,8 +3898,9 @@ napi_status NodeApiEnvironment::createStringUTF16(
       length <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
       napi_invalid_arg);
 
-  return scope.setResult(vm::StringPrimitive::createEfficient(
-      runtime_, llvh::makeArrayRef(str, length)));
+  return scope.setResult(
+      vm::StringPrimitive::createEfficient(
+          runtime_, llvh::makeArrayRef(str, length)));
 }
 
 // Copies a JavaScript string into a LATIN-1 string buffer. The result is the
@@ -4240,8 +4245,9 @@ napi_status NodeApiEnvironment::getPrototype(
   NodeApiHandleScope scope{*this, result};
   napi_value objValue{};
   CHECK_NAPI(coerceToObject(object, &objValue));
-  return scope.setResult(vm::JSObject::getPrototypeOf(
-      vm::createPseudoHandle(getObjectUnsafe(objValue)), runtime_));
+  return scope.setResult(
+      vm::JSObject::getPrototypeOf(
+          vm::createPseudoHandle(getObjectUnsafe(objValue)), runtime_));
 }
 
 napi_status NodeApiEnvironment::getForInPropertyNames(
@@ -5346,15 +5352,16 @@ napi_status NodeApiEnvironment::wrapObject(
   RETURN_STATUS_IF_FALSE(!externalValue->nativeData(), napi_invalid_arg);
 
   NodeApiReference *reference;
-  CHECK_NAPI(NodeApiFinalizingComplexReference::create(
-      *this,
-      0,
-      /*deleteSelf*/ result == nullptr,
-      phv(object),
-      nativeData,
-      finalizeCallback,
-      finalizeHint,
-      reinterpret_cast<NodeApiFinalizingComplexReference **>(&reference)));
+  CHECK_NAPI(
+      NodeApiFinalizingComplexReference::create(
+          *this,
+          0,
+          /*deleteSelf*/ result == nullptr,
+          phv(object),
+          nativeData,
+          finalizeCallback,
+          finalizeHint,
+          reinterpret_cast<NodeApiFinalizingComplexReference **>(&reference)));
   externalValue->setNativeData(reference);
   return setOptionalResult(reinterpret_cast<napi_ref>(reference), result);
 }
@@ -5501,13 +5508,14 @@ napi_status NodeApiEnvironment::createExternal(
   vm::Handle<vm::DecoratedObject> decoratedObj =
       createExternalObject(nativeData, nullptr);
   if (finalizeCallback) {
-    CHECK_NAPI(NodeApiFinalizingAnonymousReference::create(
-        *this,
-        decoratedObj.unsafeGetPinnedHermesValue(),
-        nativeData,
-        finalizeCallback,
-        finalizeHint,
-        nullptr));
+    CHECK_NAPI(
+        NodeApiFinalizingAnonymousReference::create(
+            *this,
+            decoratedObj.unsafeGetPinnedHermesValue(),
+            nativeData,
+            finalizeCallback,
+            finalizeHint,
+            nullptr));
   }
   return scope.setResult(std::move(decoratedObj));
 }
@@ -5517,8 +5525,8 @@ napi_status NodeApiEnvironment::createExternal(
 vm::Handle<vm::DecoratedObject> NodeApiEnvironment::createExternalObject(
     void *nativeData,
     NodeApiExternalValue **externalValue) noexcept {
-  vm::Handle<vm::DecoratedObject> decoratedObj =
-      makeHandle(vm::DecoratedObject::create(
+  vm::Handle<vm::DecoratedObject> decoratedObj = makeHandle(
+      vm::DecoratedObject::create(
           runtime_,
           makeHandle<vm::JSObject>(&runtime_.objectPrototype),
           std::make_unique<NodeApiExternalValue>(
@@ -5835,8 +5843,9 @@ napi_status NodeApiEnvironment::createArrayBuffer(
     napi_value *result) noexcept {
   CHECK_NAPI(checkPendingJSError());
   NodeApiHandleScope scope{*this, result};
-  vm::Handle<vm::JSArrayBuffer> buffer = makeHandle(vm::JSArrayBuffer::create(
-      runtime_, makeHandle<vm::JSObject>(runtime_.arrayBufferPrototype)));
+  vm::Handle<vm::JSArrayBuffer> buffer = makeHandle(
+      vm::JSArrayBuffer::create(
+          runtime_, makeHandle<vm::JSObject>(runtime_.arrayBufferPrototype)));
   CHECK_NAPI(checkJSErrorStatus(
       vm::JSArrayBuffer::createDataBlock(runtime_, buffer, byteLength, true)));
   if (data != nullptr) {
@@ -5853,8 +5862,9 @@ napi_status NodeApiEnvironment::createExternalArrayBuffer(
     napi_value *result) noexcept {
   CHECK_NAPI(checkPendingJSError());
   NodeApiHandleScope scope{*this, result};
-  vm::Handle<vm::JSArrayBuffer> buffer = makeHandle(vm::JSArrayBuffer::create(
-      runtime_, makeHandle<vm::JSObject>(&runtime_.arrayBufferPrototype)));
+  vm::Handle<vm::JSArrayBuffer> buffer = makeHandle(
+      vm::JSArrayBuffer::create(
+          runtime_, makeHandle<vm::JSObject>(&runtime_.arrayBufferPrototype)));
   if (externalData != nullptr) {
     std::unique_ptr<NodeApiExternalBuffer> externalBuffer =
         std::make_unique<NodeApiExternalBuffer>(
@@ -5970,48 +5980,59 @@ napi_status NodeApiEnvironment::createTypedArray(
   vm::MutableHandle<vm::JSTypedArrayBase> typedArray{runtime_};
   switch (type) {
     case napi_int8_array:
-      CHECK_NAPI(createTypedArray<int8_t, vm::CellKind::Int8ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<int8_t, vm::CellKind::Int8ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_uint8_array:
-      CHECK_NAPI(createTypedArray<uint8_t, vm::CellKind::Uint8ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<uint8_t, vm::CellKind::Uint8ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_uint8_clamped_array:
-      CHECK_NAPI(createTypedArray<uint8_t, vm::CellKind::Uint8ClampedArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<uint8_t, vm::CellKind::Uint8ClampedArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_int16_array:
-      CHECK_NAPI(createTypedArray<int16_t, vm::CellKind::Int16ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<int16_t, vm::CellKind::Int16ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_uint16_array:
-      CHECK_NAPI(createTypedArray<uint16_t, vm::CellKind::Uint16ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<uint16_t, vm::CellKind::Uint16ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_int32_array:
-      CHECK_NAPI(createTypedArray<int32_t, vm::CellKind::Int32ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<int32_t, vm::CellKind::Int32ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_uint32_array:
-      CHECK_NAPI(createTypedArray<uint32_t, vm::CellKind::Uint32ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<uint32_t, vm::CellKind::Uint32ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_float32_array:
-      CHECK_NAPI(createTypedArray<float, vm::CellKind::Float32ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<float, vm::CellKind::Float32ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_float64_array:
-      CHECK_NAPI(createTypedArray<double, vm::CellKind::Float64ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<double, vm::CellKind::Float64ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_bigint64_array:
-      CHECK_NAPI(createTypedArray<int64_t, vm::CellKind::BigInt64ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<int64_t, vm::CellKind::BigInt64ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     case napi_biguint64_array:
-      CHECK_NAPI(createTypedArray<uint64_t, vm::CellKind::BigUint64ArrayKind>(
-          length, buffer, byteOffset, &typedArray));
+      CHECK_NAPI(
+          createTypedArray<uint64_t, vm::CellKind::BigUint64ArrayKind>(
+              length, buffer, byteOffset, &typedArray));
       break;
     default:
       return ERROR_STATUS(
@@ -6027,7 +6048,8 @@ static constexpr const char *typedArrayNames[] = {
 };
 
 template <vm::CellKind CellKind>
-/*static*/ constexpr const char *NodeApiEnvironment::getTypedArrayName() noexcept {
+/*static*/ constexpr const char *
+NodeApiEnvironment::getTypedArrayName() noexcept {
   return typedArrayNames
       [static_cast<int>(CellKind) -
        static_cast<int>(vm::CellKind::TypedArrayBaseKind_first)];
@@ -6125,8 +6147,9 @@ napi_status NodeApiEnvironment::createDataView(
         "byte_offset + byte_length should be less than or "
         "equal to the size in bytes of the array passed in");
   }
-  vm::Handle<vm::JSDataView> viewHandle = makeHandle(vm::JSDataView::create(
-      runtime_, makeHandle<vm::JSObject>(runtime_.dataViewPrototype)));
+  vm::Handle<vm::JSDataView> viewHandle = makeHandle(
+      vm::JSDataView::create(
+          runtime_, makeHandle<vm::JSObject>(runtime_.dataViewPrototype)));
   viewHandle->setBuffer(runtime_, buffer, byteOffset, byteLength);
   return scope.setResult(std::move(viewHandle));
 }
@@ -6202,10 +6225,11 @@ napi_status NodeApiEnvironment::createPromise(
   CHECK_NAPI(
       setPredefinedProperty(jsDeferred, NodeApiPredefined::reject, jsReject));
 
-  CHECK_NAPI(NodeApiStrongReference::create(
-      *this,
-      *phv(jsDeferred),
-      reinterpret_cast<NodeApiStrongReference **>(deferred)));
+  CHECK_NAPI(
+      NodeApiStrongReference::create(
+          *this,
+          *phv(jsDeferred),
+          reinterpret_cast<NodeApiStrongReference **>(deferred)));
   return scope.setResult(std::move(jsPromise));
 }
 
@@ -6350,8 +6374,9 @@ napi_status NodeApiEnvironment::enablePromiseRejectionTracker() noexcept {
   vm::Handle<vm::Callable> hookFunc = vm::Handle<vm::Callable>::dyn_vmcast(
       makeHandle(&runtime_.promiseRejectionTrackingHook_));
   RETURN_FAILURE_IF_FALSE(hookFunc);
-  return checkJSErrorStatus(vm::Callable::executeCall1(
-      hookFunc, runtime_, vm::Runtime::getUndefinedValue(), *phv(options)));
+  return checkJSErrorStatus(
+      vm::Callable::executeCall1(
+          hookFunc, runtime_, vm::Runtime::getUndefinedValue(), *phv(options)));
 }
 
 /*static*/ vm::CallResult<vm::HermesValue>
@@ -6707,20 +6732,16 @@ napi_status NodeApiEnvironment::checkCallResult(const T & /*value*/) noexcept {
 
 } // namespace hermes::node_api
 
-namespace facebook::hermes {
-
-class HermesRuntime;
-
-void* createNodeApiEnv(::hermes::vm::Runtime &runtime, int32_t apiVersion) {
-  auto res =
-      ::hermes::node_api::createModuleNodeApiEnvironment(runtime, apiVersion);
+extern "C" void *createNodeApiEnv(
+    hermes::vm::Runtime &runtime,
+    int32_t apiVersion) {
+  hermes::vm::CallResult<napi_env> res =
+      hermes::node_api::createModuleNodeApiEnvironment(runtime, apiVersion);
   if (res.getStatus() == ::hermes::vm::ExecutionStatus::EXCEPTION) {
-    throw std::runtime_error("Failed to create Node API environment");
+    return nullptr;
   }
-  return &res.getValue();
+  return res.getValue();
 }
-
-} // namespace facebook::hermes
 
 //=============================================================================
 // Node-API implementation

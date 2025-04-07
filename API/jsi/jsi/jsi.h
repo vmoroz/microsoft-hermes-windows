@@ -1664,9 +1664,6 @@ class JSI_EXPORT JSError : public JSIException {
   std::string stack_;
 };
 
-/// Called by the default implementation of \c Runtime::createNodeApiEnv
-JSI_EXPORT void* createNodeApiEnvFallback(int32_t apiVersion);
-
 } // namespace jsi
 } // namespace facebook
 

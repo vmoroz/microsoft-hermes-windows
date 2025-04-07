@@ -91,10 +91,11 @@ TEST_P(HermesRuntimeTest, StrictHostFunctionBindTest) {
         return thisVal.isUndefined();
       });
   rt->global().setProperty(*rt, "coolify", coolify);
-  EXPECT_TRUE(eval("(function() {"
-                   "  \"use strict\";"
-                   "  return coolify.bind(undefined)();"
-                   "})()")
+  EXPECT_TRUE(eval(
+                  "(function() {"
+                  "  \"use strict\";"
+                  "  return coolify.bind(undefined)();"
+                  "})()")
                   .getBool());
 }
 
@@ -217,8 +218,9 @@ TEST_P(HermesRuntimeTest, BytecodeTest) {
 
   std::string bytecode;
   ASSERT_TRUE(hermes::compileJS("x = 1", bytecode));
-  EXPECT_TRUE(HermesRuntime::isHermesBytecode(
-      reinterpret_cast<const uint8_t *>(bytecode.data()), bytecode.size()));
+  EXPECT_TRUE(
+      HermesRuntime::isHermesBytecode(
+          reinterpret_cast<const uint8_t *>(bytecode.data()), bytecode.size()));
   evaluateSourceOrBytecode(
       std::unique_ptr<StringBuffer>(new StringBuffer(bytecode)), "");
   EXPECT_EQ(rt->global().getProperty(*rt, "x").getNumber(), 1);
@@ -278,16 +280,18 @@ c.doSomething(a, 15);
   })#";
 
   std::string bytecode;
-  ASSERT_TRUE(hermes::compileJS(
-      TestSource,
-      "script.js",
-      bytecode,
-      true,
-      true,
-      nullptr,
-      std::optional<std::string_view>(TestSourceMap)));
-  EXPECT_TRUE(HermesRuntime::isHermesBytecode(
-      reinterpret_cast<const uint8_t *>(bytecode.data()), bytecode.size()));
+  ASSERT_TRUE(
+      hermes::compileJS(
+          TestSource,
+          "script.js",
+          bytecode,
+          true,
+          true,
+          nullptr,
+          std::optional<std::string_view>(TestSourceMap)));
+  EXPECT_TRUE(
+      HermesRuntime::isHermesBytecode(
+          reinterpret_cast<const uint8_t *>(bytecode.data()), bytecode.size()));
   try {
     evaluateSourceOrBytecode(
         std::unique_ptr<StringBuffer>(new StringBuffer(bytecode)), "");
@@ -587,13 +591,14 @@ TEST_P(HermesRuntimeTest, HostObjectWithOwnProperties) {
   // handling checking for property existence.
   EXPECT_TRUE(eval("\"foo\" in ho").getBool());
 
-  EXPECT_TRUE(eval("var properties = Object.getOwnPropertyNames(ho);"
-                   "properties[0] === '1' && "
-                   "properties[1] === '2' && "
-                   "properties[2] === '3' && "
-                   "properties[3] === 'prop1' && "
-                   "properties[4] === 'prop2' && "
-                   "properties.length === 5")
+  EXPECT_TRUE(eval(
+                  "var properties = Object.getOwnPropertyNames(ho);"
+                  "properties[0] === '1' && "
+                  "properties[1] === '2' && "
+                  "properties[2] === '3' && "
+                  "properties[3] === 'prop1' && "
+                  "properties[4] === 'prop2' && "
+                  "properties.length === 5")
                   .getBool());
   EXPECT_TRUE(eval("ho[2] === undefined").getBool());
   EXPECT_TRUE(eval("ho.prop2 === undefined").getBool());
@@ -603,15 +608,16 @@ TEST_P(HermesRuntimeTest, HostObjectWithOwnProperties) {
   eval("Object.defineProperty(ho, '4', {value: 'hi there'})");
   eval("Object.defineProperty(ho, 'prop2', {value: 'hi there'})");
 
-  EXPECT_TRUE(eval("var properties = Object.getOwnPropertyNames(ho);"
-                   "properties[0] === '0' && "
-                   "properties[1] === '1' && "
-                   "properties[2] === '2' && "
-                   "properties[3] === '3' && "
-                   "properties[4] === '4' && "
-                   "properties[5] === 'prop2' && "
-                   "properties[6] === 'prop1' && "
-                   "properties.length === 7")
+  EXPECT_TRUE(eval(
+                  "var properties = Object.getOwnPropertyNames(ho);"
+                  "properties[0] === '0' && "
+                  "properties[1] === '1' && "
+                  "properties[2] === '2' && "
+                  "properties[3] === '3' && "
+                  "properties[4] === '4' && "
+                  "properties[5] === 'prop2' && "
+                  "properties[6] === 'prop1' && "
+                  "properties.length === 7")
                   .getBool());
   EXPECT_TRUE(eval("ho[2] === 'hi there'").getBool());
   EXPECT_TRUE(eval("ho.prop2 === 'hi there'").getBool());
@@ -623,17 +629,19 @@ TEST_P(HermesRuntimeTest, HostObjectWithOwnProperties) {
       eval("Object.prototype.hasOwnProperty.call(ho, 'any-string')").getBool());
 
   // getOwnPropertyDescriptor() always succeeds on HostObject
-  EXPECT_TRUE(eval("var d = Object.getOwnPropertyDescriptor(ho, 'prop1');"
-                   "d != undefined && "
-                   "d.value == 10 && "
-                   "d.enumerable && "
-                   "d.writable ")
+  EXPECT_TRUE(eval(
+                  "var d = Object.getOwnPropertyDescriptor(ho, 'prop1');"
+                  "d != undefined && "
+                  "d.value == 10 && "
+                  "d.enumerable && "
+                  "d.writable ")
                   .getBool());
-  EXPECT_TRUE(eval("var d = Object.getOwnPropertyDescriptor(ho, 'any-string');"
-                   "d != undefined && "
-                   "d.value == undefined && "
-                   "d.enumerable && "
-                   "d.writable")
+  EXPECT_TRUE(eval(
+                  "var d = Object.getOwnPropertyDescriptor(ho, 'any-string');"
+                  "d != undefined && "
+                  "d.value == undefined && "
+                  "d.enumerable && "
+                  "d.writable")
                   .getBool());
 }
 
@@ -878,9 +886,10 @@ class HermesRuntimeTestWithDisableGenerator
     : public HermesRuntimeCustomConfigTest {
  public:
   HermesRuntimeTestWithDisableGenerator()
-      : HermesRuntimeCustomConfigTest(::hermes::vm::RuntimeConfig::Builder()
-                                          .withEnableGenerator(false)
-                                          .build()) {}
+      : HermesRuntimeCustomConfigTest(
+            ::hermes::vm::RuntimeConfig::Builder()
+                .withEnableGenerator(false)
+                .build()) {}
 };
 
 TEST_F(HermesRuntimeTestWithDisableGenerator, WithDisableGenerator) {
@@ -990,12 +999,15 @@ TEST_P(HermesRuntimeTest, BigIntJSIFromScalar) {
       BigInt::strictEquals(*rt, BigInt("0"), BigInt::fromUint64(*rt, 0)));
   EXPECT_TRUE(
       BigInt::strictEquals(*rt, BigInt("0"), BigInt::fromInt64(*rt, 0)));
-  EXPECT_TRUE(BigInt::strictEquals(
-      *rt, BigInt("0xdeadbeef"), BigInt::fromUint64(*rt, 0xdeadbeef)));
-  EXPECT_TRUE(BigInt::strictEquals(
-      *rt, BigInt("0xc0ffee"), BigInt::fromInt64(*rt, 0xc0ffee)));
-  EXPECT_TRUE(BigInt::strictEquals(
-      *rt, BigInt("0xffffffffffffffffn"), BigInt::fromUint64(*rt, ~0ull)));
+  EXPECT_TRUE(
+      BigInt::strictEquals(
+          *rt, BigInt("0xdeadbeef"), BigInt::fromUint64(*rt, 0xdeadbeef)));
+  EXPECT_TRUE(
+      BigInt::strictEquals(
+          *rt, BigInt("0xc0ffee"), BigInt::fromInt64(*rt, 0xc0ffee)));
+  EXPECT_TRUE(
+      BigInt::strictEquals(
+          *rt, BigInt("0xffffffffffffffffn"), BigInt::fromUint64(*rt, ~0ull)));
   EXPECT_TRUE(
       BigInt::strictEquals(*rt, BigInt("-1"), BigInt::fromInt64(*rt, ~0ull)));
 }
@@ -1091,10 +1103,11 @@ class HermesRuntimeTestSmallHeap : public HermesRuntimeCustomConfigTest {
   HermesRuntimeTestSmallHeap()
       : HermesRuntimeCustomConfigTest(
             ::hermes::vm::RuntimeConfig::Builder()
-                .withGCConfig(::hermes::vm::GCConfig::Builder()
-                                  .withInitHeapSize(8 << 20)
-                                  .withMaxHeapSize(8 << 20)
-                                  .build())
+                .withGCConfig(
+                    ::hermes::vm::GCConfig::Builder()
+                        .withInitHeapSize(8 << 20)
+                        .withMaxHeapSize(8 << 20)
+                        .build())
                 .build()) {}
 };
 
@@ -1357,12 +1370,11 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::ValuesIn(runtimeGenerators()));
 
 TEST(HermesRuntimeCreateNodeApiEnv, DefaultWeakImplementationThrows) {
-  napi_env env;
   auto rt = makeHermesRuntime();
   EXPECT_THROW(
       {
         try {
-          rt->createNodeApiEnv(8, &env);
+          rt->createNodeApiEnv(8);
         } catch (const JSINativeException &e) {
           EXPECT_STREQ(
               e.what(),
