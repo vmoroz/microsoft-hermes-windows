@@ -18,14 +18,12 @@ namespace {
 
 TEST(NodeAPITest, CreateNodeApiEnv) {
   auto rt = makeHermesRuntime();
-  napi_env env;
-  rt->createNodeApiEnv(8, &env);
+  rt->createNodeApiEnv(8);
 }
 
 TEST(NodeAPITest, WriteAndReadInt64) {
   auto rt = makeHermesRuntime();
-  napi_env env;
-  rt->createNodeApiEnv(8, &env);
+  napi_env env = static_cast<napi_env>(rt->createNodeApiEnv(8));
 
   // Write a global directly via Hermes
   rt->global().setProperty(*rt, "foo", 42);
@@ -35,7 +33,10 @@ TEST(NodeAPITest, WriteAndReadInt64) {
   EXPECT_EQ(napi_get_global(env, &global), napi_ok);
   std::string foo_name = "foo";
   napi_value foo_name_value;
-  EXPECT_EQ(napi_create_string_utf8(env, foo_name.c_str(), foo_name.size(), &foo_name_value), napi_ok);
+  EXPECT_EQ(
+      napi_create_string_utf8(
+          env, foo_name.c_str(), foo_name.size(), &foo_name_value),
+      napi_ok);
   napi_value foo;
   {
     EXPECT_EQ(napi_get_property(env, global, foo_name_value, &foo), napi_ok);

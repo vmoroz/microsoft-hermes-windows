@@ -88,8 +88,8 @@ namespace hbc = hermes::hbc;
 using ::hermes::hermesLog;
 
 namespace hermes::node_api {
-  HERMES_WEAK void
-  createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion, napi_env *env) {
+  HERMES_WEAK void*
+  createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion) {
     throw facebook::jsi::JSINativeException(
         "Node-API is not supported in Hermes by default. Make sure you're including hermesNodeApi in your build.");
   }
@@ -603,7 +603,7 @@ class HermesRuntimeImpl final : public HermesRuntime,
   std::string description() override;
   bool isInspectable() override;
   jsi::Instrumentation &instrumentation() override;
-  void createNodeApiEnv(int32_t apiVersion, napi_env *) override;
+  void* createNodeApiEnv(int32_t apiVersion) override;
 
   PointerValue *cloneSymbol(const Runtime::PointerValue *pv) override;
   PointerValue *cloneBigInt(const Runtime::PointerValue *pv) override;
@@ -2641,8 +2641,8 @@ void HermesRuntimeImpl::throwJSErrorWithMessage(Args &&...args) {
   throwPendingError();
 }
 
-void HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion, napi_env *env) {
-  ::hermes::node_api::createNodeApiEnv(*this->getVMRuntimeUnsafe(), apiVersion, env);
+void* HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion) {
+  return ::hermes::node_api::createNodeApiEnv(*this->getVMRuntimeUnsafe(), apiVersion);
 }
 
 namespace {

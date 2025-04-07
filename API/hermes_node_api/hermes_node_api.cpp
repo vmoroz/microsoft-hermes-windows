@@ -6705,16 +6705,13 @@ napi_status NodeApiEnvironment::checkCallResult(const T & /*value*/) noexcept {
   return clearLastNativeError();
 }
 
-void createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion, napi_env *env) {
-  if (!env) {
-    throw std::invalid_argument("env must not be null");
-  }
-  // getVMRuntimeUnsafe()
-  auto res = ::hermes::node_api::createModuleNodeApiEnvironment(runtime, apiVersion);
+void* createNodeApiEnv(vm::Runtime &runtime, int32_t apiVersion) {
+  auto res =
+      ::hermes::node_api::createModuleNodeApiEnvironment(runtime, apiVersion);
   if (res.getStatus() == vm::ExecutionStatus::EXCEPTION) {
     throw std::runtime_error("Failed to create Node API environment");
   }
-  env = &res.getValue();
+  return res.getValue();
 }
 
 } // namespace hermes::node_api

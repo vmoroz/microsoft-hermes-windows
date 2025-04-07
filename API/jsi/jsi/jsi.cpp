@@ -289,13 +289,13 @@ Instrumentation& Runtime::instrumentation() {
 }
 
 // Weak to allow other (external) libraries to provide an implementation.
-JSI_WEAK void createNodeApiEnvFallback(int32_t apiVersion, napi_env *) {
+JSI_WEAK void* createNodeApiEnvFallback(int32_t apiVersion) {
   throw JSINativeException(
     "Node-API is not supported by this particular JSI runtime");
 }
 
-void Runtime::createNodeApiEnv(int32_t apiVersion, napi_env *env) {
-  createNodeApiEnvFallback(apiVersion, env);
+void* Runtime::createNodeApiEnv(int32_t apiVersion) {
+  return createNodeApiEnvFallback(apiVersion);
 }
 
 Value Runtime::createValueFromJsonUtf8(const uint8_t *json, size_t length) {
