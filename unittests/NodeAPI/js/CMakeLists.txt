@@ -101,9 +101,13 @@ foreach(testJSFile ${testJSFiles})
 
   # generate Hermes-compatible JavaScript code
   add_custom_command(
-    OUTPUT  ${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}
-            ${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}.map
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../${testJSFile}
+    OUTPUT
+      ${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}
+      ${CMAKE_CURRENT_BINARY_DIR}/${testJSFile}.map
+    DEPENDS
+      ${CMAKE_CURRENT_SOURCE_DIR}/../${testJSFile}
+      ${CMAKE_CURRENT_BINARY_DIR}/babel.config.js
+      ${CMAKE_CURRENT_BINARY_DIR}/node_modules.sha1  
     COMMAND ${npx}
       "babel"
       "--retain-lines"
@@ -128,4 +132,4 @@ endforeach()
 add_custom_target(transformJSFiles
   DEPENDS ${transformedJSFiles}
 )
-add_dependencies(transformJSFiles installNodeApiTestJsTools)
+add_dependencies(transformJSFiles installNodeApiTestJsTools copyNodeApiJSToolsFiles)
