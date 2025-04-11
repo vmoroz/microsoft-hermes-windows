@@ -7,7 +7,11 @@ set(HERMES_ENABLE_EH_RTTI ON)
 
 add_subdirectory(node_api)
 
-add_library(hermesNodeApi STATIC hermes_node_api.cpp)
+add_library(hermesNodeApi STATIC
+  hermes_node_api.h
+  hermes_node_api.cpp
+)
+
 target_link_libraries(hermesNodeApi
   PUBLIC nodeApi
   PRIVATE hermesVMRuntime hermesParser

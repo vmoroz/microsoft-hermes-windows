@@ -1,0 +1,2 @@
+add_library(4_object_factory MODULE 4_object_factory.c)
+target_link_libraries(4_object_factory PRIVATE nodeApi)

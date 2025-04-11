@@ -1,0 +1,2 @@
+add_library(2_function_arguments MODULE 2_function_arguments.c)
+target_link_libraries(2_function_arguments PRIVATE nodeApi)

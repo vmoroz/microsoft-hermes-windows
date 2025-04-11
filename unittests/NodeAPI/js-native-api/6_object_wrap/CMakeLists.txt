@@ -1,0 +1,6 @@
+add_library(6_object_wrap MODULE 6_object_wrap.cc)
+target_link_libraries(6_object_wrap PRIVATE nodeApi)
+
+add_library(6_object_wrap_basic_finalizer MODULE 6_object_wrap.cc)
+target_compile_definitions(6_object_wrap_basic_finalizer PRIVATE NAPI_EXPERIMENTAL)
+target_link_libraries(6_object_wrap_basic_finalizer PRIVATE nodeApi)
