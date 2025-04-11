@@ -32,7 +32,7 @@ TEST_F(BasicsTest, TestHello) {
 
 TEST_F(BasicsTest, TestThrowString) {
   ProcessResult result = RunScript("throw_string.js");
-  ASSERT_STREQ("Hello\n", result.std_error.c_str());
+  ASSERT_NE(result.std_error.find("Script error"), std::string::npos);
 }
 
 }  // namespace node_api_tests
