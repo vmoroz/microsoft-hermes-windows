@@ -75,15 +75,27 @@ add_subdirectory(js)
 #   $<TARGET_FILE:libshared>
 #   $<TARGET_FILE_DIR:NodeApiTests>)
 
-add_executable(node_lite
-  child_process.cpp
-  child_process.h
-  node_lite.cpp
-  node_lite.h
-  node_lite_hermes.cpp
-  string_utils.cpp
-  string_utils.h
-)
+if(APPLE)
+  add_executable(node_lite
+    child_process_mac.cpp
+    child_process.h
+    node_lite.cpp
+    node_lite.h
+    node_lite_hermes.cpp
+    string_utils.cpp
+    string_utils.h
+  )
+else()
+  add_executable(node_lite
+    child_process.cpp
+    child_process.h
+    node_lite.cpp
+    node_lite.h
+    node_lite_hermes.cpp
+    string_utils.cpp
+    string_utils.h
+  )
+endif()
 
 target_link_libraries(node_lite
   hermesNodeApi
@@ -97,15 +109,27 @@ target_include_directories(node_lite
     ../../API/hermes_node_api/node_api
 )
 
-set(NodeApiTestsSources
-  child_process.cpp
-  child_process.h
-  string_utils.cpp
-  string_utils.h
-  test_main.cpp
-  test_main.h
-  test_basics.cpp
-)
+if(APPLE)
+  set(NodeApiTestsSources
+    child_process_mac.cpp
+    child_process.h
+    string_utils.cpp
+    string_utils.h
+    test_main.cpp
+    test_main.h
+    test_basics.cpp
+  )
+else()
+  set(NodeApiTestsSources
+    child_process.cpp
+    child_process.h
+    string_utils.cpp
+    string_utils.h
+    test_main.cpp
+    test_main.h
+    test_basics.cpp
+  )
+endif()
 
 add_hermes_unittest(nodeApiTests ${NodeApiTestsSources})
 

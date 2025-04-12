@@ -103,22 +103,24 @@ class NodeLiteTaskRunner {
 
 class NodeLiteErrorHandler {
  public:
-  static void OnNodeApiFailed(napi_env env,
-                              napi_status error_code,
-                              char const* expr,
-                              const char* file,
-                              int32_t line) noexcept;
+  [[noreturn]] static void OnNodeApiFailed(napi_env env,
+                                           napi_status error_code,
+                                           char const* expr,
+                                           const char* file,
+                                           int32_t line) noexcept;
 
   static void OnAssertFailed(char const* expr,
                              char const* message,
                              const char* file,
                              int32_t line) noexcept;
 
-  static void ExitWithJSError(napi_env env, napi_value error) noexcept;
+  [[noreturn]] static void ExitWithJSError(napi_env env,
+                                           napi_value error) noexcept;
 
-  static void ExitWithJSAssertError(napi_env env, napi_value error) noexcept;
+  [[noreturn]] static void ExitWithJSAssertError(napi_env env,
+                                                 napi_value error) noexcept;
 
-  static void ExitWithMessage(
+  [[noreturn]] static void ExitWithMessage(
       const std::string& file,
       int line,
       const std::string& message,
