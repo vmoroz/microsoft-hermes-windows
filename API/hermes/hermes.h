@@ -70,13 +70,13 @@ class HERMES_EXPORT HermesRuntime : public jsi::Runtime {
       size_t len);
 
   /// Enable sampling profiler.
-  static void enableSamplingProfiler();
+  static void __cdecl enableSamplingProfiler();
 
   /// Disable the sampling profiler
-  static void disableSamplingProfiler();
+  static void __cdecl disableSamplingProfiler();
 
   /// Dump sampled stack trace to the given file name.
-  static void dumpSampledTraceToFile(const std::string &fileName);
+  static void __cdecl dumpSampledTraceToFile(const std::string &fileName);
 
   /// Dump sampled stack trace to the given stream.
   static void dumpSampledTraceToStream(std::ostream &stream);
@@ -120,7 +120,9 @@ class HERMES_EXPORT HermesRuntime : public jsi::Runtime {
   /// static throughout that object's (or string's, or PropNameID's)
   /// lifetime.
   uint64_t getUniqueID(const jsi::Object &o) const;
+#if JSI_VERSION >= 8
   uint64_t getUniqueID(const jsi::BigInt &s) const;
+#endif
   uint64_t getUniqueID(const jsi::String &s) const;
   uint64_t getUniqueID(const jsi::PropNameID &pni) const;
   uint64_t getUniqueID(const jsi::Symbol &sym) const;
@@ -232,7 +234,7 @@ class HERMES_EXPORT HermesRuntime : public jsi::Runtime {
 ///   auto runtime = makeHermesRuntime(conf.build());
 HERMES_EXPORT ::hermes::vm::RuntimeConfig hardenedHermesRuntimeConfig();
 
-HERMES_EXPORT std::unique_ptr<HermesRuntime> makeHermesRuntime(
+HERMES_EXPORT std::unique_ptr<HermesRuntime> __cdecl makeHermesRuntime(
     const ::hermes::vm::RuntimeConfig &runtimeConfig =
         ::hermes::vm::RuntimeConfig());
 HERMES_EXPORT std::unique_ptr<jsi::ThreadSafeRuntime>
