@@ -115,7 +115,7 @@ set(NodeApiTestsSources
   test_basics.cpp
 )
 
-add_hermes_unittest(nodeApiTests ${NodeApiTestsSources})
+add_hermes_unittest(NodeApiTests ${NodeApiTestsSources})
 
 # transform test JS files to be Hermes-compatible
-add_dependencies(nodeApiTests transformJSFiles)
+add_dependencies(NodeApiTests transformJSFiles)

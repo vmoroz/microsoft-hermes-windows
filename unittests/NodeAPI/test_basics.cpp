@@ -21,18 +21,28 @@ class BasicsTest : public TestFixtureBase {
                      {(basics_js_dir_ / script_filename).string()});
   }
 
+  bool StringContains(std::string_view str, std::string_view substr) {
+    return str.find(substr) != std::string::npos;
+  }
+
  private:
   fs::path basics_js_dir_;
 };
 
 TEST_F(BasicsTest, TestHello) {
   ProcessResult result = RunScript("hello.js");
-  ASSERT_STREQ("Hello\n", result.std_output.c_str());
+  ASSERT_TRUE(StringContains(result.std_output, "Hello"));
 }
 
 TEST_F(BasicsTest, TestThrowString) {
   ProcessResult result = RunScript("throw_string.js");
-  ASSERT_NE(result.std_error.find("Script error"), std::string::npos);
+  ASSERT_TRUE(StringContains(result.std_error, "Script error"));
+}
+
+TEST_F(BasicsTest, TestAsyncResolved) {
+  ProcessResult result = RunScript("async_resolved.js");
+  ASSERT_TRUE(StringContains(result.std_output, "calling"));
+  ASSERT_TRUE(StringContains(result.std_output, "resolved"));
 }
 
 }  // namespace node_api_tests

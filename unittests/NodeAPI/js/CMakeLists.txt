@@ -1,5 +1,7 @@
 set(testJSFiles
+  basics/async_resolved.js
   basics/hello.js
+  basics/throw_string.js
   common/assert.js
   common/common.js
   js-native-api/2_function_arguments/test.js

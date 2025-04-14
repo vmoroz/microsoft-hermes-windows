@@ -302,7 +302,7 @@ napi_value NodeLiteRuntime::GetModuleExports(
   // Check if it is a script module.
   if (module_name.find("@babel") == 0) {
     std::string script_file = module_name + ".js";
-    fs::path script_path = fs::path(script_dir_) / script_file;
+    fs::path script_path = fs::path(script_dir_) / "node_modules" / script_file;
     return register_module(
         module_name,
         RunModuleScript(GetJSModuleText(
@@ -426,11 +426,12 @@ void NodeLiteRuntime::DefineGlobalFunctions() {
       });
 
   auto set_immediate_cb = [](napi_env env, napi_callback_info info) {
-    std::array<napi_value, 1> args = GetArgs<1>(env, info);
+    std::array<napi_value, 2> args = GetArgs<2>(env, info, 1);
     std::shared_ptr<NodeApiRef> callback_ref =
         std::make_shared<NodeApiRef>(MakeNodeApiRef(env, args[0]));
     uint32_t task_id = GetRuntime(env)->task_runner_->PostTask(
         [env, callback_ref = std::move(callback_ref)]() {
+          NodeApiHandleScope scope{env};
           napi_value callback =
               NodeApi::GetReferenceValue(env, callback_ref->get());
           NODE_LITE_CALL(napi_call_function(
