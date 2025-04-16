@@ -1308,10 +1308,6 @@ if __name__ == "__main__":
     # Show information about bit sizes for the string and range pools.
     # unicode_properties.log_metrics()
 
-    # The following hashes are not used in any security context. It is only used
-    # to generate a comment to track back the original files in the generated file,
-    # collisions are acceptable and "data" is not coming from user-generated input
-    
     casemap = CaseMap(
         unicode_data_lines=UnicodeDataFiles.get_lines("UnicodeData.txt"),
         special_casing_lines=UnicodeDataFiles.get_lines("SpecialCasing.txt"),

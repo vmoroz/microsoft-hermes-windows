@@ -309,14 +309,6 @@ void SynthTrace::Record::toJSON(JSONEmitter &json) const {
   json.closeDict();
 }
 
-bool SynthTrace::QueueMicrotaskRecord::operator==(const Record &that) const {
-  if (!Record::operator==(that)) {
-    return false;
-  }
-  const auto &thatCasted = dynamic_cast<const QueueMicrotaskRecord &>(that);
-  return callbackID_ == thatCasted.callbackID_;
-}
-
 void SynthTrace::Record::toJSONInternal(JSONEmitter &json) const {
   json.emitKeyValue("type", recordTypeToString(getType()));
   json.emitKeyValue("time", time_.count());
@@ -613,8 +605,6 @@ void SynthTrace::flushAndDisable(const ::hermes::vm::GCExecTrace &gcTrace) {
   traceStream_.reset();
 }
 
-    CASE(QueueMicrotask);
-  CASE(QueueMicrotask)
 } // namespace tracing
 } // namespace hermes
 } // namespace facebook
