@@ -11,11 +11,27 @@
 #include <string>
 #include <vector>
 
+// Verify the condition.
+// - If true, resume execution.
+// - If false, print a message to stderr and exit the app with exit code 1.
 #ifndef VerifyElseExit
 #define VerifyElseExit(condition)                                              \
   do {                                                                         \
     if (!(condition)) {                                                        \
-      ExitOnError(#condition);                                                 \
+      ExitOnError(#condition, nullptr);                                        \
+    }                                                                          \
+  } while (false)
+#endif
+
+// Verify the condition.
+// - If true, resume execution.
+// - If false, destroy the passed `posix_spawn_file_actions_t* actions`, then
+// print a message to stderr and exit the app with exit code 1.
+#ifndef VerifyElseExitWithCleanup
+#define VerifyElseExitWithCleanup(condition, actions_ptr)                      \
+  do {                                                                         \
+    if (!(condition)) {                                                        \
+      ExitOnError(#condition, actions_ptr);                                    \
     }                                                                          \
   } while (false)
 #endif
@@ -27,7 +43,7 @@ namespace node_api_tests {
 namespace {
 
 std::string ReadFromFd(int fd);
-void ExitOnError(const char* message);
+void ExitOnError(const char* message, posix_spawn_file_actions_t* actions);
 
 }  // namespace
 
@@ -43,15 +59,19 @@ ProcessResult SpawnSync(std::string_view command,
   posix_spawn_file_actions_t actions;
   VerifyElseExit(posix_spawn_file_actions_init(&actions) == 0);
 
-  VerifyElseExit(posix_spawn_file_actions_adddup2(
-                     &actions, stdout_pipe[1], STDOUT_FILENO) == 0);
-  VerifyElseExit(posix_spawn_file_actions_adddup2(
-                     &actions, stderr_pipe[1], STDERR_FILENO) == 0);
+  VerifyElseExitWithCleanup(posix_spawn_file_actions_adddup2(
+                                &actions, stdout_pipe[1], STDOUT_FILENO) == 0,
+                            &actions);
+  VerifyElseExitWithCleanup(posix_spawn_file_actions_adddup2(
+                                &actions, stderr_pipe[1], STDERR_FILENO) == 0,
+                            &actions);
 
-  VerifyElseExit(posix_spawn_file_actions_addclose(&actions, stdout_pipe[0]) ==
-                 0);
-  VerifyElseExit(posix_spawn_file_actions_addclose(&actions, stderr_pipe[0]) ==
-                 0);
+  VerifyElseExitWithCleanup(
+      posix_spawn_file_actions_addclose(&actions, stdout_pipe[0]) == 0,
+      &actions);
+  VerifyElseExitWithCleanup(
+      posix_spawn_file_actions_addclose(&actions, stderr_pipe[0]) == 0,
+      &actions);
 
   std::vector<char*> argv;
   argv.push_back(strdup(std::string(command).c_str()));
@@ -61,9 +81,9 @@ ProcessResult SpawnSync(std::string_view command,
   argv.push_back(nullptr);
 
   pid_t pid;
-  VerifyElseExit(
-      posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ) ==
-      0);
+  VerifyElseExitWithCleanup(
+      posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ) == 0,
+      &actions);
 
   posix_spawn_file_actions_destroy(&actions);
 
@@ -104,11 +124,15 @@ std::string ReadFromFd(int fd) {
 
 // Format a readable error message, print it to console, and exit from the
 // application.
-void ExitOnError(const char* message) {
+void ExitOnError(const char* message, posix_spawn_file_actions_t* actions) {
   int err = errno;
   const char* err_msg = strerror(err);
 
   fprintf(stderr, "%s failed with error %d: %s\n", message, err, err_msg);
+
+  if (actions != nullptr) {
+    posix_spawn_file_actions_destroy(actions);
+  }
 
   exit(1);
 }
