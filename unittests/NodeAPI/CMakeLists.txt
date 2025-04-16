@@ -76,26 +76,22 @@ add_subdirectory(js)
 #   $<TARGET_FILE_DIR:NodeApiTests>)
 
 if(APPLE)
-  add_executable(node_lite
-    child_process_mac.cpp
-    child_process.h
-    node_lite.cpp
-    node_lite.h
-    node_lite_hermes.cpp
-    string_utils.cpp
-    string_utils.h
-  )
+  set(CHILD_PROCESS_SRC child_process_mac.cpp)
 else()
-  add_executable(node_lite
-    child_process.cpp
-    child_process.h
-    node_lite.cpp
-    node_lite.h
-    node_lite_hermes.cpp
-    string_utils.cpp
-    string_utils.h
-  )
+  set(CHILD_PROCESS_SRC child_process.cpp)
 endif()
+
+set(NODE_LITE_SOURCES
+  ${CHILD_PROCESS_SRC}
+  child_process.h
+  node_lite.cpp
+  node_lite.h
+  node_lite_hermes.cpp
+  string_utils.cpp
+  string_utils.h
+)
+
+add_executable(node_lite ${NODE_LITE_SOURCES})
 
 target_link_libraries(node_lite
   hermesNodeApi
@@ -109,27 +105,15 @@ target_include_directories(node_lite
     ../../API/hermes_node_api/node_api
 )
 
-if(APPLE)
-  set(NodeApiTestsSources
-    child_process_mac.cpp
-    child_process.h
-    string_utils.cpp
-    string_utils.h
-    test_main.cpp
-    test_main.h
-    test_basics.cpp
-  )
-else()
-  set(NodeApiTestsSources
-    child_process.cpp
-    child_process.h
-    string_utils.cpp
-    string_utils.h
-    test_main.cpp
-    test_main.h
-    test_basics.cpp
-  )
-endif()
+set(NodeApiTestsSources
+  ${CHILD_PROCESS_SRC}
+  child_process.h
+  string_utils.cpp
+  string_utils.h
+  test_main.cpp
+  test_main.h
+  test_basics.cpp
+)
 
 add_hermes_unittest(nodeApiTests ${NodeApiTestsSources})
 
