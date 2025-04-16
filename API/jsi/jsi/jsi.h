@@ -28,7 +28,7 @@
 
 #ifndef JSI_VERSION
 // Use the latest version by default
-#define JSI_VERSION 13
+#define JSI_VERSION 15
 #endif
 
 #if JSI_VERSION >= 3
@@ -515,6 +515,9 @@ class JSI_EXPORT Runtime {
       void* ctx,
       void (*cb)(void* ctx, bool ascii, const void* data, size_t num));
 #endif
+
+  virtual std::u16string utf16(const String& str);
+  virtual std::u16string utf16(const PropNameID& sym);
 
   // These exist so derived classes can access the private parts of
   // Value, Symbol, String, and Object, which are all friends of Runtime.
