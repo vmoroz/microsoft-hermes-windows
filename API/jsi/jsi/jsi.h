@@ -516,9 +516,6 @@ class JSI_EXPORT Runtime {
       void (*cb)(void* ctx, bool ascii, const void* data, size_t num));
 #endif
 
-  virtual std::u16string utf16(const String& str);
-  virtual std::u16string utf16(const PropNameID& sym);
-
   // These exist so derived classes can access the private parts of
   // Value, Symbol, String, and Object, which are all friends of Runtime.
   template <typename T>

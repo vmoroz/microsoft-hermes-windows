@@ -783,15 +783,6 @@ class WithRuntimeDecorator : public RuntimeDecorator<Plain, Base> {
     return RD::utf8(s);
   }
 
-  std::u16string utf16(const String& str) override {
-    Around around{with_};
-    return RD::utf16(str);
-  }
-  std::u16string utf16(const PropNameID& sym) override {
-    Around around{with_};
-    return RD::utf16(sym);
-  }
-
 #if JSI_VERSION >= 14
   std::u16string utf16(const String& str) override {
     Around around{with_};
