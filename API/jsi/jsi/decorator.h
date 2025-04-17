@@ -279,26 +279,6 @@ class RuntimeDecorator : public Base, private jsi::Instrumentation {
   }
 #endif
 
-  void getStringData(
-      const jsi::String& str,
-      void* ctx,
-      void (
-          *cb)(void* ctx, bool ascii, const void* data, size_t num)) override {
-    plain_.getStringData(str, ctx, cb);
-  }
-
-  void getPropNameIdData(
-      const jsi::PropNameID& sym,
-      void* ctx,
-      void (
-          *cb)(void* ctx, bool ascii, const void* data, size_t num)) override {
-    plain_.getPropNameIdData(sym, ctx, cb);
-  }
-
-  Object createObjectWithPrototype(const Value& prototype) override {
-    return plain_.createObjectWithPrototype(prototype);
-  }
-
   Object createObject() override {
     return plain_.createObject();
   };
@@ -346,14 +326,6 @@ class RuntimeDecorator : public Base, private jsi::Instrumentation {
     return plain_.getPrototypeOf(object);
   }
 #endif
-
-  void setPrototypeOf(const Object& object, const Value& prototype) override {
-    plain_.setPrototypeOf(object, prototype);
-  }
-
-  Value getPrototypeOf(const Object& object) override {
-    return plain_.getPrototypeOf(object);
-  }
 
   Value getProperty(const Object& o, const PropNameID& name) override {
     return plain_.getProperty(o, name);
@@ -842,33 +814,10 @@ class WithRuntimeDecorator : public RuntimeDecorator<Plain, Base> {
   }
 #endif
 
-  void getStringData(
-      const jsi::String& str,
-      void* ctx,
-      void (
-          *cb)(void* ctx, bool ascii, const void* data, size_t num)) override {
-    Around around{with_};
-    RD::getStringData(str, ctx, cb);
-  }
-
-  void getPropNameIdData(
-      const jsi::PropNameID& sym,
-      void* ctx,
-      void (
-          *cb)(void* ctx, bool ascii, const void* data, size_t num)) override {
-    Around around{with_};
-    RD::getPropNameIdData(sym, ctx, cb);
-  }
-
   Value createValueFromJsonUtf8(const uint8_t* json, size_t length) override {
     Around around{with_};
     return RD::createValueFromJsonUtf8(json, length);
   };
-
-  Object createObjectWithPrototype(const Value& prototype) override {
-    Around around{with_};
-    return RD::createObjectWithPrototype(prototype);
-  }
 
 #if JSI_VERSION >= 18
   Object createObjectWithPrototype(const Value& prototype) override {
@@ -921,16 +870,6 @@ class WithRuntimeDecorator : public RuntimeDecorator<Plain, Base> {
     return RD::getPrototypeOf(object);
   }
 #endif
-
-  void setPrototypeOf(const Object& object, const Value& prototype) override {
-    Around around{with_};
-    RD::setPrototypeOf(object, prototype);
-  }
-
-  Value getPrototypeOf(const Object& object) override {
-    Around around{with_};
-    return RD::getPrototypeOf(object);
-  }
 
   Value getProperty(const Object& o, const PropNameID& name) override {
     Around around{with_};

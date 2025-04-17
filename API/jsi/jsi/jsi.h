@@ -28,7 +28,7 @@
 
 #ifndef JSI_VERSION
 // Use the latest version by default
-#define JSI_VERSION 15
+#define JSI_VERSION 18
 #endif
 
 #if JSI_VERSION >= 3
@@ -413,9 +413,6 @@ class JSI_EXPORT Runtime {
   virtual Value getPrototypeOf(const Object& object);
 #endif
 
-  virtual void setPrototypeOf(const Object& object, const Value& prototype);
-  virtual Value getPrototypeOf(const Object& object);
-
   virtual Value getProperty(const Object&, const PropNameID& name) = 0;
   virtual Value getProperty(const Object&, const String& name) = 0;
   virtual bool hasProperty(const Object&, const PropNameID& name) = 0;
@@ -518,34 +515,6 @@ class JSI_EXPORT Runtime {
       void* ctx,
       void (*cb)(void* ctx, bool ascii, const void* data, size_t num));
 #endif
-
-  /// Invokes the provided callback \p cb with the String content in \p str.
-  /// The callback must take in three arguments: bool ascii, const void* data,
-  /// and size_t num, respectively. \p ascii indicates whether the \p data
-  /// passed to the callback should be interpreted as a pointer to a sequence of
-  /// \p num ASCII characters or UTF16 characters. Depending on the internal
-  /// representation of the string, the function may invoke the callback
-  /// multiple times, with a different format on each invocation. The callback
-  /// must not access runtime functionality, as any operation on the runtime may
-  /// invalidate the data pointers.
-  virtual void getStringData(
-      const jsi::String& str,
-      void* ctx,
-      void (*cb)(void* ctx, bool ascii, const void* data, size_t num));
-
-  /// Invokes the provided callback \p cb with the PropNameID content in \p sym.
-  /// The callback must take in three arguments: bool ascii, const void* data,
-  /// and size_t num, respectively. \p ascii indicates whether the \p data
-  /// passed to the callback should be interpreted as a pointer to a sequence of
-  /// \p num ASCII characters or UTF16 characters. Depending on the internal
-  /// representation of the string, the function may invoke the callback
-  /// multiple times, with a different format on each invocation. The callback
-  /// must not access runtime functionality, as any operation on the runtime may
-  /// invalidate the data pointers.
-  virtual void getPropNameIdData(
-      const jsi::PropNameID& sym,
-      void* ctx,
-      void (*cb)(void* ctx, bool ascii, const void* data, size_t num));
 
   // These exist so derived classes can access the private parts of
   // Value, Symbol, String, and Object, which are all friends of Runtime.
@@ -694,22 +663,6 @@ class JSI_EXPORT PropNameID : public Pointer {
         });
   }
 #endif
-
-  /// Invokes the user provided callback to process the content in PropNameId.
-  /// The callback must take in three arguments: bool ascii, const void* data,
-  /// and size_t num, respectively. \p ascii indicates whether the \p data
-  /// passed to the callback should be interpreted as a pointer to a sequence of
-  /// \p num ASCII characters or UTF16 characters. The function may invoke the
-  /// callback multiple times, with a different format on each invocation. The
-  /// callback must not access runtime functionality, as any operation on the
-  /// runtime may invalidate the data pointers.
-  template <typename CB>
-  void getPropNameIdData(Runtime& runtime, CB& cb) const {
-    runtime.getPropNameIdData(
-        *this, &cb, [](void* ctx, bool ascii, const void* data, size_t num) {
-          (*((CB*)ctx))(ascii, data, num);
-        });
-  }
 
   static bool compare(
       Runtime& runtime,
@@ -907,22 +860,6 @@ class JSI_EXPORT String : public Pointer {
   }
 #endif
 
-  /// Invokes the user provided callback to process content in String. The
-  /// callback must take in three arguments: bool ascii, const void* data, and
-  /// size_t num, respectively. \p ascii indicates whether the \p data passed to
-  /// the callback should be interpreted as a pointer to a sequence of \p num
-  /// ASCII characters or UTF16 characters. The function may invoke the callback
-  /// multiple times, with a different format on each invocation. The callback
-  /// must not access runtime functionality, as any operation on the runtime may
-  /// invalidate the data pointers.
-  template <typename CB>
-  void getStringData(Runtime& runtime, CB& cb) const {
-    runtime.getStringData(
-        *this, &cb, [](void* ctx, bool ascii, const void* data, size_t num) {
-          (*((CB*)ctx))(ascii, data, num);
-        });
-  }
-
   friend class Runtime;
   friend class Value;
 };
@@ -947,11 +884,6 @@ class JSI_EXPORT Object : public Pointer {
     return runtime.createObject(ho);
   }
 
-  /// Creates a new Object with the custom prototype
-  static Object create(Runtime& runtime, const Value& prototype) {
-    return runtime.createObjectWithPrototype(prototype);
-  }
-
 #if JSI_VERSION >= 18
   /// Creates a new Object with the custom prototype
   static Object create(Runtime& runtime, const Value& prototype) {
@@ -968,16 +900,6 @@ class JSI_EXPORT Object : public Pointer {
   bool instanceOf(Runtime& rt, const Function& ctor) JSI_CONST_10 {
     return rt.instanceOf(*this, ctor);
   }
-
-  /// Sets \p prototype as the prototype of the object. The prototype must be
-  /// either an Object or null. If the prototype was not set successfully, this
-  /// method will throw.
-  void setPrototype(Runtime& runtime, const Value& prototype) const {
-    return runtime.setPrototypeOf(*this, prototype);
-  }
-
-  /// \return the prototype of the object
-  inline Value getPrototype(Runtime& runtime) const;
 
 #if JSI_VERSION >= 17
   /// Sets \p prototype as the prototype of the object. The prototype must be
