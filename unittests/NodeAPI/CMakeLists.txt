@@ -75,8 +75,14 @@ add_subdirectory(js)
 #   $<TARGET_FILE:libshared>
 #   $<TARGET_FILE_DIR:NodeApiTests>)
 
-add_executable(node_lite
-  child_process.cpp
+if(APPLE)
+  set(CHILD_PROCESS_SRC child_process_mac.cpp)
+else()
+  set(CHILD_PROCESS_SRC child_process.cpp)
+endif()
+
+set(NODE_LITE_SOURCES
+  ${CHILD_PROCESS_SRC}
   child_process.h
   node_lite.cpp
   node_lite.h
@@ -84,6 +90,8 @@ add_executable(node_lite
   string_utils.cpp
   string_utils.h
 )
+
+add_executable(node_lite ${NODE_LITE_SOURCES})
 
 target_link_libraries(node_lite
   hermesNodeApi
@@ -98,7 +106,7 @@ target_include_directories(node_lite
 )
 
 set(NodeApiTestsSources
-  child_process.cpp
+  ${CHILD_PROCESS_SRC}
   child_process.h
   string_utils.cpp
   string_utils.h

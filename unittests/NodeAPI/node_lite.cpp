@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "node_lite.h"
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <algorithm>
 #include <array>
 #include <filesystem>
@@ -229,6 +231,7 @@ NodeApiRef NodeLiteRuntime::RunModuleScript(std::string const& code) noexcept {
 
 napi_value NodeLiteRuntime::GetModuleExports(
     napi_env env, std::string const& module_name) noexcept {
+#ifdef _WIN32
   napi_value result{};
 
   // Check if the module has already been initialized.
@@ -314,6 +317,7 @@ napi_value NodeLiteRuntime::GetModuleExports(
             ReadScriptText(script_dir_, script_file), script_path)));
   }
 
+#endif
   return NodeApi::GetUndefined(env);
 }
 
