@@ -1341,11 +1341,9 @@ uint64_t HermesRuntimeImpl::getUniqueID(const jsi::Object &o) const {
   return runtime_.getHeap().getObjectID(
       static_cast<vm::GCCell *>(phv(o).getObject()));
 }
-
-#if JSI_VERSION >= 8
-uint64_t HermesRuntime::getUniqueID(const jsi::BigInt &s) const {
-  return impl(this)->runtime_.getHeap().getObjectID(
-      static_cast<vm::GCCell *>(impl(this)->phv(s).getBigInt()));
+uint64_t HermesRuntimeImpl::getUniqueID(const jsi::BigInt &s) const {
+  return runtime_.getHeap().getObjectID(
+      static_cast<vm::GCCell *>(phv(s).getBigInt()));
 }
 uint64_t HermesRuntimeImpl::getUniqueID(const jsi::String &s) const {
   return runtime_.getHeap().getObjectID(
