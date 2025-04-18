@@ -18,11 +18,11 @@
 #include "hermes/VM/Runtime.h"
 
 #include "llvh/ADT/DenseMap.h"
-#include "llvh/ADT/SmallVector.h"
 
 #include <chrono>
 #include <mutex>
 #include <unordered_set>
+#include <vector>
 
 namespace hermes {
 namespace vm {
@@ -115,14 +115,14 @@ class SamplingProfiler {
     /// Timestamp when the stack trace is taken.
     TimeStampType timeStamp;
     /// Captured stack frames.
-    llvh::SmallVector<StackFrame, 8> stack;
+    std::vector<StackFrame> stack;
 
     explicit StackTrace(uint32_t preallocatedSize) : stack(preallocatedSize) {}
     explicit StackTrace(
         ThreadId tid,
         TimeStampType ts,
-        const llvh::SmallVector<StackFrame, 8>::iterator stackStart,
-        const llvh::SmallVector<StackFrame, 8>::iterator stackEnd)
+        const std::vector<StackFrame>::iterator stackStart,
+        const std::vector<StackFrame>::iterator stackEnd)
         : tid(tid), timeStamp(ts), stack(stackStart, stackEnd) {}
   };
 
@@ -175,7 +175,7 @@ class SamplingProfiler {
 
  protected:
   /// Sampled stack traces overtime. Protected by runtimeDataLock_.
-  llvh::SmallVector<StackTrace, 8> sampledStacks_;
+  std::vector<StackTrace> sampledStacks_;
 
  private:
   // Threading: the suspendCount/preSuspendStack are accessed by both the VM
@@ -200,11 +200,11 @@ class SamplingProfiler {
 
   /// Domains to be kept alive for sampled RuntimeModules. Protected by
   /// runtimeDataLock_.
-  llvh::SmallVector<Domain *, 8> domains_;
+  std::vector<Domain *> domains_;
 
   /// NativeFunctions to be kept alive for sampled NativeFunctionFrameInfo.
   /// Protected by runtimeDataLock_.
-  llvh::SmallVector<NativeFunction *, 8> nativeFunctions_;
+  std::vector<NativeFunction *> nativeFunctions_;
 
  protected:
   Runtime &runtime_;
