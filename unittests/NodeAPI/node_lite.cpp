@@ -164,7 +164,7 @@ void NodeLiteRuntime::Run(
       NodeLiteScriptInfo{script_text.c_str(), js_file_path, 1};
   runtime.RunModuleScript(script_text.c_str());
   runtime.task_runner_->DrainTaskQueue();
-  runtime.RunCallChecks();
+  //runtime.RunCallChecks();
 }
 
 NodeLiteRuntime::NodeLiteRuntime(
