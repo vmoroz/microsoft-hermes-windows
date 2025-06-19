@@ -20,6 +20,7 @@ namespace jsi {
 
 namespace {
 
+#if JSI_VERSION >= 20
 /// A global map used to store custom runtime data for VMs that do not provide
 /// their own default implementation of setRuntimeData and getRuntimeData.
 struct RuntimeDataGlobal {
@@ -76,6 +77,7 @@ class RemoveRuntimeDataHostObject : public jsi::HostObject {
  private:
   Runtime* runtime_;
 };
+#endif
 
 // This is used for generating short exception strings.
 std::string kindToString(const Value& v, Runtime* rt = nullptr) {
@@ -91,8 +93,10 @@ std::string kindToString(const Value& v, Runtime* rt = nullptr) {
     return "a string";
   } else if (v.isSymbol()) {
     return "a symbol";
+#if JSI_VERSION >= 6
   } else if (v.isBigInt()) {
     return "a bigint";
+#endif
   } else {
     assert(v.isObject() && "Expecting object.");
     return rt != nullptr && v.getObject(*rt).isFunction(*rt) ? "a function"
@@ -121,6 +125,7 @@ Value callGlobalFunction(Runtime& runtime, const char* name, const Value& arg) {
   return f.call(runtime, arg);
 }
 
+#if JSI_VERSION >= 14
 // Given a sequence of UTF8 encoded bytes, advance the input to past where a
 // 32-bit unicode codepoint as been decoded and return the codepoint. If the
 // UTF8 encoding is invalid, then return the value with the unicode replacement
@@ -221,10 +226,12 @@ std::u16string convertUTF8ToUTF16(const std::string& utf8) {
   }
   return ret;
 }
+#endif
 
+#if JSI_VERSION >= 19
 // Given a unsigned number, which is less than 16, return the hex character.
 inline char hexDigit(unsigned x) {
-  return x < 10 ? '0' + x : 'A' + (x - 10);
+  return static_cast<char>(x < 10 ? '0' + x : 'A' + (x - 10));
 }
 
 // Given a sequence of UTF 16 code units, return true if all code units are
@@ -260,12 +267,15 @@ std::string getUtf16CodeUnitString(const char16_t* utf16, size_t length) {
   s.back() = '\'';
   return s;
 }
+#endif
 
 } // namespace
 
 Buffer::~Buffer() = default;
 
+#if JSI_VERSION >= 9
 MutableBuffer::~MutableBuffer() = default;
+#endif
 
 PreparedJavaScript::~PreparedJavaScript() = default;
 
@@ -282,13 +292,17 @@ void HostObject::set(Runtime& rt, const PropNameID& name, const Value&) {
 
 HostObject::~HostObject() {}
 
+#if JSI_VERSION >= 7
 NativeState::~NativeState() {}
+#endif
 
 Runtime::~Runtime() {}
 
+#if JSI_VERSION >= 20
 ICast* Runtime::castInterface(const UUID& /*interfaceUUID*/) {
   return nullptr;
 }
+#endif
 
 Instrumentation& Runtime::instrumentation() {
   class NoInstrumentation : public Instrumentation {
@@ -312,16 +326,26 @@ Instrumentation& Runtime::instrumentation() {
     void startHeapSampling(size_t) override {}
     void stopHeapSampling(std::ostream&) override {}
 
+#if JSI_VERSION >= 13
     void createSnapshotToFile(
         const std::string& /*path*/,
-        const HeapSnapshotOptions& /*options*/) override {
+        const HeapSnapshotOptions& /*options*/) override
+#else
+    void createSnapshotToFile(const std::string&) override
+#endif
+    {
       throw JSINativeException(
           "Default instrumentation cannot create a heap snapshot");
     }
 
+#if JSI_VERSION >= 13
     void createSnapshotToStream(
         std::ostream& /*os*/,
-        const HeapSnapshotOptions& /*options*/) override {
+        const HeapSnapshotOptions& /*options*/) override
+#else
+    void createSnapshotToStream(std::ostream&) override
+#endif
+    {
       throw JSINativeException(
           "Default instrumentation cannot create a heap snapshot");
     }
@@ -343,16 +367,32 @@ Instrumentation& Runtime::instrumentation() {
   return sharedInstance;
 }
 
+#if JSI_VERSION >= 2
 Value Runtime::createValueFromJsonUtf8(const uint8_t* json, size_t length) {
   Function parseJson = global()
                            .getPropertyAsObject(*this, "JSON")
                            .getPropertyAsFunction(*this, "parse");
   return parseJson.call(*this, String::createFromUtf8(*this, json, length));
 }
+#else
+Value Value::createFromJsonUtf8(
+    Runtime& runtime,
+    const uint8_t* json,
+    size_t length) {
+  Function parseJson = runtime.global()
+                           .getPropertyAsObject(runtime, "JSON")
+                           .getPropertyAsFunction(runtime, "parse");
+  return parseJson.call(runtime, String::createFromUtf8(runtime, json, length));
+}
+#endif
 
+#if JSI_VERSION >= 19
 String Runtime::createStringFromUtf16(const char16_t* utf16, size_t length) {
   if (isAllASCII(utf16, length)) {
-    std::string buffer(utf16, utf16 + length);
+    std::string buffer(length, '\0');
+    for (size_t i = 0; i < length; ++i) {
+      buffer[i] = static_cast<char>(utf16[i]);
+    }
     return createStringFromAscii(buffer.data(), length);
   }
   auto s = getUtf16CodeUnitString(utf16, length);
@@ -368,7 +408,9 @@ PropNameID Runtime::createPropNameIDFromUtf16(
   auto jsString = createStringFromUtf16(utf16, length);
   return createPropNameIDFromString(jsString);
 }
+#endif
 
+#if JSI_VERSION >= 14
 std::u16string Runtime::utf16(const PropNameID& sym) {
   auto utf8Str = utf8(sym);
   return convertUTF8ToUTF16(utf8Str);
@@ -378,7 +420,9 @@ std::u16string Runtime::utf16(const String& str) {
   auto utf8Str = utf8(str);
   return convertUTF8ToUTF16(utf8Str);
 }
+#endif
 
+#if JSI_VERSION >= 16
 void Runtime::getStringData(
     const jsi::String& str,
     void* ctx,
@@ -394,7 +438,9 @@ void Runtime::getPropNameIdData(
   auto utf16Str = utf16(sym);
   cb(ctx, false, utf16Str.data(), utf16Str.size());
 }
+#endif
 
+#if JSI_VERSION >= 17
 void Runtime::setPrototypeOf(const Object& object, const Value& prototype) {
   auto setPrototypeOfFn = global()
                               .getPropertyAsObject(*this, "Object")
@@ -408,14 +454,18 @@ Value Runtime::getPrototypeOf(const Object& object) {
                               .getPropertyAsFunction(*this, "getPrototypeOf");
   return setPrototypeOfFn.call(*this, object);
 }
+#endif
 
+#if JSI_VERSION >= 18
 Object Runtime::createObjectWithPrototype(const Value& prototype) {
   auto createFn = global()
                       .getPropertyAsObject(*this, "Object")
                       .getPropertyAsFunction(*this, "create");
   return createFn.call(*this, prototype).asObject(*this);
 }
+#endif
 
+#if JSI_VERSION >= 20
 void Runtime::setRuntimeDataImpl(
     const UUID& uuid,
     const void* data,
@@ -471,8 +521,9 @@ const void* Runtime::getRuntimeDataImpl(const UUID& uuid) {
   }
   return nullptr;
 }
+#endif
 
-Pointer& Pointer::operator=(Pointer&& other) noexcept {
+Pointer& Pointer::operator=(Pointer&& other) JSI_NOEXCEPT_15 {
   if (ptr_) {
     ptr_->invalidate();
   }
@@ -547,7 +598,7 @@ Function Object::asFunction(Runtime& runtime) && {
   return std::move(*this).getFunction(runtime);
 }
 
-Value::Value(Value&& other) noexcept : Value(other.kind_) {
+Value::Value(Value&& other) JSI_NOEXCEPT_15 : Value(other.kind_) {
   if (kind_ == BooleanKind) {
     data_.boolean = other.data_.boolean;
   } else if (kind_ == NumberKind) {
@@ -569,8 +620,10 @@ Value::Value(Runtime& runtime, const Value& other) : Value(other.kind_) {
     data_.number = other.data_.number;
   } else if (kind_ == SymbolKind) {
     new (&data_.pointer) Pointer(runtime.cloneSymbol(other.data_.pointer.ptr_));
+#if JSI_VERSION >= 6
   } else if (kind_ == BigIntKind) {
     new (&data_.pointer) Pointer(runtime.cloneBigInt(other.data_.pointer.ptr_));
+#endif
   } else if (kind_ == StringKind) {
     new (&data_.pointer) Pointer(runtime.cloneString(other.data_.pointer.ptr_));
   } else if (kind_ >= ObjectKind) {
@@ -600,10 +653,12 @@ bool Value::strictEquals(Runtime& runtime, const Value& a, const Value& b) {
       return runtime.strictEquals(
           static_cast<const Symbol&>(a.data_.pointer),
           static_cast<const Symbol&>(b.data_.pointer));
+#if JSI_VERSION >= 6
     case BigIntKind:
       return runtime.strictEquals(
           static_cast<const BigInt&>(a.data_.pointer),
           static_cast<const BigInt&>(b.data_.pointer));
+#endif
     case StringKind:
       return runtime.strictEquals(
           static_cast<const String&>(a.data_.pointer),
@@ -671,6 +726,7 @@ Symbol Value::asSymbol(Runtime& rt) && {
   return std::move(*this).getSymbol(rt);
 }
 
+#if JSI_VERSION >= 6
 BigInt Value::asBigInt(Runtime& rt) const& {
   if (!isBigInt()) {
     throw JSError(
@@ -688,6 +744,7 @@ BigInt Value::asBigInt(Runtime& rt) && {
 
   return std::move(*this).getBigInt(rt);
 }
+#endif
 
 String Value::asString(Runtime& rt) const& {
   if (!isString()) {
@@ -712,6 +769,7 @@ String Value::toString(Runtime& runtime) const {
   return toString.call(runtime, *this).getString(runtime);
 }
 
+#if JSI_VERSION >= 8
 uint64_t BigInt::asUint64(Runtime& runtime) const {
   if (!isUint64(runtime)) {
     throw JSError(runtime, "Lossy truncation in BigInt64::asUint64");
@@ -725,6 +783,7 @@ int64_t BigInt::asInt64(Runtime& runtime) const {
   }
   return getInt64(runtime);
 }
+#endif
 
 Array Array::createWithElements(
     Runtime& rt,

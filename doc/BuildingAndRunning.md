@@ -7,13 +7,13 @@ This document describes how to build and run Hermes as a standalone compiler and
 
 ## Dependencies
 
-Hermes is a C++17 project. clang, gcc, and Visual C++ are supported. Hermes also requires cmake, git, ICU, Python. It builds with [CMake](https://cmake.org) and [ninja](https://ninja-build.org).
+Hermes is a C++14 project. clang, gcc, and Visual C++ are supported. Hermes also requires cmake, git, ICU, Python, and zip. It builds with [CMake](https://cmake.org) and [ninja](https://ninja-build.org).
 
 The Hermes REPL will also use libreadline, if available.
 
 To install dependencies on Ubuntu:
 
-    apt install build-essential cmake git ninja-build libicu-dev python3 tzdata libreadline-dev
+    apt install cmake git ninja-build libicu-dev python3 zip libreadline-dev
 
 On Arch Linux:
 
@@ -33,7 +33,7 @@ Create a base directory to work in, e.g. `~/workspace`, and cd into it.
 After `cd`ing, follow the steps below to generate the Hermes build system:
 
     git clone https://github.com/facebook/hermes.git
-    cmake -S hermes -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+    cmake -S hermes -B build -G Ninja
 
 The build system has now been generated in the `build` directory. To perform the build:
 
@@ -100,7 +100,7 @@ simply run:
  The `-HERMES_ENABLE_ADDRESS_SANITIZER=ON` flag will create a ASan build:
 
     git clone https://github.com/facebook/hermes.git
-    cmake -S hermes -B asan_build -G Ninja -D HERMES_ENABLE_ADDRESS_SANITIZER=ON -DCMAKE_BUILD_TYPE=Debug
+    cmake -S hermes -B asan_build -G Ninja -D HERMES_ENABLE_ADDRESS_SANITIZER=ON
     cmake --build ./asan_build
 
 You can verify the build by looking for `asan` symbols in the `hermes` binary:
@@ -115,3 +115,21 @@ In addition to `hermes`, the following tools will be built:
 - `hbcdump`: Hermes bytecode disassembler
 - `hermesc`: Standalone Hermes compiler. This can compile JavaScript to Hermes bytecode, but does not support executing it.
 - `hvm`: Standalone Hermes VM. This can execute Hermes bytecode, but does not support compiling it.
+
+## Building on Windows (hermes-windows repository)
+
+### Dependencies
+
+    You will need to install Visual Studio with following Spectre-migrated libraries
+    You can find these in the Visual Studio Installer under Individual components
+    > MSVC v142 - VS 2019 C++ ARM64 Spectre-migrated libs (Latest)
+    > MSVC v142 - VS 2019 C++ x64/x86 Spectre-migrated libs (Latest)
+    > C++ ATL for latest v142 build tools with Spectre Mitigations (ARM64)
+    > C++ ATL for latest v142 build tools with Spectre Mitigations (x68 & x64)
+    
+### Building
+
+You should be able to build hermes by running the following script from the base of the repository.
+Note: There may be errors shown on the script but hermes is built if you can find the executable in build/bin/hermes/Debug/hermes.exe
+    
+    .ado\scripts\cibuild.ps1

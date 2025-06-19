@@ -76,6 +76,15 @@ if(NOT DEFINED HERMES_RELEASE_VERSION)
   set(HERMES_RELEASE_VERSION ${PROJECT_VERSION})
 endif()
 
+# The version that we put inside of DLL files
+if(NOT DEFINED HERMES_FILE_VERSION)
+  set(HERMES_FILE_VERSION "${PROJECT_VERSION}.0")
+endif()
+
+# The file version convertible to number representation.
+# We must replace dots with commas.
+string(REPLACE "." "," HERMES_FILE_VERSION_BIN ${HERMES_FILE_VERSION})
+
 find_package(Python COMPONENTS Interpreter)
 if (NOT Python_Interpreter_FOUND)
   message(FATAL_ERROR "Unable to find Python interpreter, required for builds and testing.
@@ -222,7 +231,7 @@ set(HERMES_UNICODE_LITE OFF CACHE BOOL
 set(HERMES_CHECK_NATIVE_STACK ON CACHE BOOL
   "Check the native stack for stack overflow")
 
-set(HERMES_ENABLE_DEBUGGER OFF CACHE BOOL
+set(HERMES_ENABLE_DEBUGGER ON CACHE BOOL
   "Build with debugger support")
 
 set(HERMES_MEMORY_INSTRUMENTATION ${HERMES_ENABLE_DEBUGGER} CACHE BOOL
@@ -271,6 +280,19 @@ set(HERMES_BUILD_APPLE_FRAMEWORK OFF CACHE BOOL
 set(HERMES_BUILD_LEAN_LIBHERMES OFF CACHE BOOL "Exclude the Hermes compiler from libhermes.")
 
 set(HERMES_BUILD_SHARED_JSI OFF CACHE BOOL "Build JSI as a shared library.")
+
+# On Windows, produce static libraries by default so that tests and tools work
+# without needing to move DLLs around.
+# On Emscripten, there is no concept of a shared library.
+if(WIN32 OR EMSCRIPTEN)
+  set(DEFAULT_BUILD_SHARED_LIBS OFF)
+else()
+  set(DEFAULT_BUILD_SHARED_LIBS ON)
+endif()
+
+set(HERMES_BUILD_SHARED_JSI ${DEFAULT_BUILD_SHARED_LIBS} CACHE BOOL "Build JSI as a shared library.")
+
+set(BUILD_SHARED_LIBS ${DEFAULT_BUILD_SHARED_LIBS} CACHE BOOL "Prefer producing shared libraries.")
 
 set(IMPORT_HOST_COMPILERS "" CACHE FILEPATH
   "Import the shermes and hermesc compiler from another build using the given CMake file.")
@@ -325,32 +347,48 @@ if (HERMES_STATIC_LINK)
   set(CMAKE_FIND_LIBRARY_SUFFIXES "${CMAKE_STATIC_LIBRARY_SUFFIX}")
 endif()
 
-# Check if the linker supports deleting unused sections and ICF.
-check_linker_flag(CXX "LINKER:--gc-sections" HAVE_GC_SECTIONS)
-# Only check for -dead_strip on Apple because some linkers may interpret it
-# as "-d -e ad_strip".
-if(APPLE)
-  check_linker_flag(CXX "LINKER:-dead_strip" HAVE_DEAD_STRIP)
-endif()
-check_linker_flag(CXX "LINKER:--icf=safe" HAVE_ICF)
+if (NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
+  # Check if the linker supports deleting unused sections and ICF.
+  # We can't simply CHECK_CXX_COMPILER_FLAG("-Wl,--gc-sections" ..) because CMake
+  # will compile and link separately and only passes the flag during compilation.
+  # TODO: Use check_linker_flag once we have CMake 3.18.
 
-if(HAVE_GC_SECTIONS)
-  add_flag_if_supported("-ffunction-sections" FUNCTION_SECTIONS)
-  add_flag_if_supported("-fdata-sections" DATA_SECTIONS)
-  list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:--gc-sections")
-elseif(HAVE_DEAD_STRIP)
-  # This is similar to the above, but for macOS.
-  list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:-dead_strip")
-endif()
+  # Only check for -dead_strip on Apple because some linkers may interpret it
+  # as "-d -e ad_strip".
+  if(APPLE)
+    check_linker_flag(CXX "LINKER:-dead_strip" HAVE_DEAD_STRIP)
+  endif()
+  check_linker_flag(CXX "LINKER:--icf=safe" HAVE_ICF)
+  # Check if the linker supports deleting unused sections and ICF.
+  check_linker_flag(CXX "LINKER:--gc-sections" HAVE_GC_SECTIONS)
+  if(HAVE_GC_SECTIONS)
+    add_flag_if_supported("-ffunction-sections" FUNCTION_SECTIONS)
+    add_flag_if_supported("-fdata-sections" DATA_SECTIONS)
+    list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:--gc-sections")
+  elseif(HAVE_DEAD_STRIP)
+    # This is similar to the above, but for macOS.
+    list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:-dead_strip")
+  endif()
 
-if(HAVE_ICF)
-  add_flag_if_supported("-faddrsig" ADDRSIG)
-  list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:--icf=safe")
+  if(HAVE_ICF)
+    add_flag_if_supported("-faddrsig" ADDRSIG)
+    list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:--icf=safe")
+  endif()
 endif()
 
 # Make the HERMES_RELEASE_VERSION accessible for version printing in C++.
 if(HERMES_RELEASE_VERSION)
     add_definitions(-DHERMES_RELEASE_VERSION="${HERMES_RELEASE_VERSION}")
+endif()
+
+# Make the HERMES_FILE_VERSION accessible for version printing in C++.
+if(HERMES_FILE_VERSION)
+    add_definitions(-DHERMES_FILE_VERSION="${HERMES_FILE_VERSION}")
+endif()
+
+# Make the HERMES_FILE_VERSION_BIN accessible for converting to a number.
+if(HERMES_FILE_VERSION_BIN)
+    add_definitions(-DHERMES_FILE_VERSION_BIN=${HERMES_FILE_VERSION_BIN})
 endif()
 
 add_definitions(-DHERMESVM_GC_${HERMESVM_GCKIND})
@@ -557,42 +595,66 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4201")
   # C4530 C++ exception handler used, but unwind semantics are not enabled
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4530")
+  # C4251 class X needs to have dll-interface to be used by clients of class Y
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4251")
+  # C4275: non dll-interface class X used as base for dll-interface class Y
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4275")
+  # C4646: function declared with 'noreturn' has non-void return type
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4646")
+  # C4312: 'reinterpret_cast': conversion from 'X' to 'hermes::vm::GCCell *' of greater size
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4312")
   # Parallelize build
   if (HERMES_MSVC_MP)
-    add_definitions( /MP )
+    add_compile_options( /MP )
   endif()
-  # MSVC does not have strict aliasing so there is no need to support it.
-  # Similar to GCC/Clang above, disable strict signed integer overflow.
-  # TODO: Investigate disabling strict signed integer overflow for MSVC
-  # append("/d2UndefIntOverflow-" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+
+endif()
+
+if ("${CMAKE_C_COMPILER_ID}" MATCHES "MSVC")
+  # Enable source linking
+  # NOTE: Dependencies are not properly setup here.
+  #       Currently, CMake does not know to re-link if SOURCE_LINK_JSON changes
+  #       Currently, CMake does not re-generate SOURCE_LINK_JSON if git's HEAD changes
+  if ("${CMAKE_C_COMPILER_VERSION}" VERSION_GREATER_EQUAL "19.20")
+    include(SourceLink)
+    file(TO_NATIVE_PATH "${PROJECT_BINARY_DIR}/source_link.json" SOURCE_LINK_JSON)
+    source_link(${PROJECT_SOURCE_DIR} ${SOURCE_LINK_JSON})
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SOURCELINK:${SOURCE_LINK_JSON}")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /SOURCELINK:${SOURCE_LINK_JSON}")
+  else()
+    message(WARNING "Disabling SourceLink due to old version of MSVC. Please update to VS2019!")
+  endif()
 endif()
 
 # Export a JSON file with the compilation commands that external tools can use
 # to analyze the source code of the project.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Attempt to use system ICU first, if none specified.
 # Don't need ICU on Apple, Emscripten, and Android.
-if (APPLE OR EMSCRIPTEN OR HERMES_IS_ANDROID OR HERMES_UNICODE_LITE)
+if (APPLE OR EMSCRIPTEN OR HERMES_IS_ANDROID)
   set(ICU_FOUND 1)
 endif()
 
 if (NOT ICU_FOUND)
+  if (NOT ICU_ROOT)
+    set(FB_ICU_ROOT_A "/mnt/gvfs/third-party2/icu/4e8f3e00e1c7d7315fd006903a9ff7f073dfc02b/53.1/gcc-5-glibc-2.23/9bc6787")
+    set(FB_ICU_ROOT_B "/mnt/gvfs/third-party2/icu/4e8f3e00e1c7d7315fd006903a9ff7f073dfc02b/53.1/gcc-4.8.1-glibc-2.17/c3f970a/")
+    if(EXISTS ${FB_ICU_ROOT_A})
+      set(ICU_ROOT ${FB_ICU_ROOT_A})
+    elseif(EXISTS ${FB_ICU_ROOT_B})
+      set(ICU_ROOT ${FB_ICU_ROOT_B})
+    endif()
+  endif()
   set(CMAKE_FIND_LIBRARY_SUFFIXES_OLD "${CMAKE_FIND_LIBRARY_SUFFIXES}")
   if (HERMES_USE_STATIC_ICU)
     add_definitions(-DU_STATIC_IMPLEMENTATION)
     set(CMAKE_FIND_LIBRARY_SUFFIXES "${CMAKE_STATIC_LIBRARY_SUFFIX}")
   endif()
 
-  if (HERMES_ENABLE_INTL)
-    # Attempt to locate a system-installed ICU. A minimum version of 65 is
-    # required because our ICU-based Intl implementation relies on APIs introduced
-    # in version 65.
-    # Include 'uc' twice for static libraries that depend on each other.
-    find_global_package(ICU 65 COMPONENTS uc i18n data uc)
-  else()
+  # FindICU uses ICU_ROOT variable as a hint
     # Include 'uc' twice for static libraries that depend on each other.
     find_global_package(ICU 52 COMPONENTS uc i18n data uc)
-  endif()
 
   set(CMAKE_FIND_LIBRARY_SUFFIXES "${CMAKE_FIND_LIBRARY_SUFFIXES_OLD}")
 
@@ -611,8 +673,11 @@ endif()
 # Therefore, use it only as fallback.
 if (NOT ICU_FOUND AND HERMES_ENABLE_WIN10_ICU_FALLBACK AND
     WIN32 AND # Windows 32 or 64 bit
-    # At least Windows 10 version 1703 (aka Creators Update)
-    NOT ${CMAKE_SYSTEM_VERSION} VERSION_LESS "10.0.15063")
+    # We used to check for at least Windows 10 version 1703 (aka Creators Update)
+    # but the new compliant images return 6.2. Everybody should be running
+    # the right version of windows now.
+    # NOT ${CMAKE_SYSTEM_VERSION} VERSION_LESS "10.0.15063"
+    )
   add_definitions(-DUSE_WIN10_ICU)
   set(ICU_FOUND 1)
   set(ICU_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/icu_decls)
@@ -625,7 +690,7 @@ endif()
 
 # If we have no ICU, then error out.
 if (NOT ICU_FOUND)
-  message(FATAL_ERROR "Unable to find ICU.")
+  message(FATAL_ERROR "Unable to find ICU for ${CMAKE_SYSTEM_VERSION}.")
 endif()
 
 # Declare a function that links ICU for the given target.
@@ -633,7 +698,7 @@ endif()
 function(hermes_link_icu target_name)
   if(ICU_LIBRARIES)
     get_target_property(target_type ${target_name} TYPE)
-    target_link_libraries(${target_name} ${ICU_LIBRARIES})
+  # target_link_libraries(${target_name} ${ICU_LIBRARIES})
 
     if (HERMES_USE_STATIC_ICU)
       if ((NOT EMSCRIPTEN) AND target_type MATCHES "EXECUTABLE|STATIC_LIBRARY")
@@ -649,7 +714,6 @@ function(hermes_link_icu target_name)
       set_property(TARGET ${target_name} PROPERTY
                     BUILD_WITH_INSTALL_RPATH TRUE)
     endif()
-  endif()
 endfunction()
 
 if (APPLE)
@@ -666,6 +730,10 @@ endif()
 
 if (HERMES_MEMORY_INSTRUMENTATION)
   add_definitions(-DHERMES_MEMORY_INSTRUMENTATION)
+endif()
+
+if (HERMES_MSVC_USE_PLATFORM_UNICODE_WINGLOB)
+  add_definitions(-DUSE_PLATFORM_UNICODE_WINGLOB)
 endif()
 
 set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LANGUAGE_STANDARD "c++17")
