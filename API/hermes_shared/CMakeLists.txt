@@ -6,7 +6,7 @@
 set(HERMES_ENABLE_EH_RTTI ON)
 
 add_subdirectory(node-api)
-add_subdirectory(inspector)
+#add_subdirectory(inspector)
 
 # List the files that define exported functions explicitly, and they can link
 # against the internal functionality they need.
@@ -21,7 +21,7 @@ target_link_libraries(libshared PRIVATE
   libhermes
   hermesVMRuntime
   hermesNodeApi
-  hermesinspector
+  #hermesinspector
   hermesParser)
 target_link_options(libshared PRIVATE ${HERMES_EXTRA_LINKER_FLAGS})
 
