@@ -570,7 +570,7 @@ void Runtime::markRoots(RootAcceptorWithNames &acceptor, bool markLongLived) {
     acceptor.beginRootSection(RootAcceptor::Section::Locals);
     for (Locals *locals = vmLocals; locals; locals = locals->prev)
       for (size_t i = 0, e = locals->numLocals; i < e; ++i)
-        acceptor.acceptNullable(locals->locals[i]);
+        acceptor.acceptNullable(locals->getLocals()[i]);
     acceptor.endRootSection();
   }
 

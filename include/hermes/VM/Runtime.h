@@ -1689,7 +1689,33 @@ struct Locals {
   Locals *prev;
 
   /// The trailing locals.
+  /// MSVC doesn't allow zero-sized arrays in base classes, so we use
+  /// conditional compilation for cross-compiler compatibility.
+#ifdef _MSC_VER
+  // For MSVC, we omit the array member and use pointer arithmetic instead
+#else
   PinnedHermesValue locals[0];
+#endif
+
+  /// Cross-compiler compatible accessor for the trailing values
+  PinnedHermesValue *getLocals() {
+#ifdef _MSC_VER
+    // For MSVC, use pointer arithmetic to get to the trailing values
+    return reinterpret_cast<PinnedHermesValue *>(this + 1);
+#else
+    return locals;
+#endif
+  }
+
+  /// Cross-compiler compatible accessor for the trailing values (const version)
+  const PinnedHermesValue *getLocals() const {
+#ifdef _MSC_VER
+    // For MSVC, use pointer arithmetic to get to the trailing values
+    return reinterpret_cast<const PinnedHermesValue *>(this + 1);
+#else
+    return locals;
+#endif
+  }
 
 #ifndef NDEBUG
   /// In debug mode, assert to ensure the locals are properly registered.
@@ -1710,8 +1736,14 @@ class [[nodiscard]] LocalsRAII {
   explicit LocalsRAII(Runtime &runtime, T *locals)
       : runtime_(runtime), locals_(locals) {
     locals->prev = runtime_.vmLocals;
+#ifdef _MSC_VER
+    // For MSVC, calculate offset to the end of the Locals base class
+    locals->numLocals =
+        (sizeof(T) - sizeof(Locals)) / sizeof(PinnedHermesValue);
+#else
     locals->numLocals =
         (sizeof(T) - offsetof(Locals, locals)) / sizeof(PinnedHermesValue);
+#endif
     runtime_.vmLocals = locals;
   }
   ~LocalsRAII() {
