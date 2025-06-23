@@ -97,7 +97,8 @@ function(hermes_update_compile_flags name)
     set(flags "${flags} /Zi")
 
     # Temporary avoid the optimization for speed since VS 17.14.0 has auto-vectorization issues.
-    set(flags "${flags} /O1")
+    # Only apply optimization for non-Debug builds to avoid conflict with /RTC1
+    #  set(flags "${flags} /O1")
   #endif ()
 
   if (HERMES_ENABLE_EH)

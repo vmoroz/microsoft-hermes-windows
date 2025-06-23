@@ -54,7 +54,8 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
   set(compile_flags "${compile_flags} /Zi")
 
   # Temporary avoid the optimization for speed since VS 17.14.0 has auto-vectorization issues.
-  set(compile_flags "${compile_flags} /O1")
+  # Only apply optimization in Release builds to avoid conflict with /RTC1 in Debug builds
+  # set(compile_flags "${compile_flags} $<$<NOT:$<CONFIG:Debug>>:/O1>")
 
   set(link_flags_debug "/DEBUG")
 
