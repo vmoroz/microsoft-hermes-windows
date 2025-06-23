@@ -5,6 +5,7 @@
 
 set(LINK_OBJLIBS
     dtoa
+    hermesPlatform
     hermesPlatformUnicode
     LLVHSupport)
 

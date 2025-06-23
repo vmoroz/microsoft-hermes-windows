@@ -22,7 +22,7 @@ class CompressedPointer : private SHCompressedPointer {
  public:
   using RawType = decltype(raw);
 
-  explicit CompressedPointer() = default;
+  CompressedPointer() = default;
   constexpr explicit CompressedPointer(std::nullptr_t)
       : SHCompressedPointer() {}
 

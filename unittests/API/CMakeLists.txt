@@ -59,7 +59,16 @@ target_link_libraries(APITests
   hermesSandboxRuntime
   cdpInternal
   # SegmentTestCompile # Commenting out for now
+  hermesNodeApiJsiRuntime
 )
 
 add_hermes_unittest(APILeanTests APILeanTest.cpp)
 target_link_libraries(APILeanTests hermesvmlean_a)
+
+# copy hermes.dll next to the NodeApiTests.exe
+add_custom_command(TARGET APITests POST_BUILD
+  DEPENDS libshared
+  VERBATIM
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+  $<TARGET_FILE:libshared>
+  $<TARGET_FILE_DIR:APITests>)

@@ -29,6 +29,10 @@ if(HAVE_LIBREADLINE)
   set_target_properties(hermes PROPERTIES UNITY_BUILD false)
 endif()
 
+if (WIN32)
+  configure_file(version.rc.in version.rc @ONLY)
+  target_sources(hermes PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+endif()
 install(TARGETS hermes
   RUNTIME DESTINATION bin
 )

@@ -35,6 +35,7 @@ if(POLICY CMP0022)
   cmake_policy(SET CMP0022 NEW)
 endif()
 
+set(CMAKE_BUILD_TYPE Debug)
 # Require a build type
 if ((NOT GENERATOR_IS_MULTI_CONFIG) AND (NOT DEFINED CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL ""))
     message(FATAL_ERROR "Please set CMAKE_BUILD_TYPE")
@@ -672,7 +673,7 @@ endif()
 # ICU is available on Windows, but only since Windows 10 v1703.
 # Therefore, use it only as fallback.
 if (NOT ICU_FOUND AND HERMES_ENABLE_WIN10_ICU_FALLBACK AND
-    WIN32 AND # Windows 32 or 64 bit
+    WIN32 # Windows 32 or 64 bit
     # We used to check for at least Windows 10 version 1703 (aka Creators Update)
     # but the new compliant images return 6.2. Everybody should be running
     # the right version of windows now.
@@ -696,24 +697,23 @@ endif()
 # Declare a function that links ICU for the given target.
 # This adds the correct -rpath link flag as necessary.
 function(hermes_link_icu target_name)
-  if(ICU_LIBRARIES)
-    get_target_property(target_type ${target_name} TYPE)
+  get_target_property(target_type ${target_name} TYPE)
   # target_link_libraries(${target_name} ${ICU_LIBRARIES})
 
-    if (HERMES_USE_STATIC_ICU)
-      if ((NOT EMSCRIPTEN) AND target_type MATCHES "EXECUTABLE|STATIC_LIBRARY")
-        target_link_libraries(${target_name} dl pthread)
-      elseif(target_type MATCHES "MODULE_LIBRARY|SHARED_LIBRARY")
-        message(WARNING "ICU cannot be statically linked against shared library target ${target_name}")
-      endif()
+  if (HERMES_USE_STATIC_ICU)
+    if ((NOT EMSCRIPTEN) AND target_type MATCHES "EXECUTABLE|STATIC_LIBRARY")
+      target_link_libraries(${target_name} dl pthread)
+    elseif(target_type MATCHES "MODULE_LIBRARY|SHARED_LIBRARY")
+      message(WARNING "ICU cannot be statically linked against shared library target ${target_name}")
     endif()
+  endif()
 
-    if (ICU_RPATH)
-      set_property(TARGET ${target_name} APPEND PROPERTY
-                    INSTALL_RPATH ${ICU_RPATH})
-      set_property(TARGET ${target_name} PROPERTY
-                    BUILD_WITH_INSTALL_RPATH TRUE)
-    endif()
+  if (ICU_RPATH)
+    set_property(TARGET ${target_name} APPEND PROPERTY
+                  INSTALL_RPATH ${ICU_RPATH})
+    set_property(TARGET ${target_name} PROPERTY
+                  BUILD_WITH_INSTALL_RPATH TRUE)
+  endif()
 endfunction()
 
 if (APPLE)
