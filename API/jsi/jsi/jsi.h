@@ -112,7 +112,7 @@ class JSI_EXPORT UUID {
   std::string toString() const {
     std::string buffer(36, ' ');
     std::snprintf(
-        buffer.data(),
+        &buffer[0],
         buffer.size() + 1,
         "%08x-%04x-%04x-%04x-%012llx",
         getTimeLow(),
@@ -640,6 +640,16 @@ class JSI_EXPORT Runtime {
 #endif
   static const PointerValue* getPointerValue(const Pointer& pointer);
   static const PointerValue* getPointerValue(const Value& value);
+
+#if JSI_VERSION >= 20
+  // Implementation methods for runtime data management
+  virtual void setRuntimeDataImpl(
+      const UUID& uuid,
+      const void* data,
+      void (*deleter)(const void* data));
+  virtual const void* getRuntimeDataImpl(const UUID& uuid);
+  virtual ICast* castInterface(const UUID& interfaceUUID);
+#endif
 
   friend class ::FBJSRuntime;
   template <typename Plain, typename Base>
