@@ -215,6 +215,9 @@ add_hermes_library(boost_context
   ${STACK_TRAITS_SOURCES}
 )
 
+# Set output name to avoid MSVC's automatic naming
+set_target_properties(boost_context PROPERTIES OUTPUT_NAME "boost_context")
+
 #add_library(Boost::context ALIAS boost_context)
 
 #target_include_directories(boost_context PUBLIC include)
