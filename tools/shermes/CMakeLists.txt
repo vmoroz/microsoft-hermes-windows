@@ -38,7 +38,7 @@ add_hermes_tool(shermes
   shermes.cpp
   ParseJSFile.cpp ParseJSFile.h
   compile.cpp compile.h
-  LINK_LIBS hermescompiler dl)
+  LINK_LIBS hermescompiler $<$<NOT:$<PLATFORM_ID:Windows>>:dl>)
 
 # The compiler is used as part of the build of the VM.
 # During cross-compilation, the compiler needs to be built for the host system,

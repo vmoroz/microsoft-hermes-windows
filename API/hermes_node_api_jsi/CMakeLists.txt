@@ -16,4 +16,4 @@ add_hermes_library(hermesNodeApiJsiRuntime
   ApiLoaders/NodeApi.h
   LINK_LIBS jsi hermesNodeApi
   )
-target_include_directories(hermesNodeApiJsiRuntime PUBLIC ..)
+target_include_directories(hermesNodeApiJsiRuntime PUBLIC .. ${CMAKE_SOURCE_DIR}/API)
