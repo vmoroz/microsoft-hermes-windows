@@ -654,6 +654,8 @@ class JSI_EXPORT Runtime {
   friend class ::FBJSRuntime;
   template <typename Plain, typename Base>
   friend class RuntimeDecorator;
+  template <typename U, typename T>
+  friend U* castInterface(T* ptr);
 };
 
 // Base class for pointer-storing types.
