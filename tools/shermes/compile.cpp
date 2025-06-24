@@ -17,7 +17,11 @@
 #include "llvh/Support/Program.h"
 #include "llvh/Support/Signals.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
 
 #define DEBUG_TYPE "shermesc"
 
@@ -479,6 +483,25 @@ bool execute(
   }
 
   // Open the produced shared library and invoke main with args.
+#ifdef _WIN32
+  HMODULE handle = LoadLibraryA(tmpPath.c_str());
+  if (!handle) {
+    llvh::errs() << "LoadLibrary() error, path: " << tmpPath
+                 << ", error code: " << GetLastError() << "\n";
+    return false;
+  }
+  // Note that main technically takes a non-const char**, but we know it is
+  // never modified.
+  auto *main = (int (*)(int, const char **))GetProcAddress(handle, "main");
+  if (!main) {
+    llvh::errs() << "GetProcAddress(main) error, error code: " << GetLastError() << "\n";
+    FreeLibrary(handle);
+    return false;
+  }
+  int result = main(args.size(), args.data());
+  FreeLibrary(handle);
+  return !result;
+#else
   void *handle = dlopen(tmpPath.c_str(), RTLD_LAZY);
   if (!handle) {
     llvh::errs() << "dlopen() error, path: " << tmpPath
@@ -493,6 +516,7 @@ bool execute(
     return false;
   }
   return !main(args.size(), args.data());
+#endif
 }
 
 } // namespace
