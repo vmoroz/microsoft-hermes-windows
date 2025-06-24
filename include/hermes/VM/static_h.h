@@ -17,6 +17,43 @@
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
+
+/// Cross-compiler compatibility macros
+#ifdef _MSC_VER
+  /// MSVC doesn't have various __builtin_ functions
+  #define SH_MEMCPY memcpy
+  #define SH_ASSUME_ALIGNED(ptr, alignment) (ptr)
+  #define SH_BUILTIN_EXPECT(expr, expected) (expr)
+  #define SH_BUILTIN_CONSTANT_P(expr) 0
+#elif defined(__has_builtin)
+  #if __has_builtin(__builtin_memcpy)
+    #define SH_MEMCPY __builtin_memcpy
+  #else
+    #define SH_MEMCPY memcpy
+  #endif
+  #if __has_builtin(__builtin_assume_aligned)
+    #define SH_ASSUME_ALIGNED(ptr, alignment) __builtin_assume_aligned(ptr, alignment)
+  #else
+    #define SH_ASSUME_ALIGNED(ptr, alignment) (ptr)
+  #endif
+  #if __has_builtin(__builtin_expect)
+    #define SH_BUILTIN_EXPECT(expr, expected) __builtin_expect(expr, expected)
+  #else
+    #define SH_BUILTIN_EXPECT(expr, expected) (expr)
+  #endif
+  #if __has_builtin(__builtin_constant_p)
+    #define SH_BUILTIN_CONSTANT_P(expr) __builtin_constant_p(expr)
+  #else
+    #define SH_BUILTIN_CONSTANT_P(expr) 0
+  #endif
+#else
+  /// Fallback for older compilers
+  #define SH_MEMCPY memcpy
+  #define SH_ASSUME_ALIGNED(ptr, alignment) (ptr)
+  #define SH_BUILTIN_EXPECT(expr, expected) (expr)
+  #define SH_BUILTIN_CONSTANT_P(expr) 0
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -948,10 +985,10 @@ static inline int32_t _sh_to_int32_double(double d) {
   // NOTE: this implementation should be consistent with truncateToInt32()
   // in Support/Conversions.h
 
-  // Use __builtin_constant_p() for better perf and to avoid UB caused by
+  // Use SH_BUILTIN_CONSTANT_P() for better perf and to avoid UB caused by
   // constant propagation.
-#if defined(__GNUC__)
-  if (__builtin_constant_p(d)) {
+#if defined(__GNUC__) || defined(_MSC_VER)
+  if (SH_BUILTIN_CONSTANT_P(d)) {
     // Be aggressive on constant path, use the maximum precision bits
     // of double type for range check.
     if (d >= (int64_t)(-1ULL << 53) && d <= (1LL << 53))
@@ -962,11 +999,11 @@ static inline int32_t _sh_to_int32_double(double d) {
 
   if (HERMES_TRYFAST_F64_TO_64_IS_FAST) {
     int64_t fast;
-    if (__builtin_expect(sh_tryfast_f64_to_i64(d, fast), 1))
+    if (SH_BUILTIN_EXPECT(sh_tryfast_f64_to_i64(d, fast), 1))
       return (int32_t)fast;
   } else {
     int32_t fast;
-    if (__builtin_expect(sh_tryfast_f64_to_i32(d, fast), 1))
+    if (SH_BUILTIN_EXPECT(sh_tryfast_f64_to_i32(d, fast), 1))
       return fast;
   }
 
@@ -1193,7 +1230,7 @@ static inline SHLegacyValue _sh_typed_load_parent(
 /// If the double value is within representable integer range, convert it,
 /// otherwise throw.
 static inline uint64_t _sh_to_uint64_double_or_throw(SHRuntime *shr, double d) {
-  if (__builtin_expect(d >= 0 && d <= (double)(1LL << 53), true)) {
+  if (SH_BUILTIN_EXPECT(d >= 0 && d <= (double)(1LL << 53), true)) {
     return (uint64_t)d;
   }
   _sh_throw_type_error_ascii(shr, "number not representable as uint64_t");
@@ -1202,7 +1239,7 @@ static inline uint64_t _sh_to_uint64_double_or_throw(SHRuntime *shr, double d) {
 /// If the double value is within representable integer range, convert it,
 /// otherwise throw.
 static inline int64_t _sh_to_int64_double_or_throw(SHRuntime *shr, double d) {
-  if (__builtin_expect(
+  if (SH_BUILTIN_EXPECT(
           d >= (double)(int64_t)(-1ULL << 53) && d <= (double)(1LL << 53),
           true)) {
     return (int64_t)d;
@@ -1213,7 +1250,7 @@ static inline int64_t _sh_to_int64_double_or_throw(SHRuntime *shr, double d) {
 /// If the int64 value is within representable integer range, convert it,
 /// otherwise throw
 static inline double _sh_to_double_int64_or_throw(SHRuntime *shr, int64_t i) {
-  if (__builtin_expect(i >= (int64_t)(-1ULL << 53) && i <= (1LL << 53), true)) {
+  if (SH_BUILTIN_EXPECT(i >= (int64_t)(-1ULL << 53) && i <= (1LL << 53), true)) {
     return (double)i;
   }
   _sh_throw_type_error_ascii(shr, "int64_t not representable as number");
@@ -1221,7 +1258,7 @@ static inline double _sh_to_double_int64_or_throw(SHRuntime *shr, int64_t i) {
 /// If the uint64 value is within representable integer range, convert it,
 /// otherwise throw
 static inline double _sh_to_double_uint64_or_throw(SHRuntime *shr, uint64_t i) {
-  if (__builtin_expect(i <= 1ULL << 53, true)) {
+  if (SH_BUILTIN_EXPECT(i <= 1ULL << 53, true)) {
     // On x86_64 there is no instruction to convert uint64_t to double, making
     // it a bit slower. Fortunately, we know that `i` is in range for int64_t,
     // so we can just pretend it is signed.
@@ -1241,7 +1278,7 @@ static inline SHLegacyValue _sh_ljs_native_pointer_or_throw(
   // the mantissa and just look at the exponent.
   // It is faster to check if all 11 bits are 1s if we invert the number and
   // check for 0 instead.
-  if (__builtin_expect(((~(uint64_t)(uintptr_t)p >> 52) & 0x7ff) != 0, true)) {
+  if (SH_BUILTIN_EXPECT(((~(uint64_t)(uintptr_t)p >> 52) & 0x7ff) != 0, true)) {
     return _sh_ljs_native_pointer(p);
   }
   _sh_throw_type_error_ascii(shr, "pointer not representable as number");
@@ -1273,13 +1310,13 @@ static inline unsigned char _sh_ptr_read_uchar(unsigned char *ptr, int offset) {
 /// These functions access arbitrary values from arbitrary locations, with the
 /// only requirement being that the location is aligned to the size of the
 /// value. This should be generally safe with strict aliasing disabled, but we
-/// still want to be extra safe, so we use \c __builtin_memcpy().
+/// still want to be extra safe, so we use memcpy().
 ///
 /// The main limitation of the memcpy() approach is that in the general case it
 /// doesn't preserve alignment information, so it theoretically can emit
 /// suboptimal instructions when we know the address is aligned. We do our best
 /// to give the compiler the alignment, both by using a typed pointer, and by
-/// using \c __builtin_assume_aligned().
+/// using alignment hints when available.
 ///
 /// This is actually unnecessary in most cases, because in practice all
 /// architectures that we target have efficient unaligned access of most types,
@@ -1305,8 +1342,8 @@ static inline unsigned char _sh_ptr_read_uchar(unsigned char *ptr, int offset) {
 /// Note that the offset is in sizeof(void *) units. It is required that the
 /// destination pointer is correctly aligned (which is implied by its type).
 static inline void _sh_ptr_write_ptr(void **dest, int offset, void *value) {
-  __builtin_memcpy(
-      __builtin_assume_aligned(&dest[offset], sizeof(value)),
+  SH_MEMCPY(
+      SH_ASSUME_ALIGNED(&dest[offset], sizeof(value)),
       &value,
       sizeof(value));
 }
@@ -1315,9 +1352,9 @@ static inline void _sh_ptr_write_ptr(void **dest, int offset, void *value) {
 /// source pointer is correctly aligned (which is implied by its type).
 static inline void *_sh_ptr_read_ptr(void **src, int offset) {
   void *value;
-  __builtin_memcpy(
+  SH_MEMCPY(
       &value,
-      __builtin_assume_aligned(&src[offset], sizeof(value)),
+      SH_ASSUME_ALIGNED(&src[offset], sizeof(value)),
       sizeof(value));
   return value;
 }
