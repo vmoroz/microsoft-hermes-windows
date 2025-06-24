@@ -12,6 +12,14 @@
 
 #include <thread>
 
+/// Cross-compiler compatibility for frame address intrinsics
+#ifdef _MSC_VER
+  #include <intrin.h>
+  #define HERMES_GET_FRAME_ADDRESS() _AddressOfReturnAddress()
+#else
+  #define HERMES_GET_FRAME_ADDRESS() __builtin_frame_address(0)
+#endif
+
 using namespace hermes;
 
 namespace {
@@ -33,12 +41,7 @@ bool isStackOverflowingSlowPath() {
   auto [highPtr, size] = oscompat::thread_stack_bounds(nativeStackGap);
   nativeStackHigh = (const char *)highPtr;
   nativeStackSize = size;
-#ifdef __GNUC__
-  void *sp = __builtin_frame_address(0);
-#else
-  volatile char *var = 0;
-  void *sp = (void *)&var;
-#endif
+  void *sp = HERMES_GET_FRAME_ADDRESS();
   return (uintptr_t)nativeStackHigh - (uintptr_t)sp > nativeStackSize;
 }
 
@@ -46,12 +49,7 @@ bool isStackOverflowingSlowPath() {
 ///   current thread. Updates the stack bounds if the thread which Runtime
 ///   is executing on changes.
 inline bool isOverflowing() {
-#ifdef __GNUC__
-  void *sp = __builtin_frame_address(0);
-#else
-  volatile char *var = 0;
-  void *sp = (void *)&var;
-#endif
+  void *sp = HERMES_GET_FRAME_ADDRESS();
   // Check for overflow by subtracting the sp from the high pointer.
   // If the sp is outside the valid stack range, the difference will
   // be greater than the known stack size.
@@ -146,12 +144,7 @@ TEST(StackBoundsTest, unboundRecursion_thread) {
 TEST(StackBoundsTest, ThreadStackBounds) {
   auto [high, size] = oscompat::thread_stack_bounds();
   ASSERT_TRUE(size > 0);
-#ifdef __GNUC__
-  void *sp = __builtin_frame_address(0);
-#else
-  volatile char *var = 0;
-  void *sp = (void *)&var;
-#endif
+  void *sp = HERMES_GET_FRAME_ADDRESS();
   ASSERT_FALSE((uintptr_t)high - (uintptr_t)sp > size);
 }
 

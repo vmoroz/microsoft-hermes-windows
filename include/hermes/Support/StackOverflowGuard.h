@@ -32,6 +32,14 @@
 #include <cstddef>
 #include <cstdint>
 
+/// Cross-compiler compatibility for frame address intrinsics
+#ifdef _MSC_VER
+  #include <intrin.h>
+  #define HERMES_GET_FRAME_ADDRESS() _AddressOfReturnAddress()
+#else
+  #define HERMES_GET_FRAME_ADDRESS() __builtin_frame_address(0)
+#endif
+
 namespace hermes {
 
 #ifdef HERMES_CHECK_NATIVE_STACK
@@ -66,7 +74,7 @@ class StackOverflowGuard {
     // (because otherwise the stack wouldn't fit in the memory),
     // so the overflowed difference will be greater than nativeStackSize_.
     if (LLVM_LIKELY(!(
-            (uintptr_t)nativeStackHigh - (uintptr_t)__builtin_frame_address(0) >
+            (uintptr_t)nativeStackHigh - (uintptr_t)HERMES_GET_FRAME_ADDRESS() >
             nativeStackSize))) {
       // Fast path: quickly check the stored stack bounds.
       // NOTE: It is possible to have a false negative here (highly unlikely).
