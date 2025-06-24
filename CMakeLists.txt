@@ -604,6 +604,8 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4646")
   # C4312: 'reinterpret_cast': conversion from 'X' to 'hermes::vm::GCCell *' of greater size
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4312")
+  # Suppress std::is_pod deprecation warnings in C++20
+  add_definitions(-D_SILENCE_CXX20_IS_POD_DEPRECATION_WARNING)
   # Parallelize build
   if (HERMES_MSVC_MP)
     add_compile_options( /MP )
