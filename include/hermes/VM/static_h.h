@@ -26,6 +26,9 @@
   #define SH_ASSUME_ALIGNED(ptr, alignment) (ptr)
   #define SH_BUILTIN_EXPECT(expr, expected) (expr)
   #define SH_BUILTIN_CONSTANT_P(expr) 0
+  #define SH_NORETURN_PRE __declspec(noreturn)
+  #define SH_NORETURN_POST
+  #define SH_CONST_FUNC
 #elif defined(__has_builtin)
   #if __has_builtin(__builtin_memcpy)
     #define SH_MEMCPY __builtin_memcpy
@@ -47,12 +50,18 @@
   #else
     #define SH_BUILTIN_CONSTANT_P(expr) 0
   #endif
+  #define SH_NORETURN_PRE 
+  #define SH_NORETURN_POST __attribute__((noreturn))
+  #define SH_CONST_FUNC __attribute__((const))
 #else
   /// Fallback for older compilers
   #define SH_MEMCPY memcpy
   #define SH_ASSUME_ALIGNED(ptr, alignment) (ptr)
   #define SH_BUILTIN_EXPECT(expr, expected) (expr)
   #define SH_BUILTIN_CONSTANT_P(expr) 0
+  #define SH_NORETURN_PRE 
+  #define SH_NORETURN_POST __attribute__((noreturn))
+  #define SH_CONST_FUNC __attribute__((const))
 #endif
 
 #ifdef __cplusplus
@@ -430,28 +439,28 @@ SHERMES_EXPORT void _sh_catch_no_pop(
     uint32_t stackSize);
 /// Clear the thrown value and return it.
 SHERMES_EXPORT SHLegacyValue _sh_get_clear_thrown_value(SHRuntime *shr);
-SHERMES_EXPORT void _sh_throw_current(SHRuntime *shr) __attribute__((noreturn));
-SHERMES_EXPORT void _sh_throw(SHRuntime *shr, SHLegacyValue value)
-    __attribute__((noreturn));
+SH_NORETURN_PRE SHERMES_EXPORT void _sh_throw_current(SHRuntime *shr) SH_NORETURN_POST;
+SH_NORETURN_PRE SHERMES_EXPORT void _sh_throw(SHRuntime *shr, SHLegacyValue value)
+    SH_NORETURN_POST;
 
 /// Throw a TypeError with the given message.
 /// \param message will be converted to a string and used as the error message.
-SHERMES_EXPORT void _sh_throw_type_error(SHRuntime *shr, SHLegacyValue *message)
-    __attribute__((noreturn));
+SH_NORETURN_PRE SHERMES_EXPORT void _sh_throw_type_error(SHRuntime *shr, SHLegacyValue *message)
+    SH_NORETURN_POST;
 /// Throw a TypeError with the given ASCII message.
-SHERMES_EXPORT void _sh_throw_type_error_ascii(
+SH_NORETURN_PRE SHERMES_EXPORT void _sh_throw_type_error_ascii(
     SHRuntime *shr,
-    const char *message) __attribute__((noreturn));
-SHERMES_EXPORT void _sh_throw_reference_error_ascii(
+    const char *message) SH_NORETURN_POST;
+SH_NORETURN_PRE SHERMES_EXPORT void _sh_throw_reference_error_ascii(
     SHRuntime *shr,
-    const char *message) __attribute__((noreturn));
+    const char *message) SH_NORETURN_POST;
 
 /// Throw a ReferenceError for accessing uninitialized variable.
-SHERMES_EXPORT void _sh_throw_empty(SHRuntime *shr) __attribute__((noreturn));
+SH_NORETURN_PRE SHERMES_EXPORT void _sh_throw_empty(SHRuntime *shr) SH_NORETURN_POST;
 
 /// Throws a ReferenceError for double-initialization of `this`.
-__attribute__((noreturn)) static inline void _sh_throw_this_already_initialized(
-    SHRuntime *shr) {
+SH_NORETURN_PRE static inline void _sh_throw_this_already_initialized(
+    SHRuntime *shr) SH_NORETURN_POST {
   _sh_throw_reference_error_ascii(shr, "Cannot call super constructor twice");
 }
 
@@ -951,7 +960,7 @@ static inline double _sh_mod_uint32(uint32_t a, uint32_t b) {
   return (double)(a % b);
 }
 
-__attribute__((const)) static inline double _sh_mod_double(double a, double b) {
+SH_CONST_FUNC static inline double _sh_mod_double(double a, double b) {
   uint32_t aUint, bUint;
   bool aIsUint = sh_tryfast_f64_to_u32(a, aUint);
   bool bIsUint = sh_tryfast_f64_to_u32(b, bUint);
@@ -970,7 +979,7 @@ __attribute__((const)) static inline double _sh_mod_double(double a, double b) {
 /// Annotated ((const)) to let the compiler know that the function will not
 /// read/write global memory at all (it's just doing math), allowing for
 /// optimizations around the locals struct.
-SHERMES_EXPORT __attribute__((const)) int32_t
+SHERMES_EXPORT SH_CONST_FUNC int32_t
 _sh_to_int32_double_slow_path(double d);
 
 /// C version of the hermes::truncateToInt32 function.
@@ -1058,7 +1067,7 @@ SHERMES_EXPORT void _sh_prstore_indirect(
     uint32_t propIndex,
     SHLegacyValue *value);
 
-SHERMES_EXPORT void _sh_unreachable() __attribute__((noreturn));
+SH_NORETURN_PRE SHERMES_EXPORT void _sh_unreachable() SH_NORETURN_POST;
 
 static inline SHLegacyValue
 _sh_prload(SHRuntime *shr, SHLegacyValue source, uint32_t propIndex) {
@@ -1164,8 +1173,8 @@ static inline void _sh_prstore_string(
 }
 
 /// Throw an array out-of-bounds error.
-SHERMES_EXPORT void _sh_throw_array_oob(SHRuntime *shr)
-    __attribute__((noreturn));
+SH_NORETURN_PRE SHERMES_EXPORT void _sh_throw_array_oob(SHRuntime *shr)
+    SH_NORETURN_POST;
 
 /// Out-of-line implementation for loading the element at \p index from the
 /// FastArray \p array.
