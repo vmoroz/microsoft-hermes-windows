@@ -112,6 +112,19 @@
 #include "hermes/Support/sh_tryfast_fp_cvt.h"
 #include "hermes/VM/sh_config.h"
 
+/// Cross-compiler compatibility macros for sh_legacy_value.h
+#ifdef _MSC_VER
+  #define SH_BUILTIN_EXPECT(expr, expected) (expr)
+#elif defined(__has_builtin)
+  #if __has_builtin(__builtin_expect)
+    #define SH_BUILTIN_EXPECT(expr, expected) __builtin_expect(expr, expected)
+  #else
+    #define SH_BUILTIN_EXPECT(expr, expected) (expr)
+  #endif
+#else
+  #define SH_BUILTIN_EXPECT(expr, expected) (expr)
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -131,6 +144,13 @@ struct HermesValueBase {
 };
 
 typedef struct HermesValueBase SHLegacyValue;
+
+/// Helper function to create SHLegacyValue from raw bits (MSVC-compatible)
+static inline SHLegacyValue _sh_ljs_make_value(uint64_t raw) {
+  SHLegacyValue result;
+  result.raw = raw;
+  return result;
+}
 
 typedef int32_t HVTagType;
 
@@ -203,12 +223,12 @@ static const unsigned kHV_BoolBitIdx = kHV_NumDataBits - 2;
 static inline SHLegacyValue _sh_ljs_encode_raw_tag(
     uint64_t val,
     enum HVTag tag) {
-  return (SHLegacyValue){val | ((uint64_t)tag << kHV_NumDataBits)};
+  return _sh_ljs_make_value(val | ((uint64_t)tag << kHV_NumDataBits));
 }
 static inline SHLegacyValue _sh_ljs_encode_raw_etag(
     uint64_t val,
     enum HVETag etag) {
-  return (SHLegacyValue){val | ((uint64_t)etag << (kHV_NumDataBits - 1))};
+  return _sh_ljs_make_value(val | ((uint64_t)etag << (kHV_NumDataBits - 1)));
 }
 static inline enum HVTag _sh_ljs_get_tag(SHLegacyValue v) {
   return (enum HVTag)((int64_t)v.raw >> kHV_NumDataBits);
@@ -223,22 +243,22 @@ static inline SHLegacyValue _sh_ljs_double(double v) {
     uint64_t i;
   } u;
   u.d = v;
-  return (SHLegacyValue){u.i};
+  return _sh_ljs_make_value(u.i);
 }
 static inline SHLegacyValue _sh_ljs_untrusted_double(double v) {
-  if (__builtin_expect(v != v, false))
+  if (SH_BUILTIN_EXPECT(v != v, false))
     return _sh_ljs_double(NAN);
   return _sh_ljs_double(v);
 }
 
 static inline SHLegacyValue _sh_ljs_native_pointer(void *p) {
-  return (SHLegacyValue){(uintptr_t)p};
+  return _sh_ljs_make_value((uintptr_t)p);
 }
 
 /// Encode a 32-bit unsigned integer bit-for-bit as a HermesValue. We know that
 /// the resulting value will always be a valid non-NaN double.
 static inline SHLegacyValue _sh_ljs_native_uint32(uint32_t val) {
-  return (SHLegacyValue){val};
+  return _sh_ljs_make_value(val);
 }
 
 static inline SHLegacyValue _sh_ljs_bool(bool b) {
