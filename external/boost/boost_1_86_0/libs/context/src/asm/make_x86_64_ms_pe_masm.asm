@@ -82,6 +82,9 @@
 ;  |       FCTX        |        DATA        |                                       |
 ;  ----------------------------------------------------------------------------------
 
+; Define BOOST_CONTEXT_EXPORT macro for MASM
+BOOST_CONTEXT_EXPORT TEXTEQU <>
+
 ; standard C library function
 EXTERN  _exit:PROC
 .code

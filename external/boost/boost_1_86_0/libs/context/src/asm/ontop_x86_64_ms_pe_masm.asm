@@ -82,6 +82,9 @@
 ;  |       FCTX        |        DATA        |                                       |
 ;  ----------------------------------------------------------------------------------
 
+; Define BOOST_CONTEXT_EXPORT macro for MASM
+BOOST_CONTEXT_EXPORT TEXTEQU <>
+
 .code
 
 hoost_ontop_fcontext PROC BOOST_CONTEXT_EXPORT FRAME
