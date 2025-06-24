@@ -118,7 +118,7 @@ class CopyableBasicString {
   }
 
   void reserve(size_t new_cap) {
-    get().reserve();
+    get().reserve(new_cap);
   }
 
   const T *data() const {
