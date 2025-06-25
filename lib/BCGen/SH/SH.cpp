@@ -164,8 +164,8 @@ class SHStringTable {
 
     os << "static const char s_ascii_pool[] = {\n"
        << asciiStr << "};\n"
-       << "static const char16_t s_u16_pool[] = {\n"
-       << u16Str << "};\n"
+       << "static const std::array<char16_t, " << u16Offset << "> s_u16_pool = {{\n"
+       << u16Str << "}};\n"
        << "static const uint32_t s_strings[] = {";
     for (const auto &entry : stringEntries)
       os << entry.offset << "," << entry.length << "," << entry.hash << ",";
@@ -2931,6 +2931,7 @@ void generateModule(
 #include "hermes/VM/static_h.h"
 
 #include <stdlib.h>
+#include <array>
 
 )";
 
@@ -3014,7 +3015,7 @@ extern SHNativeFuncInfo s_function_info_table[];
        << "  unit_data->unit.num_write_prop_cache_entries = " << nextWriteCacheIdx << ";\n"
        << "  unit_data->unit.num_read_prop_cache_entries = " << nextReadCacheIdx << ";\n"
        << "  unit_data->unit.ascii_pool = s_ascii_pool;\n"
-       << "  unit_data->unit.u16_pool = s_u16_pool;\n"
+       << "  unit_data->unit.u16_pool = s_u16_pool.data();\n"
        << "  unit_data->unit.strings = s_strings;\n"
        << "  unit_data->unit.symbols = unit_data->symbol_data;\n"
        << "  unit_data->unit.write_prop_cache = unit_data->write_prop_cache_data;\n"
