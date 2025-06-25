@@ -2466,7 +2466,7 @@ class NodeApiFinalizeCallbackHolder : public TBaseReference {
     if (finalizeCallback_) {
       napi_finalize finalizeCallback =
           std::exchange(finalizeCallback_, nullptr);
-      env.callFinalizer(finalizeCallback, nativeData(), finalizeHint());
+      env.callFinalizer(finalizeCallback, this->nativeData(), this->finalizeHint());
     }
     return napi_ok;
   }
@@ -2500,7 +2500,7 @@ class NodeApiFinalizingReference final : public TBaseReference {
       : TBaseReference(std::forward<TArgs>(args)...) {}
 
   void finalize(NodeApiEnvironment &env) noexcept override {
-    callFinalizeCallback(env);
+    this->callFinalizeCallback(env);
     NodeApiReference::deleteReference(
         env, this, NodeApiReference::ReasonToDelete::FinalizerCall);
   }
