@@ -280,7 +280,7 @@ class SHSrcLocationTable {
   /// Turn the table of source locations into the corresponding SH C data
   /// structures.
   void generate(llvh::raw_ostream &OS, const SourceErrorManager &sm) const {
-    OS << "\nstatic const SHSrcLoc s_source_locations[] = {\n";
+    OS << "\nnamespace {\nconst SHSrcLoc s_source_locations[] = {\n";
     for (const auto &loc : locations_) {
       auto [fileIdx, line, col] = loc;
       OS.indent(2);
@@ -410,7 +410,7 @@ class SHNativeJSFunctionTable {
     for (auto &entry : funcMap_)
       sortedKeys[entry.second] = entry.first;
 
-    OS << "\nstatic SHNativeFuncInfo s_function_info_table[] = {\n";
+    OS << "\nSHNativeFuncInfo s_function_info_table[] = {\n";
     for (const Function *F : sortedKeys) {
       uint32_t nameIdx = stringTable_.add(F->getOriginalOrInferredName().str());
       uint32_t argCount = F->getExpectedParamCountIncludingThis() - 1;
@@ -421,7 +421,7 @@ class SHNativeJSFunctionTable {
          << computeProhibitInvoke(F->getProhibitInvoke())
          << ", .kind = " << computeFuncKind(kindVal) << " },\n";
     }
-    OS << "};\n";
+    OS << "};\n} // namespace\n";
   }
 };
 
@@ -2943,8 +2943,10 @@ static inline SHSymbolID* get_symbols(SHUnit *);
 static inline SHWritePropertyCacheEntry* get_write_prop_cache(SHUnit *);
 static inline SHReadPropertyCacheEntry* get_read_prop_cache(SHUnit *);
 static inline SHPrivateNameCacheEntry* get_private_name_cache(SHUnit *);
-static const SHSrcLoc s_source_locations[)" << moduleGen.srcLocationTable.size() << R"(];
-static SHNativeFuncInfo s_function_info_table[)" << moduleGen.nativeFunctionTable.size() << R"(];
+namespace {
+extern const SHSrcLoc s_source_locations[];
+extern SHNativeFuncInfo s_function_info_table[];
+}
 )";
 
     // Declare extern functions.
