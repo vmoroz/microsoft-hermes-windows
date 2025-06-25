@@ -67,6 +67,12 @@ This is a port of the Hermes JavaScript engine to Windows using MSVC. The projec
 4. **Constant expressions** in `sh_legacy_value.h` - Replaced calculations with literals for C compatibility
 5. **Library linking** - Fixed Boost Context library naming and linking issues
 6. **Zero-sized arrays** in `static_h.h` - Replaced `locals[0]` with conditional compilation for MSVC compatibility
+7. **__builtin_frame_address** - Replaced with `_AddressOfReturnAddress()` for MSVC
+8. **Boost is_pod warnings** - Added `_SILENCE_CXX20_IS_POD_DEPRECATION_WARNING` to suppress deprecation warnings
+9. **Missing Boost version header** - Created `hoost/version.hpp` with correct version macros
+10. **dlfcn.h platform issues** - Added Windows-specific dynamic loading code
+11. **C++20 string::reserve** - Fixed by passing explicit argument to `reserve()`
+12. **Generated C code arrays** - Fixed zero-sized and unknown-size array issues in SH bytecode generator
 
 ## Development Workflow
 

@@ -2992,10 +2992,18 @@ static SHNativeFuncInfo s_function_info_table[];
        << "  SHWritePropertyCacheEntry write_prop_cache_data["
        << nextWriteCacheIdx << "];\n"
        << "  SHReadPropertyCacheEntry read_prop_cache_data[" << nextReadCacheIdx
-       << "];\n"
-       << "  SHPrivateNameCacheEntry private_name_cache_data["
-       << nextPrivateNameCacheIdx << "];\n"
-       << "  SHCompressedPointer object_literal_class_cache["
+       << "];\n";
+    if (nextPrivateNameCacheIdx == 0) {
+      OS << "#ifdef _MSC_VER\n"
+         << "  SHPrivateNameCacheEntry private_name_cache_data[1]; /* MSVC doesn't support zero-sized arrays */\n"
+         << "#else\n"
+         << "  SHPrivateNameCacheEntry private_name_cache_data[0];\n"
+         << "#endif\n";
+    } else {
+      OS << "  SHPrivateNameCacheEntry private_name_cache_data["
+         << nextPrivateNameCacheIdx << "];\n";
+    }
+    OS << "  SHCompressedPointer object_literal_class_cache["
        << moduleGen.literalBuffers.objShapeTable.size() << "];\n};\n"
        << "SHUnit *CREATE_THIS_UNIT(void) {\n"
        << "  struct UnitData *unit_data = calloc(sizeof(struct UnitData), 1);\n"

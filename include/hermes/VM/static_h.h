@@ -212,7 +212,11 @@ typedef struct SHLocals {
   SHUnit *unit;
   /// The current index into the SHUnit's source location table.
   uint32_t src_location_idx;
+#ifdef _MSC_VER
+  SHLegacyValue locals[1]; /* MSVC doesn't support zero-sized arrays */
+#else
   SHLegacyValue locals[0];
+#endif
 } SHLocals;
 
 /// Utility to concatenate a prefix with HERMESVM_MODEL.
