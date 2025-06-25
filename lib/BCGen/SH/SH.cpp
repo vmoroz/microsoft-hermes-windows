@@ -2943,8 +2943,8 @@ static inline SHSymbolID* get_symbols(SHUnit *);
 static inline SHWritePropertyCacheEntry* get_write_prop_cache(SHUnit *);
 static inline SHReadPropertyCacheEntry* get_read_prop_cache(SHUnit *);
 static inline SHPrivateNameCacheEntry* get_private_name_cache(SHUnit *);
-static const SHSrcLoc s_source_locations[];
-static SHNativeFuncInfo s_function_info_table[];
+static const SHSrcLoc s_source_locations[)" << moduleGen.srcLocationTable.size() << R"(];
+static SHNativeFuncInfo s_function_info_table[)" << moduleGen.nativeFunctionTable.size() << R"(];
 )";
 
     // Declare extern functions.
