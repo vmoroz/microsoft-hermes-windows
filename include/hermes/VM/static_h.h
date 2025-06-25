@@ -29,6 +29,8 @@
   #define SH_NORETURN_PRE __declspec(noreturn)
   #define SH_NORETURN_POST
   #define SH_CONST_FUNC
+  /// Direct compatibility for generated code
+  #define __builtin_expect(expr, expected) (expr)
 #elif defined(__has_builtin)
   #if __has_builtin(__builtin_memcpy)
     #define SH_MEMCPY __builtin_memcpy
@@ -98,10 +100,10 @@ typedef struct SHNativeFuncInfo {
   uint32_t name_index;
   /// The number of arguments this function takes.
   uint32_t arg_count;
-  /// Which kind of function, constructed from enum FuncKind.
-  uint8_t kind : 2;
   /// Which kinds of calls are prohibited, constructed from enum ProhibitInvoke.
   uint8_t prohibit_invoke : 2;
+  /// Which kind of function, constructed from enum FuncKind.
+  uint8_t kind : 2;
 } SHNativeFuncInfo;
 
 /// Type of a function that allocates and returns a new SHUnit ready to be used
