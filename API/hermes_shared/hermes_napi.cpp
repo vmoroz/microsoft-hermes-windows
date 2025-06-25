@@ -2001,8 +2001,9 @@ class NodeApiHostFunctionContext final {
       void *nativeData) noexcept
       : env_{env}, hostCallback_{hostCallback}, nativeData_{nativeData} {}
 
-  static vm::CallResult<vm::HermesValue>
-  func(void *context, vm::Runtime &runtime, vm::NativeArgs hvArgs);
+  static vm::CallResult<vm::HermesValue> call(
+      void *context,
+      vm::Runtime &runtime);
 
   static void finalize(void *context) {
     delete reinterpret_cast<class NodeApiHostFunctionContext *>(context);
@@ -2466,7 +2467,8 @@ class NodeApiFinalizeCallbackHolder : public TBaseReference {
     if (finalizeCallback_) {
       napi_finalize finalizeCallback =
           std::exchange(finalizeCallback_, nullptr);
-      env.callFinalizer(finalizeCallback, this->nativeData(), this->finalizeHint());
+      env.callFinalizer(
+          finalizeCallback, this->nativeData(), this->finalizeHint());
     }
     return napi_ok;
   }
@@ -4850,7 +4852,7 @@ napi_status NodeApiEnvironment::createFunction(
       vm::FinalizableNativeFunction::createWithoutPrototype(
           runtime_,
           context.get(),
-          &NodeApiHostFunctionContext::func,
+          &NodeApiHostFunctionContext::call,
           &NodeApiHostFunctionContext::finalize,
           name,
           /*paramCount:*/ 0);
@@ -5283,10 +5285,7 @@ napi_status NodeApiEnvironment::defineClass(
           runtime_,
           parentHandle,
           context.get(),
-          &NodeApiHostFunctionContext::func,
-          /*paramCount:*/ 0,
-          vm::NativeConstructor::creatorFunction<vm::JSObject>,
-          vm::CellKind::JSObjectKind);
+          &NodeApiHostFunctionContext::call);
   vm::Handle<vm::JSObject> classHandle =
       makeHandle<vm::JSObject>(std::move(ctorRes));
 
@@ -6631,7 +6630,7 @@ napi_status NodeApiEnvironment::createPreparedScript(
     hbc::BCProviderFromSrc *bytecodeProviderFromSrc{};
     if (!bcErr.first) {
       std::pair<std::unique_ptr<hbc::BCProviderFromSrc>, std::string>
-          bcFromSrcErr = hbc::BCProviderFromSrc::createBCProviderFromSrc(
+          bcFromSrcErr = hbc::BCProviderFromSrc::create(
               std::move(buffer),
               std::string(sourceURL ? sourceURL : ""),
               nullptr,
