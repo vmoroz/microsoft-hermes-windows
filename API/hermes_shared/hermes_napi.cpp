@@ -4465,10 +4465,10 @@ napi_status NodeApiEnvironment::convertKeyStorageToArray(
     uint32_t length,
     napi_key_conversion keyConversion,
     napi_value *result) noexcept {
-  vm::CallResult<vm::Handle<vm::JSArray>> res =
+  vm::CallResult<vm::PseudoHandle<vm::JSArray>> res =
       vm::JSArray::create(runtime_, length, length);
   CHECK_NAPI(checkJSErrorStatus(res));
-  vm::Handle<vm::JSArray> array = *res;
+  vm::Handle<vm::JSArray> array = makeHandle(std::move(*res));
   if (keyConversion == napi_key_numbers_to_strings) {
     vm::GCScopeMarkerRAII marker{runtime_};
     vm::MutableHandle<> key{runtime_};
