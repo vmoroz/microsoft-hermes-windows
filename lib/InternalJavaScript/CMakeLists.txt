@@ -50,8 +50,15 @@ add_custom_command(
 )
 
 # Native compiled InternalJavaScript target
+set_source_files_properties(internal_unit.c PROPERTIES LANGUAGE CXX)
+
 add_hermes_library(hermesInternalUnit internal_unit.c)
 target_compile_options(hermesInternalUnit_obj PRIVATE -w)
+# Force C++ compilation for internal_unit.c to avoid MSVC C compiler internal error
+if(MSVC)
+  target_compile_options(hermesInternalUnit_obj PRIVATE /TP)
+  target_compile_options(hermesInternalUnit PRIVATE /TP)
+endif()
 target_include_directories(hermesInternalUnit_obj PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # Bytecode compiled InternalJavaScript target
