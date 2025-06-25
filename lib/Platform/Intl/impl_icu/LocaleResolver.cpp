@@ -169,19 +169,15 @@ std::string bestFitBestAvailableLocale(
       convertBCP47toICULocale(localeBCP47Object.getLocaleNoExt());
   const char *acceptList[1]{localeICU.c_str()};
 
-  UEnumeration *availableLocales =
-      uloc_openAvailableByType(ULOC_AVAILABLE_DEFAULT, &status);
-
+  // Use older ICU API for compatibility with Windows ICU
   int32_t localeLen = uloc_acceptLanguage(
       result,
       ULOC_FULLNAME_CAPACITY,
       &outResult,
       acceptList,
       1,
-      availableLocales,
+      nullptr, // Use default available locales
       &status);
-
-  uenum_close(availableLocales);
 
   // Process if there is a match without fallback to ROOT
   assert(

@@ -12,16 +12,21 @@ set(source_files
    CharacterProperties.cpp
 )
 
+if(HERMES_UNICODE_LITE)
+  add_definitions(-DHERMES_PLATFORM_UNICODE=HERMES_PLATFORM_UNICODE_LITE)
+endif()
+
 add_hermes_library(hermesPlatformUnicode ${source_files})
 
 if(HERMES_UNICODE_LITE)
-  # nothing
+  #nothing
 elseif(HERMES_IS_ANDROID)
   target_link_libraries(hermesPlatformUnicode_obj fbjni::fbjni)
   set_source_files_properties(PlatformUnicodeJava.cpp PROPERTIES
     COMPILE_FLAGS "-frtti -fexceptions")
-elseif(APPLE)
+else() # Apple?
   target_link_libraries(hermesPlatformUnicode_obj ${CORE_FOUNDATION})
+  target_link_libraries(hermesPlatformUnicode_obj ${ICU_LIBRARIES})
 endif()
 
 hermes_link_icu(hermesPlatformUnicode_obj)

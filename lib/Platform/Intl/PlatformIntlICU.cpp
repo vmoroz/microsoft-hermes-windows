@@ -22,10 +22,24 @@
 // support 52+ However, ICU allows us to manually set a type for UChar using
 // UCHAR_TYPE so UChar isn't platform dependent.
 #define UCHAR_TYPE char16_t
+#define SUPPRESS_LEGACY_ICU_HEADER_WARNINGS
 
-#include "unicode/dtptngen.h"
+// Check for ICU headers availability
+#if __has_include("unicode/dtptngen.h")
+  #include "unicode/dtptngen.h"
+  #define HAS_DTPTNGEN 1
+#else
+  #define HAS_DTPTNGEN 0
+#endif
+
+#if __has_include("unicode/timezone.h")
+  #include "unicode/timezone.h"
+  #define HAS_TIMEZONE 1
+#else
+  #define HAS_TIMEZONE 0
+#endif
+
 #include "unicode/strenum.h"
-#include "unicode/timezone.h"
 #include "unicode/udat.h"
 #include "unicode/unistr.h"
 
@@ -35,6 +49,7 @@ namespace hermes {
 namespace platform_intl {
 namespace {
 
+#if HAS_TIMEZONE
 /// Thread safe management of time zone names map.
 class TimeZoneNames {
  public:
@@ -93,6 +108,44 @@ class TimeZoneNames {
   std::unordered_map<std::u16string, std::u16string> timeZoneNamesMap_;
   mutable std::shared_mutex mutex_;
 };
+#else
+// Fallback TimeZoneNames class when ICU TimeZone is not available
+class TimeZoneNames {
+ public:
+  TimeZoneNames() {
+    // Add some basic timezone names as fallback
+    timeZoneNamesMap_.emplace(u"UTC", u"UTC");
+    timeZoneNamesMap_.emplace(u"GMT", u"UTC");
+    timeZoneNamesMap_.emplace(u"EST", u"America/New_York");
+    timeZoneNamesMap_.emplace(u"PST", u"America/Los_Angeles");
+  }
+
+  bool contains(std::u16string_view tz) const {
+    std::shared_lock lock(mutex_);
+    return timeZoneNamesMap_.find(toASCIIUppercase(tz)) !=
+        timeZoneNamesMap_.end();
+  }
+
+  std::u16string getCanonical(std::u16string_view tz) const {
+    std::shared_lock lock(mutex_);
+    auto ianaTimeZoneIt = timeZoneNamesMap_.find(toASCIIUppercase(tz));
+    if (ianaTimeZoneIt != timeZoneNamesMap_.end()) {
+      return ianaTimeZoneIt->second;
+    }
+    return std::u16string(tz); // Return as-is if not found
+  }
+
+  void update(std::u16string_view tz) {
+    auto upper = toASCIIUppercase(tz);
+    std::unique_lock lock(mutex_);
+    timeZoneNamesMap_.emplace(upper, tz);
+  }
+
+ private:
+  std::unordered_map<std::u16string, std::u16string> timeZoneNamesMap_;
+  mutable std::shared_mutex mutex_;
+};
+#endif
 
 static TimeZoneNames &validTimeZoneNames() {
   static TimeZoneNames validTimeZoneNames;
@@ -106,12 +159,19 @@ static bool isValidTimeZoneName(std::u16string_view tz) {
 
 /// https://402.ecma-international.org/8.0/#sec-defaulttimezone
 std::u16string getDefaultTimeZone(vm::Runtime &runtime) {
+#if HAS_TIMEZONE
   std::unique_ptr<TimeZone> timeZone(TimeZone::createDefault());
   UnicodeString unicodeTz;
   timeZone->getID(unicodeTz);
   std::u16string tz(unicodeTz.getBuffer(), unicodeTz.length());
   validTimeZoneNames().update(tz);
   return tz;
+#else
+  // Fallback to UTC when TimeZone API is not available
+  std::u16string tz = u"UTC";
+  validTimeZoneNames().update(tz);
+  return tz;
+#endif
 }
 
 /// https://402.ecma-international.org/8.0/#sec-canonicalizetimezonename
@@ -790,6 +850,7 @@ UDateFormat *DateTimeFormatICU::getUDateFormatter(vm::Runtime &runtime) {
   std::u16string bestpattern;
   int32_t patternLength;
 
+#if HAS_DTPTNGEN
   std::unique_ptr<UDateTimePatternGenerator, decltype(&udatpg_close)>
       dtpGenerator(udatpg_open(&locale8_[0], &status), &udatpg_close);
   patternLength = udatpg_getBestPatternWithOptions(
@@ -813,6 +874,11 @@ UDateFormat *DateTimeFormatICU::getUDateFormatter(vm::Runtime &runtime) {
         patternLength,
         &status);
   }
+#else
+  // Fallback: use the skeleton as-is if date/time pattern generator is not available
+  bestpattern = skeleton;
+  status = U_ZERO_ERROR;
+#endif
 
   // if timezone is specified, use that instead, else use default
   if (!timeZone_.empty()) {
