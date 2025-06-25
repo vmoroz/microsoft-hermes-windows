@@ -5847,7 +5847,7 @@ napi_status NodeApiEnvironment::createArrayBuffer(
   NodeApiHandleScope scope{*this, result};
   vm::Handle<vm::JSArrayBuffer> buffer = makeHandle(
       vm::JSArrayBuffer::create(
-          runtime_, makeHandle<vm::JSObject>(runtime_.arrayBufferPrototype)));
+          runtime_, makeHandle<vm::JSObject>(&runtime_.arrayBufferPrototype)));
   CHECK_NAPI(checkJSErrorStatus(
       vm::JSArrayBuffer::createDataBlock(runtime_, buffer, byteLength, true)));
   if (data != nullptr) {
@@ -6150,7 +6150,7 @@ napi_status NodeApiEnvironment::createDataView(
   }
   vm::Handle<vm::JSDataView> viewHandle = makeHandle(
       vm::JSDataView::create(
-          runtime_, makeHandle<vm::JSObject>(runtime_.dataViewPrototype)));
+          runtime_, makeHandle<vm::JSObject>(&runtime_.dataViewPrototype)));
   viewHandle->setBuffer(runtime_, buffer, byteOffset, byteLength);
   return scope.setResult(std::move(viewHandle));
 }
