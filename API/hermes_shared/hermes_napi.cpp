@@ -946,9 +946,9 @@ class NodeApiEnvironment final {
       napi_value *result) noexcept;
 
   // Internal function to convert temporary key storage represented by a
-  // array-builder-like BigStorage to a JS Array.
+  // array-builder-like ArrayStorageSmall to a JS Array.
   napi_status convertKeyStorageToArray(
-      vm::Handle<vm::BigStorage> keyStorage,
+      vm::Handle<vm::ArrayStorageSmall> keyStorage,
       uint32_t startIndex,
       uint32_t length,
       napi_key_conversion keyConversion,
@@ -4270,7 +4270,7 @@ napi_status NodeApiEnvironment::getForInPropertyNames(
   // by caching its results. This function takes the advantage from using it.
   uint32_t beginIndex;
   uint32_t endIndex;
-  vm::CallResult<vm::Handle<vm::BigStorage>> keyStorage =
+  vm::CallResult<vm::Handle<vm::ArrayStorageSmall>> keyStorage =
       vm::getForInPropertyNames(
           runtime_, makeHandle<vm::JSObject>(object), beginIndex, endIndex);
   CHECK_NAPI(checkJSErrorStatus(keyStorage));
@@ -4337,8 +4337,8 @@ napi_status NodeApiEnvironment::getAllPropertyNames(
   }
 
   // Collect all properties into the keyStorage.
-  vm::CallResult<vm::MutableHandle<vm::BigStorage>> keyStorageRes =
-      makeMutableHandle(vm::BigStorage::create(runtime_, 16));
+  vm::CallResult<vm::MutableHandle<vm::ArrayStorageSmall>> keyStorageRes =
+      makeMutableHandle(vm::ArrayStorageSmall::create(runtime_, 16));
   CHECK_NAPI(checkJSErrorStatus(keyStorageRes));
   uint32_t size{0};
 
@@ -4439,7 +4439,7 @@ napi_status NodeApiEnvironment::getAllPropertyNames(
       }
 
       CHECK_NAPI(checkJSErrorStatus(
-          vm::BigStorage::push_back(*keyStorageRes, runtime_, prop)));
+          vm::ArrayStorageSmall::push_back(*keyStorageRes, runtime_, prop)));
       ++size;
     }
 
@@ -4455,7 +4455,7 @@ napi_status NodeApiEnvironment::getAllPropertyNames(
 }
 
 napi_status NodeApiEnvironment::convertKeyStorageToArray(
-    vm::Handle<vm::BigStorage> keyStorage,
+    vm::Handle<vm::ArrayStorageSmall> keyStorage,
     uint32_t startIndex,
     uint32_t length,
     napi_key_conversion keyConversion,
