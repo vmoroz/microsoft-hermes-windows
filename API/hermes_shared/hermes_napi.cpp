@@ -4673,11 +4673,10 @@ napi_status NodeApiEnvironment::defineProperties(
             &localSetter));
       }
 
-      vm::CallResult<vm::HermesValue> propRes =
+      vm::PseudoHandle<vm::PropertyAccessor> propRes =
           vm::PropertyAccessor::create(runtime_, localGetter, localSetter);
-      CHECK_NAPI(checkJSErrorStatus(propRes));
       CHECK_NAPI(defineOwnProperty(
-          objHandle, *name, dpFlags, makeHandle(*propRes), nullptr));
+          objHandle, *name, dpFlags, makeHandle(propRes), nullptr));
     } else {
       dpFlags.setValue = 1;
       dpFlags.setWritable = 1;
