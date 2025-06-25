@@ -3341,22 +3341,22 @@ NodeApiEnvironment::NodeApiEnvironment(
       NodeApiPredefined::Promise,
       vm::HermesValue::encodeSymbolValue(
           runtime_.getIdentifierTable().registerLazyIdentifier(
-              vm::createASCIIRef("Promise"))));
+              runtime_, vm::createASCIIRef("Promise"))));
   setPredefinedProperty(
       NodeApiPredefined::allRejections,
       vm::HermesValue::encodeSymbolValue(
           runtime_.getIdentifierTable().registerLazyIdentifier(
-              vm::createASCIIRef("allRejections"))));
+              runtime_, vm::createASCIIRef("allRejections"))));
   setPredefinedProperty(
       NodeApiPredefined::code,
       vm::HermesValue::encodeSymbolValue(
           runtime_.getIdentifierTable().registerLazyIdentifier(
-              vm::createASCIIRef("code"))));
+              runtime_, vm::createASCIIRef("code"))));
   setPredefinedProperty(
       NodeApiPredefined::hostFunction,
       vm::HermesValue::encodeSymbolValue(
           runtime_.getIdentifierTable().registerLazyIdentifier(
-              vm::createASCIIRef("hostFunction"))));
+              runtime_, vm::createASCIIRef("hostFunction"))));
   setPredefinedProperty(
       NodeApiPredefined::napi_externalValue,
       vm::HermesValue::encodeSymbolValue(
@@ -3373,22 +3373,22 @@ NodeApiEnvironment::NodeApiEnvironment(
       NodeApiPredefined::onHandled,
       vm::HermesValue::encodeSymbolValue(
           runtime_.getIdentifierTable().registerLazyIdentifier(
-              vm::createASCIIRef("onHandled"))));
+              runtime_, vm::createASCIIRef("onHandled"))));
   setPredefinedProperty(
       NodeApiPredefined::onUnhandled,
       vm::HermesValue::encodeSymbolValue(
           runtime_.getIdentifierTable().registerLazyIdentifier(
-              vm::createASCIIRef("onUnhandled"))));
+              runtime_, vm::createASCIIRef("onUnhandled"))));
   setPredefinedProperty(
       NodeApiPredefined::reject,
       vm::HermesValue::encodeSymbolValue(
           runtime_.getIdentifierTable().registerLazyIdentifier(
-              vm::createASCIIRef("reject"))));
+              runtime_, vm::createASCIIRef("reject"))));
   setPredefinedProperty(
       NodeApiPredefined::resolve,
       vm::HermesValue::encodeSymbolValue(
           runtime_.getIdentifierTable().registerLazyIdentifier(
-              vm::createASCIIRef("resolve"))));
+              runtime_, vm::createASCIIRef("resolve"))));
 
   CRASH_IF_FALSE(enablePromiseRejectionTracker() == napi_ok);
 }
@@ -4337,9 +4337,11 @@ napi_status NodeApiEnvironment::getAllPropertyNames(
   }
 
   // Collect all properties into the keyStorage.
-  vm::CallResult<vm::MutableHandle<vm::ArrayStorageSmall>> keyStorageRes =
-      makeMutableHandle(vm::ArrayStorageSmall::create(runtime_, 16));
-  CHECK_NAPI(checkJSErrorStatus(keyStorageRes));
+  vm::CallResult<vm::HermesValue> arrayStorageRes =
+      vm::ArrayStorageSmall::create(runtime_, 16);
+  CHECK_NAPI(checkJSErrorStatus(arrayStorageRes));
+  vm::MutableHandle<vm::ArrayStorageSmall> keyStorageRes =
+      runtime_.makeMutableHandle(vm::vmcast<vm::ArrayStorageSmall>(*arrayStorageRes));
   uint32_t size{0};
 
   // Make sure that we do not include into the result properties that were
@@ -4439,7 +4441,7 @@ napi_status NodeApiEnvironment::getAllPropertyNames(
       }
 
       CHECK_NAPI(checkJSErrorStatus(
-          vm::ArrayStorageSmall::push_back(*keyStorageRes, runtime_, prop)));
+          vm::ArrayStorageSmall::push_back(keyStorageRes, runtime_, prop)));
       ++size;
     }
 
@@ -4451,7 +4453,7 @@ napi_status NodeApiEnvironment::getAllPropertyNames(
   }
 
   return scope.setResult(
-      convertKeyStorageToArray(*keyStorageRes, 0, size, keyConversion, result));
+      convertKeyStorageToArray(keyStorageRes, 0, size, keyConversion, result));
 }
 
 napi_status NodeApiEnvironment::convertKeyStorageToArray(
@@ -4468,7 +4470,7 @@ napi_status NodeApiEnvironment::convertKeyStorageToArray(
     vm::GCScopeMarkerRAII marker{runtime_};
     vm::MutableHandle<> key{runtime_};
     for (size_t i = 0; i < length; ++i) {
-      key = makeHandle(keyStorage->at(runtime_, startIndex + i));
+      key = makeHandle(keyStorage->at(startIndex + i).unboxToHV(runtime_));
       if (key->isNumber()) {
         CHECK_NAPI(convertIndexToString(key->getNumber(), &key));
       }
@@ -4484,8 +4486,7 @@ napi_status NodeApiEnvironment::convertKeyStorageToArray(
           arrPtr,
           runtime_,
           i,
-          vm::SmallHermesValue::encodeHermesValue(
-              keyStorage->at(runtime_, startIndex + i), runtime_));
+          keyStorage->at(startIndex + i));
     }
   }
   return setResult(array.getHermesValue(), result);
