@@ -3277,7 +3277,7 @@ void HadesGC::addSegmentExtentToCrashManager(
       "HermesGC",
       "Added segment extent: %s = %s",
       segmentName.c_str(),
-      segmentAddressBuffer);
+      segmentExtentBuffer);
 #endif
 }
 
