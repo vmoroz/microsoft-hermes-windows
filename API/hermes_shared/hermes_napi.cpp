@@ -655,7 +655,7 @@ class NodeApiEnvironment final {
  public:
   // Internal function to create JS error with the specified prototype.
   napi_status createJSError(
-      const vm::PinnedHermesValue &errorPrototype,
+      const vm::PinnedValue<vm::JSObject> &errorPrototype,
       napi_value code,
       napi_value message,
       napi_value *result) noexcept;
@@ -3529,7 +3529,7 @@ napi_status NodeApiEnvironment::clearLastNativeError() noexcept {
 //-----------------------------------------------------------------------------
 
 napi_status NodeApiEnvironment::createJSError(
-    const vm::PinnedHermesValue &errorPrototype,
+    const vm::PinnedValue<vm::JSObject> &errorPrototype,
     napi_value code,
     napi_value message,
     napi_value *result) noexcept {
