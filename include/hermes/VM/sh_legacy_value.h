@@ -206,19 +206,19 @@ enum HVETag {
 /// Number of bits used in the high part to encode the sign, exponent and tag.
 static const unsigned kHV_NumTagExpBits = 16;
 /// Number of bits available for data storage.
-static const unsigned kHV_NumDataBits = (64 - kHV_NumTagExpBits);
+static const unsigned kHV_NumDataBits = 48; /* 64 - 16 */
 
 /// Width of a tag in bits. The tag is aligned to the right of the top bits.
 static const unsigned kHV_TagWidth = 3;
-static const unsigned kHV_TagMask = (1 << kHV_TagWidth) - 1;
+static const unsigned kHV_TagMask = 7; /* (1 << 3) - 1 */
 /// Mask to extract the data from the whole 64-bit word.
-static const uint64_t kHV_DataMask = (1ull << kHV_NumDataBits) - 1;
+static const uint64_t kHV_DataMask = 0xFFFFFFFFFFFFull; /* (1ull << 48) - 1 */
 
 static const unsigned kHV_ETagWidth = 4;
-static const unsigned kHV_ETagMask = (1 << kHV_ETagWidth) - 1;
+static const unsigned kHV_ETagMask = 15; /* (1 << 4) - 1 */
 
 /// The value of a bool is encoded in the most significant bit after the ETag.
-static const unsigned kHV_BoolBitIdx = kHV_NumDataBits - 2;
+static const unsigned kHV_BoolBitIdx = 46; /* 48 - 2 */
 
 static inline SHLegacyValue _sh_ljs_encode_raw_tag(
     uint64_t val,
