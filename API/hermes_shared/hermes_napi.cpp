@@ -687,7 +687,7 @@ class NodeApiEnvironment final {
   // Internal function to create and throw JS error object with the specified
   // prototype.
   napi_status throwJSError(
-      const vm::PinnedHermesValue &prototype,
+      const vm::PinnedValue<vm::JSObject> &prototype,
       const char *code,
       const char *message) noexcept;
 
@@ -3582,7 +3582,7 @@ napi_status NodeApiEnvironment::throwJSError(napi_value error) noexcept {
 }
 
 napi_status NodeApiEnvironment::throwJSError(
-    const vm::PinnedHermesValue &prototype,
+    const vm::PinnedValue<vm::JSObject> &prototype,
     const char *code,
     const char *message) noexcept {
   CHECK_NAPI(checkPendingJSError());
