@@ -1653,6 +1653,8 @@ class NodeApiEnvironment final {
   template <class T>
   vm::Handle<T> makeHandle(const vm::PinnedHermesValue *value) noexcept;
   template <class T>
+  vm::Handle<T> makeHandle(const vm::PinnedValue<T> *value) noexcept;
+  template <class T>
   vm::Handle<T> makeHandle(vm::HermesValue value) noexcept;
   template <class T, class TOther>
   vm::Handle<T> makeHandle(vm::Handle<TOther> value) noexcept;
@@ -4341,7 +4343,8 @@ napi_status NodeApiEnvironment::getAllPropertyNames(
       vm::ArrayStorageSmall::create(runtime_, 16);
   CHECK_NAPI(checkJSErrorStatus(arrayStorageRes));
   vm::MutableHandle<vm::ArrayStorageSmall> keyStorageRes =
-      runtime_.makeMutableHandle(vm::vmcast<vm::ArrayStorageSmall>(*arrayStorageRes));
+      runtime_.makeMutableHandle(
+          vm::vmcast<vm::ArrayStorageSmall>(*arrayStorageRes));
   uint32_t size{0};
 
   // Make sure that we do not include into the result properties that were
@@ -4483,10 +4486,7 @@ napi_status NodeApiEnvironment::convertKeyStorageToArray(
     vm::JSArray *arrPtr = array.get();
     for (uint32_t i = 0; i < length; ++i) {
       vm::JSArray::unsafeSetExistingElementAt(
-          arrPtr,
-          runtime_,
-          i,
-          keyStorage->at(startIndex + i));
+          arrPtr, runtime_, i, keyStorage->at(startIndex + i));
     }
   }
   return setResult(array.getHermesValue(), result);
@@ -4998,9 +4998,9 @@ napi_status NodeApiEnvironment::isInstanceOf(
   CHECK_NAPI(coerceToObject(constructor, &ctorValue));
   RETURN_STATUS_IF_FALSE(
       vm::vmisa<vm::Callable>(*phv(ctorValue)), napi_function_expected);
-  vm::CallResult<bool> instance=vm::instanceOfOperator_RJS(
+  vm::CallResult<bool> instance = vm::instanceOfOperator_RJS(
       runtime_, makeHandle(object), makeHandle(constructor));
-  return setResultUnsafe(std::move(*instance),result);
+  return setResultUnsafe(std::move(*instance), result);
 }
 
 template <class TLambda>
@@ -6758,6 +6758,12 @@ vm::Handle<T> NodeApiEnvironment::makeHandle(napi_value value) noexcept {
 template <class T>
 vm::Handle<T> NodeApiEnvironment::makeHandle(
     const vm::PinnedHermesValue *value) noexcept {
+  return vm::Handle<T>::vmcast(value);
+}
+
+template <class T>
+vm::Handle<T> NodeApiEnvironment::makeHandle(
+    const vm::PinnedValue<T> *value) noexcept {
   return vm::Handle<T>::vmcast(value);
 }
 
