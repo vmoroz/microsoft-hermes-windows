@@ -37,7 +37,7 @@ Last updated: December 25, 2024
 **Status:** Critical - Template instantiation failures
 
 **Issues:**
-- GoogleTest template errors with `char16_t*` stream operators  
+- GoogleTest template errors with `char16_t*` stream operators
 - `std::operator<<` ambiguity and deleted function references
 - Template instantiation failures in comparison operations
 
@@ -74,7 +74,7 @@ Last updated: December 25, 2024
 
 #### 📝 Medium Priority Issues (Non-blocking)
 - GTest template issues with `char16_t*` printing (multiple test files)
-- Platform Unicode implementation missing for Windows  
+- Platform Unicode implementation missing for Windows
 - CMake warning cleanup
 
 ## Next Steps
