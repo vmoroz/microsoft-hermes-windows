@@ -1,40 +1,49 @@
-# Remaining Build Issues for Hermes Windows Port
+# Hermes Windows Build Issues Summary
 
-## Summary
-This document tracks the remaining compilation issues that need to be resolved for the Hermes Windows port.
+## Overview
+This document tracks remaining build issues for the Hermes Windows port.
 
-## Current Status
-Last updated: December 25, 2024
+Last updated: 2025-01-23
 
-🎉 **Major Progress**: Fixed all `PlatformIntlWindows.cpp` compilation errors! ICU/Intl implementation now compiles successfully.
+## Build Status
+- **ICU/Intl Support**: ✅ **FIXED** - All compilation errors resolved in `PlatformIntlWindows.cpp`
+- **NAPI API Compatibility**: 🔴 **CRITICAL** - Multiple API compatibility issues in `hermes_napi.cpp`
+- **Platform Unicode/Intl Functions**: 🔴 **CRITICAL** - Missing function implementations causing linker errors
+- **GTest Template Issues**: ⚠️ **MEDIUM PRIORITY** - Template compilation errors in test files
 
-### Critical Issues (2 Remaining)
+## Critical Issues (Blocking successful compilation)
 
-#### 1. hermes_napi.cpp API Compatibility Issues
-**File:** `API/hermes_shared/hermes_napi.cpp`
-**Status:** Critical - Multiple API compatibility errors
-**Multiple API compatibility errors:**
+### 1. Platform Unicode/Intl Missing Function Implementations
+**Status**: 🔴 **CRITICAL** - Multiple linker errors
 
-**Function Definition Issues:**
-- Line 2067: `func` is not a member of `NodeApiHostFunctionContext`
-- Lines 2073, 2080: Cannot access private members `env_` and `hostCallback_`
+**Missing Function Implementations** (all `LNK2019` errors):
+- `hermes::platform_unicode::dateFormat` - Date formatting for Unicode support
+- `hermes::platform_unicode::convertToCase` - String case conversion  
+- `hermes::platform_unicode::normalize` - String normalization
+- `hermes::platform_intl::getCanonicalLocales` - Canonical locale resolution
+- `hermes::platform_intl::toDateTimeOptions` - DateTime options processing
+- `hermes::platform_intl::impl_icu::getBoolOption` - ICU boolean option parsing
+- Windows Timer APIs: `__imp_timeBeginPeriod`, `__imp_timeEndPeriod` - Profiler timing
 
-**Hermes VM API Changes:**
-- Line 4680: `makeHandle` overload resolution failure with `PseudoHandle<PropertyAccessor>`
-- Line 4947: `createThisForConstruct_RJS` expects 3 arguments, called with 2
-- Line 4946: Cannot convert `CallResult<PseudoHandle<HermesValue>>` to `CallResult<PseudoHandle<JSObject>>`
-- Line 5284: `NativeConstructor::create` called with wrong number of arguments
-- Line 5308: `defineNameLengthAndPrototype` called with wrong number of arguments
-- Lines 5759, 5784: `isNativeValue` is not a member of `PinnedHermesValue`
-- Lines 6283, 6340, 6358: `createWithoutPrototype` is not a member of `NativeFunction`
-- Line 6663: `BytecodeSerializer` is not a member of `hermes::hbc`
-- Line 6739: Cannot access protected member `Handle<T>::Handle`
+**Impact**: Blocks all executable linking (hdb.exe, hermes.exe, hvm.exe, etc.)
 
-**Priority:** High - Multiple API breaking changes need systematic resolution
+### 2. NAPI API Compatibility Issues in `hermes_napi.cpp`
+**Status**: 🔴 **CRITICAL** - Compilation errors
 
-#### 2. GTest Template Compilation Issues
-**Files:** Multiple test files
-**Status:** Critical - Template instantiation failures
+**Fixed Issues**:
+- ✅ Replaced all `isNativeValue` calls with `isDouble`
+- ✅ Fixed static method naming for `NodeApiHostFunctionContext`
+- ✅ Updated `makeHandle` usage to use `std::move`
+- ✅ Updated `createThisForConstruct_RJS` call arguments
+
+**Outstanding Issues**:
+- Syntax error at line 4961: stray `do` keyword
+- Missing API: `hermes::vm::NativeFunction::createWithoutPrototype` (multiple locations)
+- Missing API: `hermes::hbc::BytecodeSerializer` class
+- Protected constructor access: `hermes::vm::Handle<T>::Handle`
+
+### 3. GTest Template Compilation Issues
+**Status**: ⚠️ **MEDIUM PRIORITY** - Template instantiation failures
 
 **Issues:**
 - GoogleTest template errors with `char16_t*` stream operators
@@ -47,28 +56,41 @@ Last updated: December 25, 2024
 - `unittests/VMRuntime/StringViewTest.cpp`
 - `unittests/VMRuntime/GCBasicsTest.cpp`
 
-**Root Cause:** MSVC C++20 standard library changes affecting GoogleTest's char16_t handling
+## Detailed Analysis
 
-**Priority:** Medium - Test compilation (non-blocking for main library)
+### Build Impact
+The current build shows these failures:
+- **25 total build targets attempted**
+- **13 failed** due to linker errors (missing platform functions)
+- **4 failed** due to compilation errors (hermes_napi.cpp syntax errors) 
+- **4 failed** due to GTest template issues
 
-### Progress Summary
+### Next Steps (Priority Order)
 
-#### ✅ Resolved Issues
-- ✅ **PlatformIntlWindows.cpp** - All compilation errors fixed!
-  - Fixed incorrect include of `PlatformIntlShared.cpp` (changed to `.h`)
-  - Removed duplicate `getCanonicalLocales` function definition
-  - Implemented missing `lookupSupportedLocales` function
-  - Fixed `getOptionBool` to use `impl_icu::getBoolOption`
-  - Added proper ICU headers and utilities
-- Cross-compiler macros (static_h.h)
-- Boost Context assembly files
-- SH code generator array forward declarations
-- Missing inspector headers
-- JSI protected member access
-- Internal compiler error (was fixed)
-- ICU basic compilation issues
+1. **Platform Function Implementation** (CRITICAL)
+   - Implement missing Unicode/Intl functions in Windows platform layer
+   - Add Windows timer API linking for profiler support
+   - Required for any executable to link successfully
 
-#### 🔄 Current Focus Areas
+2. **hermes_napi.cpp Fixes** (CRITICAL)
+   - Fix syntax error at line 4961
+   - Research API changes for `createWithoutPrototype` and `BytecodeSerializer` 
+   - Address protected constructor access issues
+
+3. **GTest Template Issues** (MEDIUM)
+   - Can be addressed after core functionality works
+   - May require GoogleTest configuration changes for MSVC C++20
+
+### Notes
+- ICU/Intl compilation is now working correctly 
+- Main library targets are compiling but failing at link stage due to missing implementations
+- NAPI integration requires significant API compatibility work
+
+### Previous Fixes Applied
+- ✅ **PlatformIntlWindows.cpp** - All compilation errors fixed
+- ✅ Fixed several NAPI API calls (`isNativeValue`, `makeHandle`, etc.)
+- ✅ Cross-compiler macros and Boost Context assembly files
+- ✅ SH code generator and internal compiler issues
 1. **hermes_napi.cpp** - Systematic API migration to match current Hermes VM APIs
 2. **GTest template issues** - Address char16_t printing compatibility for MSVC C++20
 
