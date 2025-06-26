@@ -2064,10 +2064,10 @@ class NodeApiCallbackInfo final {
   vm::NativeArgs &nativeArgs_;
 };
 
-/*static*/ vm::CallResult<vm::HermesValue> NodeApiHostFunctionContext::func(
+/*static*/ vm::CallResult<vm::HermesValue> NodeApiHostFunctionContext::call(
     void *context,
-    vm::Runtime &runtime,
-    vm::NativeArgs hvArgs) {
+    vm::Runtime &runtime) {
+  vm::NativeArgs hvArgs = runtime.getCurrentFrame().getNativeArgs();
   NodeApiHostFunctionContext *hfc =
       reinterpret_cast<NodeApiHostFunctionContext *>(context);
   NodeApiEnvironment &env = hfc->env_;
@@ -5757,7 +5757,7 @@ napi_status NodeApiEnvironment::closeEscapableNodeApiValueScope(
       napiValueStack_.size() > 1, napi_handle_scope_mismatch);
   vm::PinnedHermesValue &sentinelTag = napiValueStack_.top();
   RETURN_STATUS_IF_FALSE(
-      sentinelTag.isNativeValue(), napi_handle_scope_mismatch);
+      sentinelTag.isDouble(), napi_handle_scope_mismatch);
   uint32_t sentinelTagValue = sentinelTag.getNativeUInt32();
   RETURN_STATUS_IF_FALSE(
       sentinelTagValue == kEscapeableSentinelTag ||
@@ -5781,7 +5781,7 @@ napi_status NodeApiEnvironment::escapeNodeApiValue(
       *stackScope <= napiValueStack_.size(), napi_invalid_arg);
 
   vm::PinnedHermesValue &sentinelTag = napiValueStack_[*stackScope - 1];
-  RETURN_STATUS_IF_FALSE(sentinelTag.isNativeValue(), napi_invalid_arg);
+  RETURN_STATUS_IF_FALSE(sentinelTag.isDouble(), napi_invalid_arg);
   uint32_t sentinelTagValue = sentinelTag.getNativeUInt32();
   RETURN_STATUS_IF_FALSE(
       sentinelTagValue != kUsedEscapeableSentinelTag, napi_escape_called_twice);
