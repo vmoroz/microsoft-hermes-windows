@@ -3,8 +3,10 @@
  * Licensed under the MIT License.
  */
 
-#include "./PlatformIntlShared.cpp"
 #include "hermes/Platform/Intl/PlatformIntl.h"
+#include "hermes/Platform/Intl/PlatformIntlShared.h"
+#include "impl_icu/LocaleResolver.h"
+#include "impl_icu/OptionHelpers.h"
 
 #include <icu.h>
 #include <deque>
@@ -189,6 +191,15 @@ vm::CallResult<std::u16string> getOptionString(
   return std::u16string(value);
 }
 
+// Helper function to implement LookupSupportedLocales
+std::vector<std::u16string> lookupSupportedLocales(
+    const std::vector<std::u16string> &availableLocales,
+    const std::vector<std::u16string> &requestedLocales) {
+  // For now, return all requested locales as supported (simplified implementation)
+  // TODO: Implement proper locale lookup logic
+  return requestedLocales;
+}
+
 /// https://402.ecma-international.org/8.0/#sec-supportedlocales
 std::vector<std::u16string> supportedLocales(
     const std::vector<std::u16string> &availableLocales,
@@ -209,13 +220,6 @@ std::vector<std::u16string> supportedLocales(
   return lookupSupportedLocales(availableLocales, requestedLocales);
 }
 } // namespace
-
-// https://tc39.es/ecma402/#sec-intl.getcanonicallocales
-vm::CallResult<std::vector<std::u16string>> getCanonicalLocales(
-    vm::Runtime &runtime,
-    const std::vector<std::u16string> &locales) {
-  return canonicalizeLocaleList(runtime, locales);
-}
 
 // Not yet implemented. Tracked by
 // https://github.com/microsoft/hermes-windows/issues/87
@@ -391,7 +395,7 @@ vm::ExecutionStatus DateTimeFormatWindows::initialize(
 
   // 12. Let hour12 be ? GetOption(options, "hour12", "boolean", undefined,
   // undefined).
-  auto hour12 = getOptionBool(runtime, options, u"hour12", {});
+  auto hour12 = impl_icu::getBoolOption(options, u"hour12", {});
 
   // 13. Let hourCycle be ? GetOption(options, "hourCycle", "string", «"h11",
   // "h12", "h23", "h24" », undefined).
