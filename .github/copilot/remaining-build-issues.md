@@ -1,113 +1,69 @@
 # Remaining Build Issues for Hermes Windows Port
 
-## High Priority Issues
+## Summary
+This document tracks the remaining compilation issues that need to be resolved for the Hermes Windows port.
 
-### 1. Internal Compiler Error (CRITICAL)
-- **File**: `internal_unit.c` 
-- **Error**: `fatal error C1001: Internal compiler error`
-- **Location**: `e:\GitHub\microsoft\hermes-windows\out\build\win32-x64-release\lib\InternalJavaScript\internal_unit.c`
-- **Status**: BLOCKING - prevents compilation
-- **Cause**: Generated C code from SH bytecode generator may have syntax issues or MSVC-incompatible constructs
-- **Next Steps**: 
-  - Examine generated `internal_unit.c` for problematic constructs
-  - May need to regenerate or fix SH.cpp code generator
-  - Consider reducing complexity or splitting large generated functions
+## Current Status
+Last updated: December 2024
 
-### 2. Missing ICU Headers
-- **Files**: `unicode/dtptngen.h`, `unicode/timezone.h`
-- **Error**: `fatal error C1083: Cannot open include file`
-- **Location**: `lib\Platform\Intl\PlatformIntlICU.cpp`
-- **Status**: NEEDS STUBBING (per user request)
-- **Cause**: Limited ICU installation in `external\icu_decls` doesn't include these headers
-- **Next Steps**: 
-  - User will handle stubbing approach differently
-  - May need to create stub implementations or disable Intl features
+### Critical Issues
 
-### 3. Platform Unicode Linker Errors
-- **Functions**: `convertToCase`, `normalize`
-- **Error**: `error LNK2019: unresolved external symbol`
-- **Location**: `PlatformUnicodeTests.exe`
-- **Status**: MISSING IMPLEMENTATION
-- **Cause**: These functions are declared but not implemented for Windows
-- **Next Steps**:
-  - Find platform-specific Unicode implementation
-  - May need Windows-specific ICU or system API calls
-  - Could be in `lib\Platform\Unicode\` directory
+#### 1. PlatformIntlWindows.cpp Compilation Errors
+**File:** `lib/Platform/Intl/PlatformIntlWindows.cpp`
+**Errors:**
+- Line 209: `lookupSupportedLocales` identifier not found
+- Line 214: Duplicate function definition of `getCanonicalLocales` 
+- Line 342: Error in function definition/declaration for `getCanonicalLocales`
+- Line 345: `requestedLocales` cannot be used before initialization
+- Line 394: `getOptionBool` identifier not found
 
-## Medium Priority Issues
+**Details:** The PlatformIntlWindows.cpp appears to have missing function implementations and conflicts with PlatformIntlShared.cpp
 
-### 4. GTest Template Issues
-- **Files**: `BCP47ParserTest.cpp`, `GCBasicsTest.cpp`
-- **Error**: `operator<<` template conflicts with `char16_t*`
-- **Status**: MSVC/GTest COMPATIBILITY
-- **Cause**: MSVC C++20 has stricter template resolution for `char16_t*` printing
-- **Next Steps**:
-  - Add custom GTest printer for `char16_t*`
-  - Or modify test code to avoid direct `char16_t*` comparisons
-  - Consider using string conversion wrappers
+**Priority:** High - Blocks compilation
 
-### 5. Hermes NAPI Missing APIs
-- **File**: `API\hermes_shared\hermes_napi.cpp`
-- **Missing Types/Methods**:
-  - `BigStorage` type
-  - `createWithoutPrototype` method
-  - `registerLazyIdentifier` signature mismatch
-  - `isNativeValue` method
-  - `BytecodeSerializer` type
-  - Various template casting issues
-- **Status**: API EVOLUTION ISSUES
-- **Cause**: Hermes VM API has evolved, NAPI wrapper is outdated
-- **Next Steps**:
-  - Update NAPI wrapper to match current Hermes VM API
-  - May need to find equivalent methods or provide polyfills
-  - Review Hermes VM header changes
+#### 2. hermes_napi.cpp API Compatibility Issues
+**File:** `API/hermes_shared/hermes_napi.cpp`
+**Multiple API compatibility errors:**
 
-## Low Priority Issues
+**Function Definition Issues:**
+- Line 2067: `func` is not a member of `NodeApiHostFunctionContext`
+- Lines 2073, 2080: Cannot access private members `env_` and `hostCallback_`
 
-### 6. Compiler Warnings
-- **Warning**: `overriding '/EHs' with '/EHs-'` (exception handling)
-- **Status**: COSMETIC
-- **Cause**: CMake configuration conflict
-- **Next Steps**: Fix CMake flags to be consistent
+**Hermes VM API Changes:**
+- Line 4680: `makeHandle` overload resolution failure with `PseudoHandle<PropertyAccessor>`
+- Line 4947: `createThisForConstruct_RJS` expects 3 arguments, called with 2
+- Line 4946: Cannot convert `CallResult<PseudoHandle<HermesValue>>` to `CallResult<PseudoHandle<JSObject>>`
+- Line 5284: `NativeConstructor::create` called with wrong number of arguments
+- Line 5308: `defineNameLengthAndPrototype` called with wrong number of arguments
+- Lines 5759, 5784: `isNativeValue` is not a member of `PinnedHermesValue`
+- Lines 6283, 6340, 6358: `createWithoutPrototype` is not a member of `NativeFunction`
+- Line 6663: `BytecodeSerializer` is not a member of `hermes::hbc`
+- Line 6739: Cannot access protected member `Handle<T>::Handle`
 
-### 7. Assembly File Warnings (RESOLVED)
-- **Status**: ✅ FIXED - Boost Context MASM files updated
+**Priority:** High - Multiple API breaking changes need systematic resolution
 
-### 8. Cross-compiler Macros (RESOLVED)
-- **Status**: ✅ FIXED - `static_h.h` updated with MSVC equivalents
+### Progress Summary
 
-## Build Strategy
+#### ✅ Resolved Issues
+- Cross-compiler macros (static_h.h)
+- Boost Context assembly files
+- SH code generator array forward declarations
+- Missing inspector headers
+- JSI protected member access
+- Internal compiler error (was fixed)
+- ICU basic compilation issues
 
-### Recommended Order:
-1. **Internal Compiler Error** - Must be resolved first as it's blocking
-2. **ICU Headers** - User will handle stubbing differently
-3. **Platform Unicode** - Find/implement missing functions
-4. **GTest Issues** - Fix template compilation errors
-5. **NAPI APIs** - Update to match current Hermes VM API
-6. **Warnings** - Clean up CMake configuration
+#### 🔄 Current Focus Areas
+1. **PlatformIntlWindows.cpp** - Need to resolve function conflicts and missing implementations
+2. **hermes_napi.cpp** - Systematic API migration to match current Hermes VM APIs
 
-### Tools/Approaches:
-- Use `grep_search` and `file_search` to locate implementations
-- Use `read_file` to examine generated code issues
-- Use conditional compilation (`#ifdef`) for platform differences
-- Consider creating stub implementations where full ICU is unavailable
+#### 📝 Remaining Medium Priority Issues
+- GTest template issues with `char16_t*` printing (multiple test files)
+- Platform Unicode implementation missing for Windows
+- CMake warning cleanup
 
-## Notes
-
-- User specifically requested to stop ICU/Intl changes and handle stubbing differently
-- Focus should be on the internal compiler error as it's completely blocking
-- Many issues stem from cross-platform compatibility (GCC/Clang → MSVC)
-- Generated code (SH bytecode) may need special handling for MSVC
-
-## Progress Tracking
-
-- [x] Cross-compiler macros (static_h.h)
-- [x] Boost Context assembly files
-- [x] SH code generator array forward declarations
-- [x] Missing inspector headers
-- [x] JSI protected member access
-- [ ] Internal compiler error (CRITICAL)
-- [ ] ICU header stubbing (USER HANDLING)
-- [ ] Platform Unicode implementation
-- [ ] GTest template fixes
-- [ ] NAPI API updates
+## Next Steps
+1. Fix PlatformIntlWindows.cpp implementation conflicts
+2. Update hermes_napi.cpp to use current Hermes VM API signatures
+3. Address remaining test compilation issues
+4. Clean up build warnings
