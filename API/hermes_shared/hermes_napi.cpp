@@ -6643,7 +6643,7 @@ napi_status NodeApiEnvironment::createPreparedScript(
           bcFromSrcErr = hbc::BCProviderFromSrc::create(
               std::move(buffer),
               std::string(sourceURL ? sourceURL : ""),
-              nullptr,
+              llvh::StringRef(),
               compileFlags_);
       bytecodeProviderFromSrc = bcFromSrcErr.first.get();
       bcErr = std::move(bcFromSrcErr);
@@ -6661,6 +6661,8 @@ napi_status NodeApiEnvironment::createPreparedScript(
         }
       }
 
+      // TODO: (vmoroz) Fix - use CompileJS
+#if 0
       // Serialize the bytecode. Call BytecodeSerializer to do the heavy
       // lifting. Write to a SmallVector first, so we can know the total bytes
       // and write it first and make life easier for Deserializer. This is going
@@ -6680,6 +6682,7 @@ napi_status NodeApiEnvironment::createPreparedScript(
           scriptSignature,
           runtimeSignature,
           prepareTag);
+#endif
     }
 #endif
   }
