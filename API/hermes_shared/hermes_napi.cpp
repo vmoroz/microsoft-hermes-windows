@@ -5756,8 +5756,7 @@ napi_status NodeApiEnvironment::closeEscapableNodeApiValueScope(
   RETURN_STATUS_IF_FALSE(
       napiValueStack_.size() > 1, napi_handle_scope_mismatch);
   vm::PinnedHermesValue &sentinelTag = napiValueStack_.top();
-  RETURN_STATUS_IF_FALSE(
-      sentinelTag.isDouble(), napi_handle_scope_mismatch);
+  RETURN_STATUS_IF_FALSE(sentinelTag.isDouble(), napi_handle_scope_mismatch);
   uint32_t sentinelTagValue = sentinelTag.getNativeUInt32();
   RETURN_STATUS_IF_FALSE(
       sentinelTagValue == kEscapeableSentinelTag ||
@@ -6336,44 +6335,49 @@ napi_status NodeApiEnvironment::isPromise(
 napi_status NodeApiEnvironment::enablePromiseRejectionTracker() noexcept {
   NodeApiHandleScope scope{*this};
 
-  vm::Handle<vm::NativeFunction> onUnhandled =
-      vm::NativeFunction::createWithoutPrototype(
-          runtime_,
-          this,
-          [](void *context,
-             vm::Runtime &runtime,
-             vm::NativeArgs args) -> vm::CallResult<vm::HermesValue> {
-            return handleRejectionNotification(
-                context,
-                runtime,
-                args,
-                [](NodeApiEnvironment *env, int32_t id, vm::HermesValue error) {
-                  env->lastUnhandledRejectionId_ = id;
-                  env->lastUnhandledRejection_ = error;
-                });
-          },
-          getPredefinedValue(NodeApiPredefined::onUnhandled).getSymbol(),
-          /*paramCount:*/ 2);
-  vm::Handle<vm::NativeFunction> onHandled =
-      vm::NativeFunction::createWithoutPrototype(
-          runtime_,
-          this,
-          [](void *context,
-             vm::Runtime &runtime,
-             vm::NativeArgs args) -> vm::CallResult<vm::HermesValue> {
-            return handleRejectionNotification(
-                context,
-                runtime,
-                args,
-                [](NodeApiEnvironment *env, int32_t id, vm::HermesValue error) {
-                  if (env->lastUnhandledRejectionId_ == id) {
-                    env->lastUnhandledRejectionId_ = -1;
-                    env->lastUnhandledRejection_ = EmptyHermesValue;
-                  }
-                });
-          },
-          getPredefinedValue(NodeApiPredefined::onHandled).getSymbol(),
-          /*paramCount:*/ 2);
+  vm::Handle<vm::NativeFunction> onUnhandled = vm::NativeFunction::create(
+      runtime_,
+      vm::Handle<vm::JSObject>::vmcast(&runtime_.functionPrototype),
+      vm::Runtime::makeNullHandle<vm::Environment>(),
+      this,
+      [](void *context,
+         vm::Runtime &runtime) -> vm::CallResult<vm::HermesValue> {
+        vm::NativeArgs args = runtime.getCurrentFrame().getNativeArgs();
+        return handleRejectionNotification(
+            context,
+            runtime,
+            args,
+            [](NodeApiEnvironment *env, int32_t id, vm::HermesValue error) {
+              env->lastUnhandledRejectionId_ = id;
+              env->lastUnhandledRejection_ = error;
+            });
+      },
+      getPredefinedValue(NodeApiPredefined::onUnhandled).getSymbol(),
+      /*paramCount:*/ 2,
+      runtime_.makeNullHandle<vm::JSObject>());
+
+  vm::Handle<vm::NativeFunction> onHandled = vm::NativeFunction::create(
+      runtime_,
+      vm::Handle<vm::JSObject>::vmcast(&runtime_.functionPrototype),
+      vm::Runtime::makeNullHandle<vm::Environment>(),
+      this,
+      [](void *context,
+         vm::Runtime &runtime) -> vm::CallResult<vm::HermesValue> {
+        vm::NativeArgs args = runtime.getCurrentFrame().getNativeArgs();
+        return handleRejectionNotification(
+            context,
+            runtime,
+            args,
+            [](NodeApiEnvironment *env, int32_t id, vm::HermesValue error) {
+              if (env->lastUnhandledRejectionId_ == id) {
+                env->lastUnhandledRejectionId_ = -1;
+                env->lastUnhandledRejection_ = EmptyHermesValue;
+              }
+            });
+      },
+      getPredefinedValue(NodeApiPredefined::onHandled).getSymbol(),
+      /*paramCount:*/ 2,
+      runtime_.makeNullHandle<vm::JSObject>());
 
   napi_value options;
   CHECK_NAPI(createObject(&options));
