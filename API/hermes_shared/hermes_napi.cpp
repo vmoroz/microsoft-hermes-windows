@@ -5285,7 +5285,8 @@ napi_status NodeApiEnvironment::defineClass(
           runtime_,
           parentHandle,
           context.get(),
-          &NodeApiHostFunctionContext::call);
+          &NodeApiHostFunctionContext::call,
+          /*paramCount:*/ 2);
   vm::Handle<vm::JSObject> classHandle =
       makeHandle<vm::JSObject>(std::move(ctorRes));
 
