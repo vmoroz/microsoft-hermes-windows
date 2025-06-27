@@ -4678,7 +4678,7 @@ napi_status NodeApiEnvironment::defineProperties(
       vm::PseudoHandle<vm::PropertyAccessor> propRes =
           vm::PropertyAccessor::create(runtime_, localGetter, localSetter);
       CHECK_NAPI(defineOwnProperty(
-          objHandle, *name, dpFlags, makeHandle(propRes), nullptr));
+          objHandle, *name, dpFlags, makeHandle(std::move(propRes)), nullptr));
     } else {
       dpFlags.setValue = 1;
       dpFlags.setWritable = 1;
@@ -4943,12 +4943,13 @@ napi_status NodeApiEnvironment::createNewInstance(
   //    in 15.2.4
   //
   // Note that 13.2.2.1-4 are also handled by the call to newObject.
-  vm::CallResult<vm::PseudoHandle<vm::JSObject>> thisRes =
-      vm::Callable::createThisForConstruct_RJS(ctorHandle, runtime_);
+  vm::CallResult<vm::PseudoHandle<vm::HermesValue>> thisRes =
+      vm::Callable::createThisForConstruct_RJS(
+          ctorHandle, runtime_, ctorHandle);
   CHECK_NAPI(checkJSErrorStatus(thisRes));
   // We need to capture this in case the ctor doesn't return an object,
   // we need to return this object.
-  vm::Handle<vm::JSObject> thisHandle = makeHandle(std::move(*thisRes));
+  vm::Handle<vm::HermesValue> thisHandle = makeHandle(std::move(*thisRes));
 
   // 13.2.2.8:
   //    Let result be the result of calling the [[Call]] internal property of
@@ -5286,7 +5287,7 @@ napi_status NodeApiEnvironment::defineClass(
           parentHandle,
           context.get(),
           &NodeApiHostFunctionContext::call,
-          /*paramCount:*/ 2);
+          /*paramCount:*/ 0);
   vm::Handle<vm::JSObject> classHandle =
       makeHandle<vm::JSObject>(std::move(ctorRes));
 
@@ -5312,8 +5313,7 @@ napi_status NodeApiEnvironment::defineClass(
       nameHandle.get(),
       /*paramCount:*/ 0,
       prototypeHandle,
-      vm::Callable::WritablePrototype::Yes,
-      /*strictMode*/ false);
+      vm::Callable::WritablePrototype::Yes);
   CHECK_NAPI(checkJSErrorStatus(st));
 
   for (size_t i = 0; i < propertyCount; ++i) {
@@ -6263,8 +6263,10 @@ napi_status NodeApiEnvironment::createPromise(
   // rejectFunction given to the executor. Since the execution is synchronous,
   // we allocate executorData on the callstack.
   struct ExecutorData {
-    static vm::CallResult<vm::HermesValue>
-    callback(void *context, vm::Runtime & /*runtime*/, vm::NativeArgs args) {
+    static vm::CallResult<vm::HermesValue> callback(
+        void *context,
+        vm::Runtime &runtime) {
+      vm::NativeArgs args = runtime.getCurrentFrame().getNativeArgs();
       return (reinterpret_cast<ExecutorData *>(context))->callback(args);
     }
 
@@ -6279,13 +6281,16 @@ napi_status NodeApiEnvironment::createPromise(
     vm::MutableHandle<> *reject{};
   } executorData{this, resolveFunction, rejectFunction};
 
-  vm::Handle<vm::NativeFunction> executorFunction =
-      vm::NativeFunction::createWithoutPrototype(
-          runtime_,
-          &executorData,
-          &ExecutorData::callback,
-          getPredefinedSymbol(NodeApiPredefined::Promise),
-          2);
+  vm::Handle<vm::NativeFunction> executorFunction = vm::NativeFunction::create(
+      runtime_,
+      vm::Handle<vm::JSObject>::vmcast(&runtime_.functionPrototype),
+      vm::Runtime::makeNullHandle<vm::Environment>(),
+      &executorData,
+      &ExecutorData::callback,
+      getPredefinedSymbol(NodeApiPredefined::Promise),
+      /*paramCount:*/ 2,
+      runtime_.makeNullHandle<vm::JSObject>());
+
   napi_value func = pushNewNodeApiValue(executorFunction.getHermesValue());
   return createNewInstance(promiseConstructor, 1, &func, promise);
 }
@@ -6741,7 +6746,7 @@ vm::Handle<> NodeApiEnvironment::makeHandle(
 }
 
 vm::Handle<> NodeApiEnvironment::makeHandle(vm::HermesValue value) noexcept {
-  return vm::Handle<>(runtime_, value);
+  return vm::Handle<vm::HermesValue>::vmcast(runtime_, value);
 }
 
 vm::Handle<> NodeApiEnvironment::makeHandle(vm::Handle<> value) noexcept {
