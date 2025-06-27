@@ -18,7 +18,7 @@ set(api_sources
 add_library(libshared SHARED ${api_sources})
 target_link_libraries(libshared PRIVATE
   jsi
-  libhermes
+  hermesapi
   hermesVMRuntime
   hermesNodeApi
   #hermesinspector
