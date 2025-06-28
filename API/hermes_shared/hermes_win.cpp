@@ -8,9 +8,10 @@
 #include "hermes_win.h"
 #include "ScriptStore.h"
 #include "hermes/VM/Runtime.h"
-#include "hermes/inspector/RuntimeAdapter.h"
-#include "hermes/inspector/chrome/Registration.h"
+//#include "hermes/inspector/RuntimeAdapter.h"
+//#include "hermes/inspector/chrome/Registration.h"
 #include "llvh/Support/raw_os_ostream.h"
+#include "../hermes/hermes.h"
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -448,7 +449,7 @@ class ConfigWrapper {
 };
 
 class HermesRuntime;
-
+#if 0 // TODO: (vmoroz) Fix
 class HermesExecutorRuntimeAdapter final
     : public facebook::hermes::inspector::RuntimeAdapter {
  public:
@@ -464,7 +465,7 @@ class HermesExecutorRuntimeAdapter final
   std::shared_ptr<facebook::hermes::HermesRuntime> hermesRuntime_;
   std::shared_ptr<TaskRunner> taskRunner_;
 };
-
+#endif
 class RuntimeWrapper {
  public:
   explicit RuntimeWrapper(const ConfigWrapper &config)
@@ -472,7 +473,7 @@ class RuntimeWrapper {
         vmRuntime_(getVMRuntime(*hermesRuntime_)) {
     hermes_create_napi_env(
         vmRuntime_, config.enableInspector(), config.scriptCache(), {}, &env_);
-
+#if 0 // TODO: (vmoroz) Fix
     if (config.enableInspector()) {
       auto adapter = std::make_unique<HermesExecutorRuntimeAdapter>(
           hermesRuntime_, config.taskRunner());
@@ -483,6 +484,7 @@ class RuntimeWrapper {
       facebook::hermes::inspector::chrome::enableDebugging(
           std::move(adapter), inspectorRuntimeName);
     }
+#endif
   }
 
   ~RuntimeWrapper() {
@@ -501,12 +503,16 @@ class RuntimeWrapper {
   }
 
   napi_status addToProfiler() {
+#if 0 // TODO: (vmoroz) Fix
     hermesRuntime_->registerForProfiling();
+#endif
     return napi_ok;
   }
 
   napi_status removeFromProfiler() {
+#if 0 // TODO: (vmoroz) Fix
     hermesRuntime_->unregisterForProfiling();
+#endif
     return napi_ok;
   }
 
@@ -520,7 +526,7 @@ class RuntimeWrapper {
   ::hermes::vm::Runtime &vmRuntime_;
   napi_env env_;
 };
-
+#if 0 // TODO: (vmoroz) Fix
 HermesExecutorRuntimeAdapter::HermesExecutorRuntimeAdapter(
     std::shared_ptr<facebook::hermes::HermesRuntime> hermesRuntime,
     std::shared_ptr<TaskRunner> taskRunner)
@@ -541,7 +547,7 @@ void HermesExecutorRuntimeAdapter::tickleJs() {
         func.call(runtime);
       })));
 }
-
+#endif
 } // namespace facebook::hermes
 
 JSR_API jsr_create_runtime(jsr_config config, jsr_runtime *runtime) {
@@ -567,12 +573,16 @@ JSR_API hermes_dump_crash_data(jsr_runtime runtime, int32_t fd) {
 }
 
 JSR_API hermes_sampling_profiler_enable() {
+#if 0 // TODO: (vmoroz) Fix
   facebook::hermes::HermesRuntime::enableSamplingProfiler();
+#endif
   return napi_ok;
 }
 
 JSR_API hermes_sampling_profiler_disable() {
+#if 0 // TODO: (vmoroz) Fix
   facebook::hermes::HermesRuntime::disableSamplingProfiler();
+#endif
   return napi_ok;
 }
 
@@ -585,7 +595,9 @@ JSR_API hermes_sampling_profiler_remove(jsr_runtime runtime) {
 }
 
 JSR_API hermes_sampling_profiler_dump_to_file(const char *filename) {
+#if 0 // TODO: (vmoroz) Fix
   facebook::hermes::HermesRuntime::dumpSampledTraceToFile(filename);
+#endif
   return napi_ok;
 }
 

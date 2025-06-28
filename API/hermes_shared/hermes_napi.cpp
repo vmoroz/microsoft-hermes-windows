@@ -72,7 +72,8 @@
 #include "ScriptStore.h"
 #include "hermes_api.h"
 
-#include "hermes/BCGen/HBC/BytecodeProviderFromSrc.h"
+// #include "hermes/BCGen/HBC/BytecodeProviderFromSrc.h"
+#include "hermes/BCGen/HBC/HBC.h"
 #include "hermes/DebuggerAPI.h"
 #include "hermes/SourceMap/SourceMapParser.h"
 #include "hermes/Support/SimpleDiagHandler.h"
@@ -6636,7 +6637,7 @@ napi_status NodeApiEnvironment::createPreparedScript(
       bcErr = hbc::BCProviderFromBuffer::createBCProviderFromBuffer(
           std::make_unique<JsiBuffer>(move(cache)));
     }
-
+#if 0 // TODO: (vmoroz) Fix
     hbc::BCProviderFromSrc *bytecodeProviderFromSrc{};
     if (!bcErr.first) {
       std::pair<std::unique_ptr<hbc::BCProviderFromSrc>, std::string>
@@ -6648,7 +6649,8 @@ napi_status NodeApiEnvironment::createPreparedScript(
       bytecodeProviderFromSrc = bcFromSrcErr.first.get();
       bcErr = std::move(bcFromSrcErr);
     }
-
+#endif
+#if 0 // TODO: (vmoroz) Fix
     if (scriptCache_ && bytecodeProviderFromSrc) {
       hbc::BytecodeModule *bcModule =
           bytecodeProviderFromSrc->getBytecodeModule();
@@ -6661,8 +6663,7 @@ napi_status NodeApiEnvironment::createPreparedScript(
         }
       }
 
-      // TODO: (vmoroz) Fix - use CompileJS
-#if 0
+#if 0 // TODO: (vmoroz) Fix - use CompileJS
       // Serialize the bytecode. Call BytecodeSerializer to do the heavy
       // lifting. Write to a SmallVector first, so we can know the total bytes
       // and write it first and make life easier for Deserializer. This is going
@@ -6684,6 +6685,7 @@ napi_status NodeApiEnvironment::createPreparedScript(
           prepareTag);
 #endif
     }
+#endif
 #endif
   }
   if (!bcErr.first) {

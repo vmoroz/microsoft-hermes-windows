@@ -1243,6 +1243,10 @@ std::unique_ptr<HermesRuntime> HermesRootAPI::makeHermesRuntime(
   return ret;
 }
 
+::hermes::vm::Runtime &getVMRuntime(HermesRuntime &runtime) noexcept {
+  return static_cast<HermesRuntimeImpl &>(runtime).runtime_;
+}
+
 bool HermesRootAPI::isHermesBytecode(const uint8_t *data, size_t len) {
   return hbc::BCProviderFromBuffer::isBytecodeStream(
       llvh::ArrayRef<uint8_t>(data, len));

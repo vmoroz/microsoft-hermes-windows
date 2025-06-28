@@ -18,7 +18,7 @@ Last updated: 2025-01-23
 
 **Missing Function Implementations** (all `LNK2019` errors):
 - `hermes::platform_unicode::dateFormat` - Date formatting for Unicode support
-- `hermes::platform_unicode::convertToCase` - String case conversion  
+- `hermes::platform_unicode::convertToCase` - String case conversion
 - `hermes::platform_unicode::normalize` - String normalization
 - `hermes::platform_intl::getCanonicalLocales` - Canonical locale resolution
 - `hermes::platform_intl::toDateTimeOptions` - DateTime options processing
@@ -62,7 +62,7 @@ Last updated: 2025-01-23
 The current build shows these failures:
 - **25 total build targets attempted**
 - **13 failed** due to linker errors (missing platform functions)
-- **4 failed** due to compilation errors (hermes_napi.cpp syntax errors) 
+- **4 failed** due to compilation errors (hermes_napi.cpp syntax errors)
 - **4 failed** due to GTest template issues
 
 ### Next Steps (Priority Order)
@@ -74,7 +74,7 @@ The current build shows these failures:
 
 2. **hermes_napi.cpp Fixes** (CRITICAL)
    - Fix syntax error at line 4961
-   - Research API changes for `createWithoutPrototype` and `BytecodeSerializer` 
+   - Research API changes for `createWithoutPrototype` and `BytecodeSerializer`
    - Address protected constructor access issues
 
 3. **GTest Template Issues** (MEDIUM)
@@ -82,7 +82,7 @@ The current build shows these failures:
    - May require GoogleTest configuration changes for MSVC C++20
 
 ### Notes
-- ICU/Intl compilation is now working correctly 
+- ICU/Intl compilation is now working correctly
 - Main library targets are compiling but failing at link stage due to missing implementations
 - NAPI integration requires significant API compatibility work
 

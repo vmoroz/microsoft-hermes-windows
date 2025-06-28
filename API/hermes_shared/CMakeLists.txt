@@ -18,16 +18,40 @@ set(api_sources
 add_library(libshared SHARED ${api_sources})
 target_link_libraries(libshared PRIVATE
   jsi
+  LLVHSupport_obj
   hermesapi
-  hermesVMRuntime
+  hermesVMRuntime_obj
   hermesNodeApi
   #hermesinspector
+  dtoa_obj
+  hermesADT_obj
+  hermesAST2JS_obj
+  hermesAST_obj
+  hermesBackend_obj
+  hermesFrontEndDefs_obj
+  hermesFrontend_obj
+  hermesHBCBackend_obj
+  hermesInst_obj
+  hermesOptimizer_obj
+  hermesParser_obj
+  hermesPlatformUnicode_obj
+  hermesPlatform_obj
+  hermesPublic_obj
+  hermesRegex_obj
+  hermesSema_obj
+  hermesSHBackend_obj
+  hermesSourceMap_obj
+  hermesSupport_obj
+  hermesInternalBytecode_obj
+  zip_obj
   hermesParser)
 target_link_options(libshared PRIVATE ${HERMES_EXTRA_LINKER_FLAGS})
 
 if(WIN32)
   configure_file(version.rc.in version.rc @ONLY)
   target_sources(libshared PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+  # Link Windows multimedia library for timer functions (timeBeginPeriod, timeEndPeriod)
+  target_link_libraries(libshared PRIVATE winmm)
 endif()
 
 # Export the required header directory
