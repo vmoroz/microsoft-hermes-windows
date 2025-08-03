@@ -15,8 +15,7 @@ add_library(hermesRuntimeApi INTERFACE
 target_include_directories(hermesRuntimeApi INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(libshared SHARED
-  hermes_win.cpp
-  hermes_win.h
+  hermes_api.cpp
   MurmurHash.cpp
   MurmurHash.h
   ScriptStore.h

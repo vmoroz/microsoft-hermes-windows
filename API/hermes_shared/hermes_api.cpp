@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "hermes_win.h"
+#include "hermes_api.h"
 #include "MurmurHash.h"
 #include "ScriptStore.h"
 #include "hermes/BCGen/HBC/BytecodeProviderFromSrc.h"
