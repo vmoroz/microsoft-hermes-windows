@@ -1506,10 +1506,7 @@ class NodeApiHandleScopeBase final {
       NodeApiEnvironment &env,
       napi_value *result = nullptr,
       bool doNotCheckRuntimeThrownError = false) noexcept
-      : env_(env),
-        result_(result),
-        savedScope_(env.napiValueStack().size()),
-        gcScope_(env.runtime()) {}
+      : env_(env), result_(result), savedScope_(env.napiValueStack().size()) {}
 
   ~NodeApiHandleScopeBase() noexcept {
     env_.napiValueStack().resize(savedScope_);
@@ -1548,7 +1545,6 @@ class NodeApiHandleScopeBase final {
   NodeApiEnvironment &env_;
   napi_value *result_{};
   size_t savedScope_;
-  vm::GCScope gcScope_;
 };
 
 using NodeApiHandleScope = NodeApiHandleScopeBase<true>;
@@ -1703,6 +1699,7 @@ class NodeApiCallbackInfo final {
   assert(&runtime == &env.runtime());
 
   NodeApiHandleScopeBase<false> scope{env};
+  vm::GCScope gcScope{runtime};
   NodeApiCallbackInfo callbackInfo{*hfc, hvArgs};
   napi_value result{};
   vm::ExecutionStatus status = env.callIntoModule(
@@ -1836,7 +1833,7 @@ class NodeApiReference : public NodeApiRefTracker {
       uint32_t initialRefCount,
       NodeApiReferenceOwnership ownership) noexcept {
     // Make sure GC does not collect the value while we create the reference.
-    vm::GCScope scope(env.runtime());
+    vm::GCScope scope{env.runtime()};
     vm::Handle<vm::HermesValue> handleValue = env.runtime().makeHandle(*value);
 
     NodeApiReference *reference = new (std::nothrow)
@@ -2591,7 +2588,7 @@ class NodeApiEnvironmentHolder {
 
   static vm::CallResult<NodeApiEnvironmentHolder *> fromRuntime(
       vm::Runtime &runtime) {
-    vm::GCScope gcScope(runtime);
+    vm::GCScope gcScope{runtime};
     vm::HermesValue globalObjectHV = runtime.getGlobal().getHermesValue();
     vm::Handle<vm::JSObject> globalObjectHandle =
         vm::Handle<vm::JSObject>::vmcast(runtime, globalObjectHV);
@@ -3070,6 +3067,7 @@ NodeApiEnvironment::napiValueStack() noexcept {
 vm::CallResult<vm::HermesValue> NodeApiEnvironment::callModuleInitializer(
     napi_addon_register_func registerModule) noexcept {
   NodeApiHandleScopeBase<false> scope{env};
+  vm::GCScope gcScope(runtime_);
   napi_value exports{};
   CRASH_IF_FALSE(napi_create_object(napiEnv(this), &exports) == napi_ok);
   vm::ExecutionStatus status = callIntoModule(
@@ -3103,6 +3101,7 @@ napi_status NodeApiEnvironment::initializeModule(
   // environment.
   CHECK_STATUS(checkPreconditions());
   NodeApiHandleScope scope{*this, exports};
+  vm::GCScope gcScope(runtime_);
   napi_status status =
       scope.setResult(moduleEnv.callModuleInitializer(registerModule));
   return status == napi_ok ? napi_ok : napi_pending_exception;
@@ -3196,6 +3195,7 @@ napi_status NodeApiEnvironment::createJSError(
     napi_value *result) noexcept {
   CHECK_STATUS(checkPreconditions());
   NodeApiHandleScope scope{*this, result};
+  vm::GCScope gcScope{runtime_};
   CHECK_ARG_IS_STRING(message);
   vm::Handle<vm::JSError> errorHandle = makeHandle(
       vm::JSError::create(runtime_, makeHandle<vm::JSObject>(&errorPrototype)));
@@ -3211,6 +3211,7 @@ napi_status NodeApiEnvironment::throwJSError(
     const char *message) noexcept {
   CHECK_STATUS(checkPreconditions());
   NodeApiHandleScope scope{*this};
+  vm::GCScope gcScope{runtime_};
 
   napi_value messageValue;
   CHECK_STATUS(napi_create_string_utf8(
@@ -3695,6 +3696,7 @@ napi_status NodeApiEnvironment::unwrapObject(
     void **result) noexcept {
   CHECK_STATUS(checkPreconditions());
   NodeApiHandleScope scope{*this};
+  vm::GCScope gcScope{runtime_};
 
   CHECK_ARG_IS_OBJECT(object);
   if /*constexpr*/ (action == NodeApiUnwrapAction::KeepWrap) {
@@ -4105,6 +4107,7 @@ napi_status NodeApiEnvironment::concludeDeferred(
 
 napi_status NodeApiEnvironment::enablePromiseRejectionTracker() noexcept {
   NodeApiHandleScope scope{*this};
+  vm::GCScope gcScope{runtime_};
 
   vm::Handle<vm::NativeFunction> onUnhandled =
       vm::NativeFunction::createWithoutPrototype(
@@ -4462,6 +4465,7 @@ napi_status runBytecode(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   vm::CallResult<vm::HermesValue> res = env->runtime_.runBytecode(
       std::move(bytecodeProvider),
       runtimeFlags,
@@ -4538,6 +4542,7 @@ napi_status NAPI_CDECL napi_create_function(
   CHECK_STATUS(env->checkPreconditions());
   CHECK_ARG(callback);
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   vm::MutableHandle<vm::SymbolID> nameSymbolID{env->runtime_};
   if (utf8Name != nullptr) {
     CHECK_STATUS(env->getUniqueSymbolID(utf8Name, length, &nameSymbolID));
@@ -4562,6 +4567,7 @@ napi_status NAPI_CDECL napi_define_class(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
 
   CHECK_ARG(constructor);
   if (propertyCount > 0) {
@@ -4635,6 +4641,7 @@ napi_get_property_names(napi_env env, napi_value object, napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   return scope.setResult(env->getForInPropertyNames(
@@ -4651,6 +4658,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
 
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
@@ -4833,6 +4841,7 @@ napi_status NAPI_CDECL napi_set_property(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(key);
   CHECK_ARG(value);
   napi_value objValue;
@@ -4848,6 +4857,7 @@ napi_status NAPI_CDECL napi_has_property(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(key);
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
@@ -4862,6 +4872,7 @@ napi_status NAPI_CDECL napi_get_property(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(key);
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
@@ -4876,6 +4887,7 @@ napi_status NAPI_CDECL napi_delete_property(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(key);
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
@@ -4895,6 +4907,7 @@ napi_status NAPI_CDECL napi_has_own_property(
       phv(key)->isString() || phv(key)->isSymbol(), napi_name_expected);
 
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   vm::MutableHandle<vm::SymbolID> tmpSymbolStorage{env->runtime_};
@@ -4911,6 +4924,7 @@ napi_status NAPI_CDECL napi_set_named_property(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(utf8Name);
   CHECK_ARG(value);
   napi_value objValue, name;
@@ -4927,6 +4941,7 @@ napi_status NAPI_CDECL napi_has_named_property(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(utf8Name);
   napi_value objValue, name;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
@@ -4942,6 +4957,7 @@ napi_status NAPI_CDECL napi_get_named_property(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(utf8Name);
   napi_value objValue, name;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
@@ -4958,6 +4974,7 @@ napi_status NAPI_CDECL napi_set_element(
   CHECK_STATUS(env->checkPreconditions());
   CHECK_ARG(value);
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   return env->setComputedProperty(objValue, index, value);
@@ -4971,6 +4988,7 @@ napi_status NAPI_CDECL napi_has_element(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   return env->hasComputedProperty(objValue, index, result);
@@ -4984,6 +5002,7 @@ napi_status NAPI_CDECL napi_get_element(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   return scope.setResult(env->getComputedProperty(objValue, index, result));
@@ -4997,6 +5016,7 @@ napi_status NAPI_CDECL napi_delete_element(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   return env->deleteComputedProperty(objValue, index, result);
@@ -5010,6 +5030,7 @@ napi_status NAPI_CDECL napi_define_properties(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_OBJECT(object);
   if (propertyCount > 0) {
     CHECK_ARG(properties);
@@ -5081,6 +5102,7 @@ napi_status NAPI_CDECL napi_object_freeze(napi_env env, napi_value object) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   return env->checkJSErrorStatus(
@@ -5092,6 +5114,7 @@ napi_status NAPI_CDECL napi_object_seal(napi_env env, napi_value object) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   return env->checkJSErrorStatus(
@@ -5112,6 +5135,7 @@ napi_get_array_length(napi_env env, napi_value value, uint32_t *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
   RETURN_STATUS_IF_FALSE(
       vm::vmisa<vm::JSArray>(*phv(value)), napi_array_expected);
@@ -5159,6 +5183,7 @@ napi_get_prototype(napi_env env, napi_value object, napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   return scope.setResult(
@@ -5170,6 +5195,7 @@ napi_status NAPI_CDECL napi_create_object(napi_env env, napi_value *result) {
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   return scope.setResult(vm::JSObject::create(env->runtime_));
 }
 
@@ -5177,6 +5203,7 @@ napi_status NAPI_CDECL napi_create_array(napi_env env, napi_value *result) {
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   return scope.setResult(
       vm::JSArray::create(env->runtime_, /*capacity:*/ 0, /*length:*/ 0));
 }
@@ -5186,6 +5213,7 @@ napi_create_array_with_length(napi_env env, size_t length, napi_value *result) {
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   return scope.setResult(
       vm::JSArray::create(
           env->runtime_, /*capacity:*/ length, /*length:*/ length));
@@ -5199,6 +5227,7 @@ napi_status NAPI_CDECL napi_create_string_latin1(
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   if (length > 0) {
     CHECK_ARG(str);
   }
@@ -5232,6 +5261,7 @@ napi_status NAPI_CDECL napi_create_string_utf8(
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   if (length > 0) {
     CHECK_ARG(str);
   }
@@ -5260,6 +5290,7 @@ napi_status NAPI_CDECL napi_create_string_utf16(
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   if (length > 0) {
     CHECK_ARG(str);
   }
@@ -5388,6 +5419,7 @@ napi_create_bigint_int64(napi_env env, int64_t value, napi_value *result) {
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   return scope.setResult(vm::BigIntPrimitive::fromSigned(env->runtime_, value));
 }
 
@@ -5396,6 +5428,7 @@ napi_create_bigint_uint64(napi_env env, uint64_t value, napi_value *result) {
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   return scope.setResult(
       vm::BigIntPrimitive::fromUnsigned(env->runtime_, value));
 }
@@ -5409,6 +5442,7 @@ napi_status NAPI_CDECL napi_create_bigint_words(
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(words);
   RETURN_STATUS_IF_FALSE(wordCount <= INT_MAX, napi_invalid_arg);
 
@@ -5449,6 +5483,7 @@ napi_create_symbol(napi_env env, napi_value description, napi_value *result) {
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   vm::MutableHandle<vm::StringPrimitive> descString{env->runtime_};
   if (description != nullptr) {
     CHECK_ARG_IS_STRING(description);
@@ -5470,6 +5505,7 @@ napi_status NAPI_CDECL node_api_symbol_for(
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   napi_value key{};
   CHECK_STATUS(napi_create_string_utf8(env, utf8description, length, &key));
   return scope.setResult(env->runtime_.getSymbolRegistry().getSymbolForKey(
@@ -5612,6 +5648,7 @@ napi_status NAPI_CDECL napi_call_function(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
 
   CHECK_ARG(thisArg);
   CHECK_ARG(func);
@@ -5841,6 +5878,7 @@ napi_status NAPI_CDECL napi_get_value_string_latin1(
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_STRING(value);
   vm::StringView view = vm::StringPrimitive::createStringView(
       env->runtime_, env->makeHandle<vm::StringPrimitive>(value));
@@ -5877,6 +5915,7 @@ napi_status NAPI_CDECL napi_get_value_string_utf8(
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_STRING(value);
   vm::StringView view = vm::StringPrimitive::createStringView(
       env->runtime_, env->makeHandle<vm::StringPrimitive>(value));
@@ -5923,6 +5962,7 @@ napi_status NAPI_CDECL napi_get_value_string_utf16(
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_STRING(value);
   vm::StringView view = vm::StringPrimitive::createStringView(
       env->runtime_, env->makeHandle<vm::StringPrimitive>(value));
@@ -5944,6 +5984,7 @@ napi_coerce_to_bool(napi_env env, napi_value value, napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
   return scope.setResult(vm::toBoolean(*phv(value)));
 }
@@ -5953,6 +5994,7 @@ napi_coerce_to_number(napi_env env, napi_value value, napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
   return scope.setResult(
       vm::toNumber_RJS(env->runtime_, env->makeHandle(value)));
@@ -5963,6 +6005,7 @@ napi_coerce_to_object(napi_env env, napi_value value, napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
   return scope.setResult(vm::toObject(env->runtime_, env->makeHandle(value)));
 }
@@ -5972,6 +6015,7 @@ napi_coerce_to_string(napi_env env, napi_value value, napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
   return scope.setResult(
       vm::toString_RJS(env->runtime_, env->makeHandle(value)));
@@ -5987,6 +6031,7 @@ napi_status NAPI_CDECL napi_wrap(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
 
   CHECK_ARG_IS_OBJECT(object);
 
@@ -6034,17 +6079,15 @@ napi_status NAPI_CDECL napi_wrap(
 napi_status NAPI_CDECL
 napi_unwrap(napi_env env, napi_value obj, void **result) {
   CHECK_ENV(env);
-  return CHECKED_ENV(env)
-      ->unwrapObject<hermes::node_api::NodeApiUnwrapAction::KeepWrap>(
-          obj, result);
+  return CHECKED_ENV(env)->unwrapObject<NodeApiUnwrapAction::KeepWrap>(
+      obj, result);
 }
 
 napi_status NAPI_CDECL
 napi_remove_wrap(napi_env env, napi_value obj, void **result) {
   CHECK_ENV(env);
-  return CHECKED_ENV(env)
-      ->unwrapObject<hermes::node_api::NodeApiUnwrapAction::RemoveWrap>(
-          obj, result);
+  return CHECKED_ENV(env)->unwrapObject<NodeApiUnwrapAction::RemoveWrap>(
+      obj, result);
 }
 
 napi_status NAPI_CDECL napi_create_external(
@@ -6056,6 +6099,7 @@ napi_status NAPI_CDECL napi_create_external(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
 
   CHECK_ARG(result);
   vm::Handle<vm::DecoratedObject> decoratedObj =
@@ -6081,6 +6125,7 @@ napi_status NAPI_CDECL napi_type_tag_object(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
 
   CHECK_ARG(typeTag);
   napi_value objValue;
@@ -6117,6 +6162,7 @@ napi_status NAPI_CDECL napi_check_object_type_tag(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
 
   CHECK_ARG(typeTag);
   napi_value objValue;
@@ -6147,6 +6193,7 @@ napi_get_value_external(napi_env env, napi_value value, void **result) {
   CHECK_ENV(env);
   env->checkGCAccess();
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
   NodeApiExternalValue *externalValue =
       env->getExternalObjectValue(*phv(value));
@@ -6332,6 +6379,7 @@ napi_status NAPI_CDECL napi_new_instance(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
 
   CHECK_ARG(constructor);
   if (argCount > 0) {
@@ -6411,6 +6459,7 @@ napi_status NAPI_CDECL napi_instanceof(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
 
   CHECK_ARG(object);
   CHECK_ARG(constructor);
@@ -6460,6 +6509,7 @@ napi_status NAPI_CDECL napi_create_arraybuffer(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   vm::Handle<vm::JSArrayBuffer> buffer = env->makeHandle(
       vm::JSArrayBuffer::create(
           env->runtime_,
@@ -6483,6 +6533,7 @@ napi_status NAPI_CDECL napi_create_external_arraybuffer(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   vm::Handle<vm::JSArrayBuffer> buffer = env->makeHandle(
       vm::JSArrayBuffer::create(
           env->runtime_,
@@ -6548,6 +6599,7 @@ napi_status NAPI_CDECL napi_create_typedarray(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(arrayBuffer);
 
   vm::JSArrayBuffer *buffer =
@@ -6692,6 +6744,7 @@ napi_status NAPI_CDECL napi_create_dataview(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(arrayBuffer);
 
   vm::JSArrayBuffer *buffer =
@@ -6772,6 +6825,7 @@ napi_status NAPI_CDECL napi_create_promise(
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, promise};
+  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(deferred);
 
   napi_value jsPromise, jsDeferred;
@@ -6825,6 +6879,7 @@ napi_create_date(napi_env env, double dateTime, napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
   vm::PseudoHandle<vm::JSDate> dateHandle = vm::JSDate::create(
       env->runtime_,
       dateTime,
@@ -6863,7 +6918,8 @@ napi_run_script(napi_env env, napi_value script, napi_value *result) {
 
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
-  hermes::node_api::NodeApiHandleScope scope{*env, result};
+  NodeApiHandleScope scope{*env, result};
+  vm::GCScope gcScope{env->runtime_};
 
   // Convert the code into UTF8.
   size_t sourceSize{};
@@ -6894,6 +6950,7 @@ napi_status NAPI_CDECL napi_add_finalizer(
   CHECK_ARG(finalizeCallback);
 
   NodeApiHandleScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
 
   // Create a self-deleting reference if the optional out-param result is not
   // set.
