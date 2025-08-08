@@ -251,7 +251,7 @@ template <class T>
 class NodeApiStableAddressStack;
 class NodeApiStringBuilder;
 class NodeApiValueScope;
-class NodeApiEscapbleValueScope;
+class NodeApiEscapableValueScope;
 
 // Forward declaration of NodeApiReference-related classes.
 template <class T>
@@ -1500,9 +1500,9 @@ class NodeApiEnvironment {
 
   // The sentinel tag in napiValueStack_ used for escapable values.
   // These are the first four ASCII letters of name "Janus" - the god of gates.
-  static constexpr uint32_t kEscapeableSentinelTag = 0x4a616e75;
-  static constexpr uint32_t kUsedEscapeableSentinelTag =
-      kEscapeableSentinelTag + 1;
+  static constexpr uint32_t kEscapableSentinelTag = 0x4a616e75;
+  static constexpr uint32_t kUsedEscapableSentinelTag =
+      kEscapableSentinelTag + 1;
 
   // Tag used to indicate external values for DecoratedObject.
   // These are the first four ASCII letters of word "External".
@@ -1579,15 +1579,15 @@ class NodeApiValueScope {
 };
 
 // RAII class to control scope of napi_value variables and return values.
-class NodeApiEscapbleValueScope {
+class NodeApiEscapableValueScope {
  public:
-  explicit NodeApiEscapbleValueScope(NodeApiEnvironment &env) noexcept
+  explicit NodeApiEscapableValueScope(NodeApiEnvironment &env) noexcept
       : env_(env), savedScope_(env.napiValueStack_.size()) {
     // Reserve space for the escaping value.
     env_.pushNewNodeApiValue(NodeApiEnvironment::UndefinedHermesValue);
   }
 
-  ~NodeApiEscapbleValueScope() noexcept {
+  ~NodeApiEscapableValueScope() noexcept {
     env_.napiValueStack_.resize(
         isValueEscaped_ ? savedScope_ + 1 : savedScope_);
   }
@@ -4600,7 +4600,7 @@ napi_status NAPI_CDECL napi_create_function(
   CHECK_STATUS(env->checkPreconditions());
   CHECK_ARG(result);
   CHECK_ARG(callback);
-  NodeApiEscapbleValueScope scope{*env};
+  NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   vm::MutableHandle<vm::SymbolID> nameSymbolID{env->runtime_};
   if (utf8Name != nullptr) {
@@ -4625,13 +4625,14 @@ napi_status NAPI_CDECL napi_define_class(
     napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
-  NodeApiHandleScope scope{*env, result};
-  vm::GCScope gcScope{env->runtime_};
-
+  CHECK_ARG(result);
   CHECK_ARG(constructor);
   if (propertyCount > 0) {
     CHECK_ARG(properties);
   }
+
+  NodeApiEscapableValueScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
 
   vm::MutableHandle<vm::SymbolID> nameHandle{env->runtime_};
   CHECK_STATUS(env->getUniqueSymbolID(utf8Name, length, &nameHandle));
@@ -4692,7 +4693,7 @@ napi_status NAPI_CDECL napi_define_class(
     }
   }
 
-  return scope.setResult(std::move(classHandle));
+  return scope.escapeResult(classHandle.getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL
@@ -6369,7 +6370,7 @@ napi_status NAPI_CDECL napi_open_escapable_handle_scope(
   env->napiValueStack_.emplace(); // value to escape to parent scope
   env->napiValueStack_.emplace(
       vm::HermesValue::encodeNativeUInt32(
-          NodeApiEnvironment::kEscapeableSentinelTag));
+          NodeApiEnvironment::kEscapableSentinelTag));
 
   return napi_open_handle_scope(
       env, reinterpret_cast<napi_handle_scope *>(result));
@@ -6389,8 +6390,8 @@ napi_status NAPI_CDECL napi_close_escapable_handle_scope(
       sentinelTag.isNativeValue(), napi_handle_scope_mismatch);
   uint32_t sentinelTagValue = sentinelTag.getNativeUInt32();
   RETURN_STATUS_IF_FALSE(
-      sentinelTagValue == NodeApiEnvironment::kEscapeableSentinelTag ||
-          sentinelTagValue == NodeApiEnvironment::kUsedEscapeableSentinelTag,
+      sentinelTagValue == NodeApiEnvironment::kEscapableSentinelTag ||
+          sentinelTagValue == NodeApiEnvironment::kUsedEscapableSentinelTag,
       napi_handle_scope_mismatch);
 
   env->napiValueStack_.pop();
@@ -6415,16 +6416,16 @@ napi_status NAPI_CDECL napi_escape_handle(
   RETURN_STATUS_IF_FALSE(sentinelTag.isNativeValue(), napi_invalid_arg);
   uint32_t sentinelTagValue = sentinelTag.getNativeUInt32();
   RETURN_STATUS_IF_FALSE(
-      sentinelTagValue != NodeApiEnvironment::kUsedEscapeableSentinelTag,
+      sentinelTagValue != NodeApiEnvironment::kUsedEscapableSentinelTag,
       napi_escape_called_twice);
   RETURN_STATUS_IF_FALSE(
-      sentinelTagValue == NodeApiEnvironment::kEscapeableSentinelTag,
+      sentinelTagValue == NodeApiEnvironment::kEscapableSentinelTag,
       napi_invalid_arg);
 
   vm::PinnedHermesValue &escapedValue = env->napiValueStack_[*stackScope - 2];
   escapedValue = *phv(escapee);
   sentinelTag = vm::HermesValue::encodeNativeUInt32(
-      NodeApiEnvironment::kUsedEscapeableSentinelTag);
+      NodeApiEnvironment::kUsedEscapableSentinelTag);
 
   return env->setResult(napiValue(&escapedValue), result);
 }
