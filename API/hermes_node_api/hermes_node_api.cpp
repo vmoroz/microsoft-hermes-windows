@@ -102,11 +102,11 @@
 //=============================================================================
 
 // Check the Node-API status and return it if it is not napi_ok.
-#define CHECK_STATUS(...)                       \
-  do {                                          \
-    if (napi_status status__ = (__VA_ARGS__)) { \
-      return status__;                          \
-    }                                           \
+#define CHECK_STATUS(...)                                            \
+  do {                                                               \
+    if (napi_status status__ = (__VA_ARGS__); status__ != napi_ok) { \
+      return status__;                                               \
+    }                                                                \
   } while (false)
 
 // Adopted from Node.js code
@@ -333,7 +333,7 @@ const vm::PinnedHermesValue *phv(napi_value value) noexcept;
 // Useful in templates and macros
 const vm::PinnedHermesValue *phv(const vm::PinnedHermesValue *value) noexcept;
 
-template <typename T>
+template <typename T = vm::HermesValue>
 vm::Handle<T> asHandle(napi_value value) noexcept;
 
 // Reinterpret cast napi_ref to NodeApiReference pointer
@@ -1603,7 +1603,9 @@ class NodeApiEscapableValueScope {
         isValueEscaped_ ? savedScope_ + 1 : savedScope_);
   }
 
-  napi_status escapeResult(vm::HermesValue value, napi_value *result) noexcept {
+  napi_status escapeResult(
+      const vm::HermesValue &value,
+      napi_value *result) noexcept {
     CRASH_IF_FALSE(!isValueEscaped_ && "The value is already escaped.");
     isValueEscaped_ = true;
     env_.napiValueStack_[savedScope_] = value;
@@ -4973,14 +4975,16 @@ napi_status NAPI_CDECL napi_get_property(
     napi_value key,
     napi_value *result) {
   CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
   CHECK_ARG(key);
   CHECK_ARG(result);
-  NodeApiHandleScope scope{*env, result};
-  vm::GCScope gcScope{env->runtime_};
+  CHECK_STATUS(env->checkPreconditions());
+  NodeApiEscapableValueScope scope{*env};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
-  return scope.setResult(env->getComputedProperty(objValue, key, result));
+  vm::CallResult<vm::PseudoHandle<>> res = vm::JSObject::getComputed_RJS(
+      asHandle<vm::JSObject>(objValue), env->runtime_, asHandle<>(key));
+  CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
+  return scope.escapeResult(res->getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_delete_property(
@@ -6100,9 +6104,9 @@ napi_coerce_to_number(napi_env env, napi_value value, napi_value *result) {
   CHECK_ARG(result);
   CHECK_STATUS(env->checkPreconditions());
   vm::CallResult<vm::HermesValue> res =
-      vm::toNumber_RJS(env->runtime_, asHandle<vm::HermesValue>(value));
+      vm::toNumber_RJS(env->runtime_, asHandle<>(value));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
-  return env->makeResultValue(res.getValue(), result);
+  return env->makeResultValue(*res, result);
 }
 
 napi_status NAPI_CDECL
@@ -6112,9 +6116,9 @@ napi_coerce_to_object(napi_env env, napi_value value, napi_value *result) {
   CHECK_ARG(result);
   CHECK_STATUS(env->checkPreconditions());
   vm::CallResult<vm::HermesValue> res =
-      vm::toObject(env->runtime_, asHandle<vm::HermesValue>(value));
+      vm::toObject(env->runtime_, asHandle<>(value));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
-  return env->makeResultValue(res.getValue(), result);
+  return env->makeResultValue(*res, result);
 }
 
 napi_status NAPI_CDECL
@@ -6124,9 +6128,9 @@ napi_coerce_to_string(napi_env env, napi_value value, napi_value *result) {
   CHECK_ARG(result);
   CHECK_STATUS(env->checkPreconditions());
   vm::CallResult<vm::PseudoHandle<vm::StringPrimitive>> res =
-      vm::toString_RJS(env->runtime_, asHandle<vm::HermesValue>(value));
+      vm::toString_RJS(env->runtime_, asHandle<>(value));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
-  return env->makeResultValue(res.getValue().getHermesValue(), result);
+  return env->makeResultValue(res->getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_wrap(
