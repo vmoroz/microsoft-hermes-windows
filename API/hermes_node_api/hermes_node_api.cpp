@@ -1561,6 +1561,36 @@ class NodeApiHandleScopeBase final {
 
 using NodeApiHandleScope = NodeApiHandleScopeBase<true>;
 
+// RAII class to control scope of napi_value variables and return values.
+class NodeApiValueScope final {
+ public:
+  NodeApiValueScope(NodeApiEnvironment &env) noexcept : env_(env) {
+    // Reserve space for the escaping value.
+    env_.pushNewNodeApiValue(NodeApiEnvironment::UndefinedHermesValue);
+  }
+
+  ~NodeApiValueScope() noexcept {
+    env_.napiValueStack().resize(
+        isValueEscaped_ ? savedScope_ + 1 : savedScope_);
+  }
+
+  napi_value escape(vm::HermesValue value) noexcept {
+    CRASH_IF_FALSE(!isValueEscaped_ && "The value is already escaped.");
+    isValueEscaped_ = true;
+    env_.napiValueStack()[savedScope_] = value;
+    return napiValue(&env_.napiValueStack()[savedScope_]);
+  }
+
+  napi_value escape(napi_value value) noexcept {
+    return escape(*phv(value));
+  }
+
+ private:
+  NodeApiEnvironment &env_;
+  size_t savedScope_;
+  bool isValueEscaped_{false};
+};
+
 // Keep external data with an object.
 class NodeApiExternalValue final : public vm::DecoratedObject::Decoration {
  public:
