@@ -333,6 +333,9 @@ const vm::PinnedHermesValue *phv(napi_value value) noexcept;
 // Useful in templates and macros
 const vm::PinnedHermesValue *phv(const vm::PinnedHermesValue *value) noexcept;
 
+template <typename T>
+vm::Handle<T> asHandle(napi_value value) noexcept;
+
 // Reinterpret cast napi_ref to NodeApiReference pointer
 NodeApiReference *asReference(napi_ref ref) noexcept;
 // Reinterpret cast void* to NodeApiReference pointer
@@ -892,6 +895,8 @@ class NodeApiEnvironment {
   // It returns napi_ok or napi_pending_exception.
   napi_status checkPreconditions() noexcept;
 
+  napi_status checkExecutionStatus(vm::ExecutionStatus hermesStatus) noexcept;
+
   // Internal function to check ExecutionStatus and get the thrown JS error.
   napi_status checkJSErrorStatus(
       vm::ExecutionStatus hermesStatus,
@@ -1171,7 +1176,7 @@ class NodeApiEnvironment {
  public:
   // Internal function to push new napi_value to the napi_value stack and then
   // return it.
-  napi_value pushNewNodeApiValue(vm::HermesValue value) noexcept;
+  napi_value pushNewNodeApiValue(const vm::HermesValue &value) noexcept;
 
   //---------------------------------------------------------------------------
   // Methods to work with weak roots.
@@ -1283,6 +1288,10 @@ class NodeApiEnvironment {
   // These functions help to reduce code responsible for returning results.
   //---------------------------------------------------------------------------
  public:
+  napi_status makeResultValue(
+      const vm::HermesValue &value,
+      napi_value *result) noexcept;
+
   template <class T, class TResult>
   napi_status setResult(T &&value, TResult *result) noexcept;
 
@@ -2818,6 +2827,11 @@ const vm::PinnedHermesValue *phv(const vm::PinnedHermesValue *value) noexcept {
   return value;
 }
 
+template <typename T>
+vm::Handle<T> asHandle(napi_value value) noexcept {
+  return vm::Handle<T>::vmcast(phv(value));
+}
+
 NodeApiReference *asReference(napi_ref ref) noexcept {
   return reinterpret_cast<NodeApiReference *>(ref);
 }
@@ -3331,6 +3345,20 @@ napi_status NodeApiEnvironment::checkPreconditions() noexcept {
       !isShuttingDown_ && !isTerminatedOrTerminating(),
       apiVersion_ >= 10 ? napi_cannot_run_js : napi_pending_exception);
   return clearLastNativeError();
+}
+
+napi_status NodeApiEnvironment::checkExecutionStatus(
+    vm::ExecutionStatus hermesStatus) noexcept {
+  if (LLVM_LIKELY(hermesStatus != vm::ExecutionStatus::EXCEPTION)) {
+    return napi_ok;
+  }
+
+  thrownJSError_ = runtime_.getThrownValue();
+  runtime_.clearThrownValue();
+  if (!thrownJSError_.isEmpty()) {
+    return napi_pending_exception;
+  }
+  return napi_generic_failure;
 }
 
 napi_status NodeApiEnvironment::checkJSErrorStatus(
@@ -4011,7 +4039,7 @@ void NodeApiEnvironment::addFinalizingReference(
 //-----------------------------------------------------------------------------
 
 napi_value NodeApiEnvironment::pushNewNodeApiValue(
-    vm::HermesValue value) noexcept {
+    const vm::HermesValue &value) noexcept {
   napiValueStack_.emplace(value);
   return napiValue(&napiValueStack_.top());
 }
@@ -4338,6 +4366,13 @@ vm::CallResult<vm::MutableHandle<T>> NodeApiEnvironment::makeMutableHandle(
 //---------------------------------------------------------------------------
 // Result setting helpers
 //---------------------------------------------------------------------------
+
+napi_status NodeApiEnvironment::makeResultValue(
+    const vm::HermesValue &value,
+    napi_value *result) noexcept {
+  *result = pushNewNodeApiValue(value);
+  return clearLastNativeError();
+}
 
 template <class T, class TResult>
 napi_status NodeApiEnvironment::setResult(T &&value, TResult *result) noexcept {
@@ -4931,9 +4966,10 @@ napi_status NAPI_CDECL napi_get_property(
     napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
+  CHECK_ARG(key);
+  CHECK_ARG(result);
   NodeApiHandleScope scope{*env, result};
   vm::GCScope gcScope{env->runtime_};
-  CHECK_ARG(key);
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   return scope.setResult(env->getComputedProperty(objValue, key, result));
@@ -6063,11 +6099,13 @@ napi_coerce_to_number(napi_env env, napi_value value, napi_value *result) {
 napi_status NAPI_CDECL
 napi_coerce_to_object(napi_env env, napi_value value, napi_value *result) {
   CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
-  NodeApiHandleScope scope{*env, result};
-  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
-  return scope.setResult(vm::toObject(env->runtime_, env->makeHandle(value)));
+  CHECK_ARG(result);
+  CHECK_STATUS(env->checkPreconditions());
+  vm::CallResult<vm::HermesValue> res =
+      vm::toObject(env->runtime_, asHandle<vm::HermesValue>(value));
+  CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
+  return env->makeResultValue(res.getValue(), result);
 }
 
 napi_status NAPI_CDECL
