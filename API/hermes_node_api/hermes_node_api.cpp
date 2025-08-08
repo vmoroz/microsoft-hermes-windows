@@ -2843,7 +2843,7 @@ size_t convertUTF16ToUTF8WithReplacements(
     char16_t c = *cur++;
     // ASCII fast-path.
     if (LLVM_LIKELY(c <= 0x7F)) {
-      *curBuf++ = c;
+      *curBuf++ = static_cast<char>(c);
       continue;
     }
 
@@ -4108,7 +4108,7 @@ napi_status NodeApiEnvironment::concludeDeferred(
       getPredefinedProperty(phv(jsDeferred), predefinedProperty, &resolver));
   CHECK_STATUS(napi_call_function(
       napiEnv(this),
-      napi_value(&getUndefined()),
+      napiValue(&getUndefined()),
       resolver,
       1,
       &resolution,
