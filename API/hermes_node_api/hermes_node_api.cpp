@@ -251,6 +251,7 @@ template <class T>
 class NodeApiStableAddressStack;
 class NodeApiStringBuilder;
 class NodeApiValueScope;
+class NodeApiEscapbleValueScope;
 
 // Forward declaration of NodeApiReference-related classes.
 template <class T>
@@ -1282,11 +1283,6 @@ class NodeApiEnvironment {
   // These functions help to reduce code responsible for returning results.
   //---------------------------------------------------------------------------
  public:
-  napi_status setResult(
-      NodeApiValueScope &scope,
-      napi_value *result,
-      vm::HermesValue value) noexcept;
-
   template <class T, class TResult>
   napi_status setResult(T &&value, TResult *result) noexcept;
 
@@ -1567,28 +1563,41 @@ class NodeApiHandleScopeBase final {
 
 using NodeApiHandleScope = NodeApiHandleScopeBase<true>;
 
-// RAII class to control scope of napi_value variables and return values.
-class NodeApiValueScope final {
+// RAII class to control scope of napi_value variables.
+class NodeApiValueScope {
  public:
-  NodeApiValueScope(NodeApiEnvironment &env) noexcept : env_(env) {
+  explicit NodeApiValueScope(NodeApiEnvironment &env) noexcept
+      : env_(env), savedScope_(env.napiValueStack_.size()) {}
+
+  ~NodeApiValueScope() noexcept {
+    env_.napiValueStack_.resize(savedScope_);
+  }
+
+ private:
+  NodeApiEnvironment &env_;
+  size_t savedScope_;
+};
+
+// RAII class to control scope of napi_value variables and return values.
+class NodeApiEscapbleValueScope {
+ public:
+  explicit NodeApiEscapbleValueScope(NodeApiEnvironment &env) noexcept
+      : env_(env), savedScope_(env.napiValueStack_.size()) {
     // Reserve space for the escaping value.
     env_.pushNewNodeApiValue(NodeApiEnvironment::UndefinedHermesValue);
   }
 
-  ~NodeApiValueScope() noexcept {
-    env_.napiValueStack().resize(
+  ~NodeApiEscapbleValueScope() noexcept {
+    env_.napiValueStack_.resize(
         isValueEscaped_ ? savedScope_ + 1 : savedScope_);
   }
 
-  napi_value escape(vm::HermesValue value) noexcept {
+  napi_status escapeResult(vm::HermesValue value, napi_value *result) noexcept {
     CRASH_IF_FALSE(!isValueEscaped_ && "The value is already escaped.");
     isValueEscaped_ = true;
-    env_.napiValueStack()[savedScope_] = value;
-    return napiValue(&env_.napiValueStack()[savedScope_]);
-  }
-
-  napi_value escape(napi_value value) noexcept {
-    return escape(*phv(value));
+    env_.napiValueStack_[savedScope_] = value;
+    *result = napiValue(&env_.napiValueStack_[savedScope_]);
+    return env_.clearLastNativeError();
   }
 
  private:
@@ -4329,14 +4338,6 @@ vm::CallResult<vm::MutableHandle<T>> NodeApiEnvironment::makeMutableHandle(
 // Result setting helpers
 //---------------------------------------------------------------------------
 
-napi_status NodeApiEnvironment::setResult(
-    NodeApiValueScope &scope,
-    napi_value *result,
-    vm::HermesValue value) noexcept {
-  *result = scope.escape(value);
-  return napi_ok;
-}
-
 template <class T, class TResult>
 napi_status NodeApiEnvironment::setResult(T &&value, TResult *result) noexcept {
   CHECK_ARG(result);
@@ -4598,7 +4599,7 @@ napi_status NAPI_CDECL napi_create_function(
   CHECK_STATUS(env->checkPreconditions());
   CHECK_ARG(result);
   CHECK_ARG(callback);
-  NodeApiValueScope scope{*env};
+  NodeApiEscapbleValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   vm::MutableHandle<vm::SymbolID> nameSymbolID{env->runtime_};
   if (utf8Name != nullptr) {
@@ -4609,7 +4610,7 @@ napi_status NAPI_CDECL napi_create_function(
   vm::MutableHandle<vm::Callable> func{env->runtime_};
   CHECK_STATUS(
       env->createFunction(nameSymbolID.get(), callback, callbackData, &func));
-  return env->setResult(scope, result, func.getHermesValue());
+  return scope.escapeResult(func.getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_define_class(
