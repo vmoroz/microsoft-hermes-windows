@@ -250,6 +250,7 @@ class NodeApiRefCountedPtr;
 template <class T>
 class NodeApiStableAddressStack;
 class NodeApiStringBuilder;
+class NodeApiValueScope;
 
 // Forward declaration of NodeApiReference-related classes.
 template <class T>
@@ -1281,6 +1282,11 @@ class NodeApiEnvironment {
   // These functions help to reduce code responsible for returning results.
   //---------------------------------------------------------------------------
  public:
+  napi_status setResult(
+      NodeApiValueScope &scope,
+      napi_value *result,
+      vm::HermesValue value) noexcept;
+
   template <class T, class TResult>
   napi_status setResult(T &&value, TResult *result) noexcept;
 
@@ -4323,6 +4329,14 @@ vm::CallResult<vm::MutableHandle<T>> NodeApiEnvironment::makeMutableHandle(
 // Result setting helpers
 //---------------------------------------------------------------------------
 
+napi_status NodeApiEnvironment::setResult(
+    NodeApiValueScope &scope,
+    napi_value *result,
+    vm::HermesValue value) noexcept {
+  *result = scope.escape(value);
+  return napi_ok;
+}
+
 template <class T, class TResult>
 napi_status NodeApiEnvironment::setResult(T &&value, TResult *result) noexcept {
   CHECK_ARG(result);
@@ -4582,8 +4596,9 @@ napi_status NAPI_CDECL napi_create_function(
     napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
+  CHECK_ARG(result);
   CHECK_ARG(callback);
-  NodeApiHandleScope scope{*env, result};
+  NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   vm::MutableHandle<vm::SymbolID> nameSymbolID{env->runtime_};
   if (utf8Name != nullptr) {
@@ -4594,7 +4609,7 @@ napi_status NAPI_CDECL napi_create_function(
   vm::MutableHandle<vm::Callable> func{env->runtime_};
   CHECK_STATUS(
       env->createFunction(nameSymbolID.get(), callback, callbackData, &func));
-  return scope.setResult(func.getHermesValue());
+  return env->setResult(scope, result, func.getHermesValue());
 }
 
 napi_status NAPI_CDECL napi_define_class(
