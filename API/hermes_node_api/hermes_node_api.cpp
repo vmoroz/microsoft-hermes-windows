@@ -2493,7 +2493,8 @@ class NodeApiExternalBuffer final : public hermes::Buffer {
     // Follow the same pattern as NodeApiExternalValue destructor
     if (finalizer_) {
       // Create a temporary finalizer holder to transfer the single finalizer
-      auto finalizerHolder = std::make_unique<NodeApiFinalizerHolder>();
+      std::unique_ptr<NodeApiFinalizerHolder> finalizerHolder =
+          std::make_unique<NodeApiFinalizerHolder>();
       finalizerHolder->addFinalizer(finalizer_);
 
       // Transfer finalizer holder to pending finalizers for thread-safe
@@ -3955,7 +3956,7 @@ void NodeApiEnvironment::invokeFinalizerFromGC(
     // objects as soon as possible. In that state any code that may affect GC
     // state causes a fatal error. To work around this issue the finalizer code
     // can call node_api_post_finalizer.
-    auto scope = InGCFinalizerScope(this);
+    InGCFinalizerScope scope{this};
     finalizer->finalize();
   }
 }
