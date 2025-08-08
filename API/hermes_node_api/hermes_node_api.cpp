@@ -1292,6 +1292,8 @@ class NodeApiEnvironment {
       const vm::HermesValue &value,
       napi_value *result) noexcept;
 
+  napi_status setBooleanResult(bool value, napi_value *result) noexcept;
+
   template <class T, class TResult>
   napi_status setResult(T &&value, TResult *result) noexcept;
 
@@ -4373,6 +4375,12 @@ napi_status NodeApiEnvironment::makeResultValue(
   *result = pushNewNodeApiValue(value);
   return clearLastNativeError();
 }
+napi_status NodeApiEnvironment::setBooleanResult(
+    bool value,
+    napi_value *result) noexcept {
+  *result = napiValue(value ? &TrueHermesValue : &FalseHermesValue);
+  return clearLastNativeError();
+}
 
 template <class T, class TResult>
 napi_status NodeApiEnvironment::setResult(T &&value, TResult *result) noexcept {
@@ -6078,22 +6086,23 @@ napi_status NAPI_CDECL napi_get_value_string_utf16(
 napi_status NAPI_CDECL
 napi_coerce_to_bool(napi_env env, napi_value value, napi_value *result) {
   CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
-  NodeApiHandleScope scope{*env, result};
-  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
-  return scope.setResult(vm::toBoolean(*phv(value)));
+  CHECK_ARG(result);
+  CHECK_STATUS(env->checkPreconditions());
+  bool res = vm::toBoolean(*phv(value));
+  return env->setBooleanResult(res, result);
 }
 
 napi_status NAPI_CDECL
 napi_coerce_to_number(napi_env env, napi_value value, napi_value *result) {
   CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
-  NodeApiHandleScope scope{*env, result};
-  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
-  return scope.setResult(
-      vm::toNumber_RJS(env->runtime_, env->makeHandle(value)));
+  CHECK_ARG(result);
+  CHECK_STATUS(env->checkPreconditions());
+  vm::CallResult<vm::HermesValue> res =
+      vm::toNumber_RJS(env->runtime_, asHandle<vm::HermesValue>(value));
+  CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
+  return env->makeResultValue(res.getValue(), result);
 }
 
 napi_status NAPI_CDECL
@@ -6111,12 +6120,13 @@ napi_coerce_to_object(napi_env env, napi_value value, napi_value *result) {
 napi_status NAPI_CDECL
 napi_coerce_to_string(napi_env env, napi_value value, napi_value *result) {
   CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
-  NodeApiHandleScope scope{*env, result};
-  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
-  return scope.setResult(
-      vm::toString_RJS(env->runtime_, env->makeHandle(value)));
+  CHECK_ARG(result);
+  CHECK_STATUS(env->checkPreconditions());
+  vm::CallResult<vm::PseudoHandle<vm::StringPrimitive>> res =
+      vm::toString_RJS(env->runtime_, asHandle<vm::HermesValue>(value));
+  CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
+  return env->makeResultValue(res.getValue().getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_wrap(
