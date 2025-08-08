@@ -1484,6 +1484,18 @@ class NodeApiEnvironment {
   static constexpr vm::HermesValue EmptyHermesValue{
       vm::HermesValue::encodeEmptyValue()};
 
+  static constexpr vm::PinnedHermesValue UndefinedHermesValue{
+      vm::HermesValue::encodeUndefinedValue()};
+
+  static constexpr vm::PinnedHermesValue NullHermesValue{
+      vm::HermesValue::encodeNullValue()};
+
+  static constexpr vm::PinnedHermesValue TrueHermesValue{
+      vm::HermesValue::encodeBoolValue(true)};
+
+  static constexpr vm::PinnedHermesValue FalseHermesValue{
+      vm::HermesValue::encodeBoolValue(false)};
+
   // The sentinel tag in napiValueStack_ used for escapable values.
   // These are the first four ASCII letters of name "Janus" - the god of gates.
   static constexpr uint32_t kEscapeableSentinelTag = 0x4a616e75;
