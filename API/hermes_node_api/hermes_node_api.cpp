@@ -4948,8 +4948,10 @@ napi_status NAPI_CDECL napi_set_property(
   CHECK_ARG(value);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiValueScope scope{*env};
+
   napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
+
   vm::CallResult<bool> res = vm::JSObject::putComputed_RJS(
       asHandle<vm::JSObject>(objValue),
       env->runtime_,
@@ -4970,8 +4972,10 @@ napi_status NAPI_CDECL napi_has_property(
   CHECK_ARG(result);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiValueScope scope{*env};
+
   napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
+
   vm::CallResult<bool> res = vm::JSObject::hasComputed(
       asHandle<vm::JSObject>(objValue), env->runtime_, asHandle<>(key));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
@@ -4989,8 +4993,10 @@ napi_status NAPI_CDECL napi_get_property(
   CHECK_ARG(result);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiEscapableValueScope scope{*env};
+
   napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
+
   vm::CallResult<vm::PseudoHandle<>> res = vm::JSObject::getComputed_RJS(
       asHandle<vm::JSObject>(objValue), env->runtime_, asHandle<>(key));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
@@ -5003,13 +5009,23 @@ napi_status NAPI_CDECL napi_delete_property(
     napi_value key,
     bool *result) {
   CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
-  NodeApiHandleScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(key);
-  napi_value objValue;
+  CHECK_STATUS(env->checkPreconditions());
+  NodeApiValueScope scope{*env};
+  vm::GCScope gcScope{env->runtime_}; // It is required
+
+  napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
-  return env->deleteComputedProperty(objValue, key, result);
+
+  vm::CallResult<bool> res = vm::JSObject::deleteComputed(
+      asHandle<vm::JSObject>(objValue),
+      env->runtime_,
+      asHandle<>(key));
+  CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
+  if (result != nullptr) {
+    *result = *res;
+  }
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_has_own_property(
@@ -5023,7 +5039,6 @@ napi_status NAPI_CDECL napi_has_own_property(
   CHECK_STATUS(env->checkPreconditions());
   RETURN_STATUS_IF_FALSE(
       phv(key)->isString() || phv(key)->isSymbol(), napi_name_expected);
-
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
