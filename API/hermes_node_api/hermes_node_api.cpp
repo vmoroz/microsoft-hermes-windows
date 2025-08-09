@@ -5018,20 +5018,29 @@ napi_status NAPI_CDECL napi_has_own_property(
     napi_value key,
     bool *result) {
   CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
   CHECK_ARG(key);
   CHECK_ARG(result);
+  CHECK_STATUS(env->checkPreconditions());
   RETURN_STATUS_IF_FALSE(
       phv(key)->isString() || phv(key)->isSymbol(), napi_name_expected);
 
-  NodeApiHandleScope scope{*env};
+  NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
-  napi_value objValue;
+
+  napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
+
   vm::MutableHandle<vm::SymbolID> tmpSymbolStorage{env->runtime_};
   vm::ComputedPropertyDescriptor desc;
-  return env->getOwnComputedPropertyDescriptor(
-      objValue, key, tmpSymbolStorage, desc, result);
+  vm::CallResult<bool> res = vm::JSObject::getOwnComputedDescriptor(
+      asHandle<vm::JSObject>(objValue),
+      env->runtime_,
+      asHandle<>(key),
+      /*ref*/ tmpSymbolStorage,
+      /*ref*/ desc);
+  CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
+  *result = *res;
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_set_named_property(
