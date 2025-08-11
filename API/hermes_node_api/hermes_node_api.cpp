@@ -70,8 +70,12 @@
 // TODO: How to provide detailed error messages without breaking tests?
 // TODO: Why console.log compiles in V8_JSI?
 // TODO: Remove handling of unhandled promise rejections
+// TODO: Remove the most GCScope.
+// TODO: Add debug check for GCScope stack to see if GCScope is needed.
+// TODO: Add debug check to see if JS exception can be thrown.
 
 #define NAPI_EXPERIMENTAL
+#define NODE_API_EXPERIMENTAL_NO_WARNING
 
 #include "hermes_node_api.h"
 
@@ -5438,9 +5442,12 @@ napi_create_symbol(napi_env env, napi_value description, napi_value *result) {
     // If description is undefined, the descString will eventually be "".
     descString = env->runtime_.getPredefinedString(vm::Predefined::emptyString);
   }
-  return scope.setResult(
+
+  vm::CallResult<vm::SymbolID> cr =
       env->runtime_.getIdentifierTable().createNotUniquedSymbol(
-          env->runtime_, descString));
+          env->runtime_, descString);
+  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
+  return scope.escapeResult(vm::HermesValue::encodeSymbolValue(*cr), result);
 }
 
 napi_status NAPI_CDECL node_api_symbol_for(
@@ -5455,8 +5462,12 @@ napi_status NAPI_CDECL node_api_symbol_for(
   vm::GCScope gcScope{env->runtime_};
   napi_value key{};
   CHECK_STATUS(napi_create_string_utf8(env, utf8description, length, &key));
-  return scope.setResult(env->runtime_.getSymbolRegistry().getSymbolForKey(
-      env->runtime_, env->makeHandle<vm::StringPrimitive>(key)));
+
+  vm::CallResult<vm::SymbolID> cr =
+      env->runtime_.getSymbolRegistry().getSymbolForKey(
+          env->runtime_, asHandle<vm::StringPrimitive>(key));
+  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
+  return scope.escapeResult(vm::HermesValue::encodeSymbolValue(*cr), result);
 }
 
 napi_status NAPI_CDECL napi_create_error(
@@ -5539,14 +5550,12 @@ napi_typeof(napi_env env, napi_value value, napi_valuetype *result) {
 
 napi_status NAPI_CDECL napi_get_undefined(napi_env env, napi_value *result) {
   CHECK_ENV(env);
-  return env->setPredefinedResult(
-      env->runtime_.getUndefinedValue().unsafeGetPinnedHermesValue(), result);
+  return env->castResult(&NodeApiEnvironment::UndefinedHermesValue, result);
 }
 
 napi_status NAPI_CDECL napi_get_null(napi_env env, napi_value *result) {
   CHECK_ENV(env);
-  return env->setPredefinedResult(
-      env->runtime_.getNullValue().unsafeGetPinnedHermesValue(), result);
+  return env->castResult(&NodeApiEnvironment::NullHermesValue, result);
 }
 
 napi_status NAPI_CDECL napi_get_cb_info(
@@ -5582,7 +5591,9 @@ napi_status NAPI_CDECL napi_get_new_target(
     napi_value *result) {
   CHECK_ENV(env);
   CHECK_ARG(callbackInfo);
-  return env->setResult(asCallbackInfo(callbackInfo)->getNewTarget(), result);
+  CHECK_ARG(result);
+  return env->castResult(
+      phv(asCallbackInfo(callbackInfo)->getNewTarget()), result);
 }
 
 napi_status NAPI_CDECL napi_call_function(
@@ -5630,14 +5641,14 @@ napi_status NAPI_CDECL napi_call_function(
 
   if (result) {
     RETURN_FAILURE_IF_FALSE(!callRes->get().isEmpty());
-    return scope.setResult(callRes->get());
+    return scope.escapeResult(callRes->get(), result);
   }
   return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_get_global(napi_env env, napi_value *result) {
   CHECK_ENV(env);
-  return env->setPredefinedResult(
+  return env->castResult(
       env->runtime_.getGlobal().unsafeGetPinnedHermesValue(), result);
 }
 
@@ -5680,46 +5691,53 @@ napi_status NAPI_CDECL
 napi_is_error(napi_env env, napi_value value, bool *result) {
   CHECK_ENV(env);
   CHECK_ARG(value);
-  return env->setResult(vm::vmisa<vm::JSError>(*phv(value)), result);
+  CHECK_ARG(result);
+  *result = vm::vmisa<vm::JSError>(*phv(value));
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
 napi_get_value_double(napi_env env, napi_value value, double *result) {
   CHECK_ENV(env);
+  env->checkGCAccess();
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isNumber(), napi_number_expected);
-  return env->setResult(phv(value)->getDouble(), result);
+  *result = phv(value)->getDouble();
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
 napi_get_value_int32(napi_env env, napi_value value, int32_t *result) {
   CHECK_ENV(env);
+  env->checkGCAccess();
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isNumber(), napi_number_expected);
-  return env->setResult(
-      NodeApiDoubleConversion::toInt32(phv(value)->getDouble()), result);
+  *result = NodeApiDoubleConversion::toInt32(phv(value)->getDouble());
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
 napi_get_value_uint32(napi_env env, napi_value value, uint32_t *result) {
   CHECK_ENV(env);
+  env->checkGCAccess();
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isNumber(), napi_number_expected);
-  return env->setResult(
-      NodeApiDoubleConversion::toUint32(phv(value)->getDouble()), result);
+  *result = NodeApiDoubleConversion::toUint32(phv(value)->getDouble());
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
 napi_get_value_int64(napi_env env, napi_value value, int64_t *result) {
   CHECK_ENV(env);
+  env->checkGCAccess();
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isNumber(), napi_number_expected);
-  return env->setResult(
-      NodeApiDoubleConversion::toInt64(phv(value)->getDouble()), result);
+  *result = NodeApiDoubleConversion::toInt64(phv(value)->getDouble());
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_get_value_bigint_int64(
@@ -5805,7 +5823,8 @@ napi_get_value_bool(napi_env env, napi_value value, bool *result) {
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isBool(), napi_boolean_expected);
-  return env->setResult(phv(value)->getBool(), result);
+  *result = phv(value)->getBool();
+  return env->clearLastNativeError();
 }
 
 // Copies a JavaScript string into a LATIN-1 string buffer. The result is the
@@ -5828,10 +5847,11 @@ napi_status NAPI_CDECL napi_get_value_string_latin1(
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_STRING(value);
   vm::StringView view = vm::StringPrimitive::createStringView(
-      env->runtime_, env->makeHandle<vm::StringPrimitive>(value));
+      env->runtime_, asHandle<vm::StringPrimitive>(value));
 
   if (buf == nullptr) {
-    return env->setResult(view.length(), result);
+    CHECK_ARG(result);
+    *result = view.length();
   } else if (bufSize != 0) {
     size_t copied = std::min(bufSize - 1, view.length());
     for (auto cur = view.begin(), end = view.begin() + copied; cur < end;
@@ -5839,10 +5859,13 @@ napi_status NAPI_CDECL napi_get_value_string_latin1(
       *buf++ = static_cast<char>(*cur);
     }
     *buf = '\0';
-    return env->setOptionalResult(std::move(copied), result);
-  } else {
-    return env->setOptionalResult(static_cast<size_t>(0), result);
+    if (result != nullptr) {
+      *result = copied;
+    }
+  } else if (result != nullptr) {
+    *result = 0;
   }
+  return env->clearLastNativeError();
 }
 
 // Copies a JavaScript string into a UTF-8 string buffer. The result is the
@@ -5865,15 +5888,14 @@ napi_status NAPI_CDECL napi_get_value_string_utf8(
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_STRING(value);
   vm::StringView view = vm::StringPrimitive::createStringView(
-      env->runtime_, env->makeHandle<vm::StringPrimitive>(value));
+      env->runtime_, asHandle<vm::StringPrimitive>(value));
 
   if (buf == nullptr) {
-    return env->setResult(
-        view.isASCII() || view.length() == 0
-            ? view.length()
-            : utf8LengthWithReplacements(
-                  vm::UTF16Ref(view.castToChar16Ptr(), view.length())),
-        result);
+    CHECK_ARG(result);
+    *result = view.isASCII() || view.length() == 0
+        ? view.length()
+        : utf8LengthWithReplacements(
+              vm::UTF16Ref(view.castToChar16Ptr(), view.length()));
   } else if (bufSize != 0) {
     size_t copied = view.length() > 0 ? view.isASCII()
             ? copyASCIIToUTF8(
@@ -5886,10 +5908,14 @@ napi_status NAPI_CDECL napi_get_value_string_utf8(
                   bufSize - 1)
                                       : 0;
     buf[copied] = '\0';
-    return env->setOptionalResult(std::move(copied), result);
-  } else {
-    return env->setOptionalResult(static_cast<size_t>(0), result);
+    if (result != nullptr) {
+      *result = copied;
+    }
+  } else if (result != nullptr) {
+    *result = 0;
   }
+
+  return env->clearLastNativeError();
 }
 
 // Copies a JavaScript string into a UTF-16 string buffer. The result is the
