@@ -897,18 +897,6 @@ class NodeApiEnvironment {
 
   napi_status checkExecutionStatus(vm::ExecutionStatus hermesStatus) noexcept;
 
-  // Internal function to check ExecutionStatus and get the thrown JS error.
-  napi_status checkJSErrorStatus(
-      vm::ExecutionStatus hermesStatus,
-      napi_status status = napi_generic_failure) noexcept;
-
-  // Internal function to check ExecutionStatus of callResult and get the thrown
-  // JS error.
-  template <class T>
-  napi_status checkJSErrorStatus(
-      const vm::CallResult<T> &callResult,
-      napi_status status = napi_generic_failure) noexcept;
-
   void checkRuntimeThrownValue() noexcept;
 
   //---------------------------------------------------------------------------
@@ -2779,8 +2767,7 @@ napi_status setNodeApiValue(
 napi_status checkJSErrorStatus(
     napi_env env,
     vm::ExecutionStatus hermesStatus) noexcept {
-  return CHECKED_ENV(env)->checkJSErrorStatus(
-      hermesStatus, napi_pending_exception);
+  return CHECKED_ENV(env)->checkExecutionStatus(hermesStatus);
 }
 
 // Max size of the runtime's register stack.
@@ -3275,7 +3262,7 @@ napi_status NodeApiEnvironment::createJSError(
   CHECK_ARG_IS_STRING(message);
   vm::Handle<vm::JSError> errorHandle = makeHandle(
       vm::JSError::create(runtime_, makeHandle<vm::JSObject>(&errorPrototype)));
-  CHECK_STATUS(checkJSErrorStatus(
+  CHECK_STATUS(checkExecutionStatus(
       vm::JSError::setMessage(errorHandle, runtime_, makeHandle(message))));
   CHECK_STATUS(setJSErrorCode(errorHandle, code, nullptr));
   return scope.setResult(std::move(errorHandle));
@@ -3295,9 +3282,9 @@ napi_status NodeApiEnvironment::throwJSError(
 
   vm::Handle<vm::JSError> errorHandle = makeHandle(
       vm::JSError::create(runtime_, makeHandle<vm::JSObject>(&prototype)));
-  CHECK_STATUS(
-      checkJSErrorStatus(vm::JSError::recordStackTrace(errorHandle, runtime_)));
-  CHECK_STATUS(checkJSErrorStatus(
+  CHECK_STATUS(checkExecutionStatus(
+      vm::JSError::recordStackTrace(errorHandle, runtime_)));
+  CHECK_STATUS(checkExecutionStatus(
       vm::JSError::setMessage(
           errorHandle, runtime_, makeHandle(messageValue))));
   CHECK_STATUS(setJSErrorCode(errorHandle, nullptr, code));
@@ -3363,28 +3350,6 @@ napi_status NodeApiEnvironment::checkExecutionStatus(
     return napi_pending_exception;
   }
   return napi_generic_failure;
-}
-
-napi_status NodeApiEnvironment::checkJSErrorStatus(
-    vm::ExecutionStatus hermesStatus,
-    napi_status status) noexcept {
-  if (LLVM_LIKELY(hermesStatus != vm::ExecutionStatus::EXCEPTION)) {
-    return napi_ok;
-  }
-
-  thrownJSError_ = runtime_.getThrownValue();
-  runtime_.clearThrownValue();
-  if (!thrownJSError_.isEmpty()) {
-    return napi_pending_exception;
-  }
-  return status;
-}
-
-template <class T>
-napi_status NodeApiEnvironment::checkJSErrorStatus(
-    const vm::CallResult<T> &callResult,
-    napi_status status) noexcept {
-  return checkJSErrorStatus(callResult.getStatus(), status);
 }
 
 void NodeApiEnvironment::checkRuntimeThrownValue() noexcept {
@@ -3463,7 +3428,7 @@ napi_status NodeApiEnvironment::getForInPropertyNames(
   vm::CallResult<vm::Handle<vm::BigStorage>> keyStorage =
       vm::getForInPropertyNames(
           runtime_, makeHandle<vm::JSObject>(object), beginIndex, endIndex);
-  CHECK_STATUS(checkJSErrorStatus(keyStorage));
+  CHECK_STATUS(checkExecutionStatus(keyStorage.getStatus()));
   return convertKeyStorageToArray(
       *keyStorage, beginIndex, endIndex - beginIndex, keyConversion, result);
 }
@@ -3476,7 +3441,7 @@ napi_status NodeApiEnvironment::convertKeyStorageToArray(
     napi_value *result) noexcept {
   vm::CallResult<vm::Handle<vm::JSArray>> res =
       vm::JSArray::create(runtime_, length, length);
-  CHECK_STATUS(checkJSErrorStatus(res));
+  CHECK_STATUS(checkExecutionStatus(res.getStatus()));
   vm::Handle<vm::JSArray> array = *res;
   if (keyConversion == napi_key_numbers_to_strings) {
     vm::GCScopeMarkerRAII marker{runtime_};
@@ -3567,7 +3532,7 @@ napi_status NodeApiEnvironment::createFunction(
           &NodeApiHostFunctionContext::finalize,
           name,
           /*paramCount:*/ 0);
-  CHECK_STATUS(checkJSErrorStatus(funcRes));
+  CHECK_STATUS(checkExecutionStatus(funcRes.getStatus()));
   context.release(); // the context is now owned by the func.
   return setResult(makeHandle<vm::Callable>(*funcRes), result);
 }
@@ -4252,9 +4217,10 @@ napi_status NodeApiEnvironment::enablePromiseRejectionTracker() noexcept {
   vm::Handle<vm::Callable> hookFunc = vm::Handle<vm::Callable>::dyn_vmcast(
       makeHandle(&runtime_.promiseRejectionTrackingHook_));
   RETURN_FAILURE_IF_FALSE(hookFunc);
-  return checkJSErrorStatus(
+  return checkExecutionStatus(
       vm::Callable::executeCall1(
-          hookFunc, runtime_, vm::Runtime::getUndefinedValue(), *phv(options)));
+          hookFunc, runtime_, vm::Runtime::getUndefinedValue(), *phv(options))
+          .getStatus());
 }
 
 /*static*/ vm::CallResult<vm::HermesValue>
@@ -4481,14 +4447,14 @@ napi_status NodeApiEnvironment::setResultUnsafe(
     vm::CallResult<T> &&value,
     napi_status onException,
     TResult *result) noexcept {
-  CHECK_STATUS(checkJSErrorStatus(value, onException));
+  CHECK_STATUS(checkExecutionStatus(value.getStatus()));
   return setResultUnsafe(std::move(*value), result);
 }
 
 template <class T>
 napi_status NodeApiEnvironment::checkCallResult(
     const vm::CallResult<T> &value) noexcept {
-  CHECK_STATUS(checkJSErrorStatus(value, napi_generic_failure));
+  CHECK_STATUS(checkExecutionStatus(value.getStatus()));
   return clearLastNativeError();
 }
 
@@ -4697,8 +4663,8 @@ napi_status NAPI_CDECL napi_define_class(
           /*paramCount:*/ 0,
           vm::NativeConstructor::creatorFunction<vm::JSObject>,
           vm::CellKind::JSObjectKind);
-  vm::Handle<vm::JSObject> classHandle =
-      env->makeHandle<vm::JSObject>(std::move(ctorRes));
+  vm::Handle<vm::NativeConstructor> classHandle =
+      env->runtime_.makeHandle(std::move(ctorRes));
 
   vm::NativeState *ns = vm::NativeState::create(
       env->runtime_,
@@ -4712,7 +4678,7 @@ napi_status NAPI_CDECL napi_define_class(
           vm::Predefined::InternalPropertyArrayBufferExternalFinalizer),
       vm::DefinePropertyFlags::getDefaultNewPropertyFlags(),
       env->runtime_.makeHandle(ns));
-  CHECK_STATUS(env->checkJSErrorStatus(res));
+  CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
   RETURN_STATUS_IF_FALSE_WITH_MESSAGE(
       *res, napi_generic_failure, "Cannot set external finalizer for a class");
 
@@ -4726,7 +4692,7 @@ napi_status NAPI_CDECL napi_define_class(
       prototypeHandle,
       vm::Callable::WritablePrototype::Yes,
       /*strictMode*/ false);
-  CHECK_STATUS(env->checkJSErrorStatus(st));
+  CHECK_STATUS(env->checkExecutionStatus(st));
 
   for (size_t i = 0; i < propertyCount; ++i) {
     const napi_property_descriptor *p = properties + i;
@@ -4807,7 +4773,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
             env->runtime_,
             ownKeyFlags.setIncludeNonEnumerable(
                 (keyFilter & napi_key_enumerable) == 0));
-    CHECK_STATUS(env->checkJSErrorStatus(ownKeysRes));
+    CHECK_STATUS(env->checkExecutionStatus(ownKeysRes.getStatus()));
     if (keyConversion == napi_key_numbers_to_strings) {
       CHECK_STATUS(env->convertToStringKeys(*ownKeysRes));
     }
@@ -4817,7 +4783,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
   // Collect all properties into the keyStorage.
   vm::CallResult<vm::MutableHandle<vm::BigStorage>> keyStorageRes =
       env->makeMutableHandle(vm::BigStorage::create(env->runtime_, 16));
-  CHECK_STATUS(env->checkJSErrorStatus(keyStorageRes));
+  CHECK_STATUS(env->checkExecutionStatus(keyStorageRes.getStatus()));
   uint32_t size{0};
 
   // Make sure that we do not include into the result properties that were
@@ -4853,7 +4819,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
     vm::CallResult<vm::Handle<vm::JSArray>> props =
         vm::JSObject::getOwnPropertyKeys(
             currentObj, env->runtime_, ownKeyFlags);
-    CHECK_STATUS(env->checkJSErrorStatus(props));
+    CHECK_STATUS(env->checkExecutionStatus(props.getStatus()));
 
     vm::GCScope::Marker marker = gcScope.createMarker();
     for (uint32_t i = 0, end = props.getValue()->getEndIndex(); i < end; ++i) {
@@ -4901,7 +4867,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
                 vm::JSObject::IgnoreProxy::No,
                 tmpSymbolStorage,
                 desc);
-        CHECK_STATUS(env->checkJSErrorStatus(hasDescriptorRes));
+        CHECK_STATUS(env->checkExecutionStatus(hasDescriptorRes.getStatus()));
         if (*hasDescriptorRes) {
           if ((keyFilter & napi_key_writable) != 0 && !desc.flags.writable) {
             continue;
@@ -4917,7 +4883,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
         }
       }
 
-      CHECK_STATUS(env->checkJSErrorStatus(
+      CHECK_STATUS(env->checkExecutionStatus(
           vm::BigStorage::push_back(*keyStorageRes, env->runtime_, prop)));
       ++size;
     }
@@ -4930,7 +4896,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
     // Continue to follow the prototype chain.
     vm::CallResult<vm::PseudoHandle<vm::JSObject>> parentRes =
         vm::JSObject::getPrototypeOf(currentObj, env->runtime_);
-    CHECK_STATUS(env->checkJSErrorStatus(parentRes));
+    CHECK_STATUS(env->checkExecutionStatus(parentRes.getStatus()));
     currentObj = std::move(*parentRes);
   }
 
@@ -5018,9 +4984,7 @@ napi_status NAPI_CDECL napi_delete_property(
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
 
   vm::CallResult<bool> res = vm::JSObject::deleteComputed(
-      asHandle<vm::JSObject>(objValue),
-      env->runtime_,
-      asHandle<>(key));
+      asHandle<vm::JSObject>(objValue), env->runtime_, asHandle<>(key));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
   if (result != nullptr) {
     *result = *res;
@@ -5217,7 +5181,7 @@ napi_status NAPI_CDECL napi_define_properties(
 
       vm::CallResult<vm::HermesValue> propRes =
           vm::PropertyAccessor::create(env->runtime_, localGetter, localSetter);
-      CHECK_STATUS(env->checkJSErrorStatus(propRes));
+      CHECK_STATUS(env->checkExecutionStatus(propRes.getStatus()));
       CHECK_STATUS(env->defineOwnProperty(
           objHandle, *name, dpFlags, env->makeHandle(*propRes), nullptr));
     } else {
@@ -5247,7 +5211,7 @@ napi_status NAPI_CDECL napi_object_freeze(napi_env env, napi_value object) {
   vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
-  return env->checkJSErrorStatus(
+  return env->checkExecutionStatus(
       vm::JSObject::freeze(
           env->makeHandle<vm::JSObject>(objValue), env->runtime_));
 }
@@ -5259,7 +5223,7 @@ napi_status NAPI_CDECL napi_object_seal(napi_env env, napi_value object) {
   vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
-  return env->checkJSErrorStatus(
+  return env->checkExecutionStatus(
       vm::JSObject::seal(
           env->makeHandle<vm::JSObject>(objValue), env->runtime_));
 }
@@ -5812,7 +5776,7 @@ napi_status NAPI_CDECL napi_call_function(
       /*newTarget:*/ env->getUndefined(),
       *phv(thisArg)};
   if (LLVM_UNLIKELY(newFrame.overflowed())) {
-    CHECK_STATUS(env->checkJSErrorStatus(env->runtime_.raiseStackOverflow(
+    CHECK_STATUS(env->checkExecutionStatus(env->runtime_.raiseStackOverflow(
         vm::Runtime::StackOverflowKind::NativeStack)));
   }
 
@@ -5821,7 +5785,7 @@ napi_status NAPI_CDECL napi_call_function(
   }
   vm::CallResult<vm::PseudoHandle<>> callRes =
       vm::Callable::call(funcHandle, env->runtime_);
-  CHECK_STATUS(env->checkJSErrorStatus(callRes, napi_pending_exception));
+  CHECK_STATUS(env->checkExecutionStatus(callRes.getStatus()));
 
   if (result) {
     RETURN_FAILURE_IF_FALSE(!callRes->get().isEmpty());
@@ -6557,7 +6521,7 @@ napi_status NAPI_CDECL napi_new_instance(
   // Note that 13.2.2.1-4 are also handled by the call to newObject.
   vm::CallResult<vm::PseudoHandle<vm::JSObject>> thisRes =
       vm::Callable::createThisForConstruct_RJS(ctorHandle, env->runtime_);
-  CHECK_STATUS(env->checkJSErrorStatus(thisRes));
+  CHECK_STATUS(env->checkExecutionStatus(thisRes.getStatus()));
   // We need to capture this in case the ctor doesn't return an object,
   // we need to return this object.
   vm::Handle<vm::JSObject> thisHandle = env->makeHandle(std::move(*thisRes));
@@ -6576,7 +6540,7 @@ napi_status NAPI_CDECL napi_new_instance(
       ctorHandle.getHermesValue(),
       thisHandle.getHermesValue()};
   if (LLVM_UNLIKELY(newFrame.overflowed())) {
-    CHECK_STATUS(env->checkJSErrorStatus(env->runtime_.raiseStackOverflow(
+    CHECK_STATUS(env->checkExecutionStatus(env->runtime_.raiseStackOverflow(
         vm::Runtime::StackOverflowKind::NativeStack)));
   }
   for (size_t i = 0; i < argCount; ++i) {
@@ -6585,7 +6549,7 @@ napi_status NAPI_CDECL napi_new_instance(
   // The last parameter indicates that this call should construct an object.
   vm::CallResult<vm::PseudoHandle<>> callRes =
       vm::Callable::call(ctorHandle, env->runtime_);
-  CHECK_STATUS(env->checkJSErrorStatus(callRes, napi_pending_exception));
+  CHECK_STATUS(env->checkExecutionStatus(callRes.getStatus()));
 
   // 13.2.2.9:
   //    If Type(result) is Object then return result
@@ -6660,7 +6624,7 @@ napi_status NAPI_CDECL napi_create_arraybuffer(
       vm::JSArrayBuffer::create(
           env->runtime_,
           env->makeHandle<vm::JSObject>(env->runtime_.arrayBufferPrototype)));
-  CHECK_STATUS(env->checkJSErrorStatus(
+  CHECK_STATUS(env->checkExecutionStatus(
       vm::JSArrayBuffer::createDataBlock(
           env->runtime_, buffer, byteLength, true)));
   if (data != nullptr) {
@@ -7182,7 +7146,7 @@ napi_detach_arraybuffer(napi_env env, napi_value arrayBuffer) {
   vm::Handle<vm::JSArrayBuffer> buffer =
       env->makeHandle<vm::JSArrayBuffer>(arrayBuffer);
   RETURN_STATUS_IF_FALSE(buffer, napi_arraybuffer_expected);
-  return env->checkJSErrorStatus(
+  return env->checkExecutionStatus(
       vm::JSArrayBuffer::detach(env->runtime_, buffer));
 }
 
