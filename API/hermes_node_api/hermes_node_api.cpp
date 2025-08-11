@@ -4666,10 +4666,11 @@ napi_status NAPI_CDECL napi_define_class(
   vm::Handle<vm::NativeConstructor> classHandle =
       env->runtime_.makeHandle(std::move(ctorRes));
 
-  vm::NativeState *ns = vm::NativeState::create(
-      env->runtime_,
-      context.release(),
-      &NodeApiHostFunctionContext::finalizeNS);
+  vm::Handle<vm::NativeState> nsHanle = env->runtime_.makeHandle(
+      vm::NativeState::create(
+          env->runtime_,
+          context.release(),
+          &NodeApiHostFunctionContext::finalizeNS));
 
   vm::CallResult<bool> res = vm::JSObject::defineOwnProperty(
       classHandle,
@@ -4677,7 +4678,7 @@ napi_status NAPI_CDECL napi_define_class(
       vm::Predefined::getSymbolID(
           vm::Predefined::InternalPropertyArrayBufferExternalFinalizer),
       vm::DefinePropertyFlags::getDefaultNewPropertyFlags(),
-      env->runtime_.makeHandle(ns));
+      nsHanle);
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
   RETURN_STATUS_IF_FALSE_WITH_MESSAGE(
       *res, napi_generic_failure, "Cannot set external finalizer for a class");
@@ -4695,12 +4696,13 @@ napi_status NAPI_CDECL napi_define_class(
   CHECK_STATUS(env->checkExecutionStatus(st));
 
   for (size_t i = 0; i < propertyCount; ++i) {
-    const napi_property_descriptor *p = properties + i;
-    if ((p->attributes & napi_static) != 0) {
-      CHECK_STATUS(napi_define_properties(env, napiValue(classHandle), 1, p));
-    } else {
+    const napi_property_descriptor &propDesc = properties[i];
+    if ((propDesc.attributes & napi_static) != 0) {
       CHECK_STATUS(
-          napi_define_properties(env, napiValue(prototypeHandle), 1, p));
+          napi_define_properties(env, napiValue(classHandle), 1, &propDesc));
+    } else {
+      CHECK_STATUS(napi_define_properties(
+          env, napiValue(prototypeHandle), 1, &propDesc));
     }
   }
 
