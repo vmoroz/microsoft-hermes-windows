@@ -4568,7 +4568,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
     napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
-  CHECK_ARG(env);
+  CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -4890,6 +4890,7 @@ napi_status NAPI_CDECL napi_has_named_property(
   CHECK_STATUS(env->checkPreconditions());
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
+  CHECK_ARG(result);
   CHECK_ARG(utf8Name);
   napi_value objValue, name;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
@@ -4937,6 +4938,7 @@ napi_status NAPI_CDECL napi_has_element(
     bool *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
+  CHECK_ARG(result);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
@@ -4951,6 +4953,7 @@ napi_status NAPI_CDECL napi_get_element(
     napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
+  CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   napi_value objValue{};
