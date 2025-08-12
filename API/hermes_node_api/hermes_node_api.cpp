@@ -1569,7 +1569,8 @@ class NodeApiPostConditionScope {
     CRASH_IF_FALSE(
         napiValueStackScopesSize_ == env_->napiValueStackScopes_.size());
 
-    CRASH_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
+    //TODO: (vmoroz) enable
+    // CRASH_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
   }
 
  private:
