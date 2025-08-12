@@ -100,6 +100,7 @@
 #include <algorithm>
 #include <atomic>
 #include <iostream>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -214,6 +215,15 @@
     }                                                                       \
   } while (false)
 
+#ifndef NDEBUG
+// Check Node-API function post conditions.
+#define DEBUG_CHECK_POST_CONDITIONS(env, resultCount)               \
+  ::hermes::node_api::NodeApiPostConditionScope postConditionScope{ \
+      env, resultCount};
+#else
+#define DEBUG_CHECK_POST_CONDITIONS(env, resultCount)
+#endif
+
 #if defined(_WIN32) && !defined(NDEBUG)
 extern "C" __declspec(dllimport) void __stdcall DebugBreak();
 #endif
@@ -256,6 +266,7 @@ class NodeApiStableAddressStack;
 class NodeApiStringBuilder;
 class NodeApiValueScope;
 class NodeApiEscapableValueScope;
+class NodeApiPostConditionScope;
 
 // Forward declaration of NodeApiReference-related classes.
 template <class T>
@@ -1508,6 +1519,67 @@ class NodeApiEscapableValueScope {
   NodeApiEnvironment &env_;
   size_t savedScope_;
   bool isValueEscaped_{false};
+};
+
+// Verifies Node-API function postconditions
+class NodeApiPostConditionScope {
+ public:
+  explicit NodeApiPostConditionScope(
+      NodeApiEnvironment *env,
+      size_t resultCount) noexcept
+      : env_(env), resultCount_(resultCount) {
+    if (env_ == nullptr) {
+      return;
+    }
+
+    topGCScope_ = getTopGCScope();
+    if (topGCScope_ != nullptr) {
+      gcScopeMarker_.emplace(topGCScope_->createMarker());
+    }
+
+    napiValueStackSize_ = env_->napiValueStack_.size();
+    napiValueStackScopesSize_ = env_->napiValueStackScopes_.size();
+  }
+
+  ~NodeApiPostConditionScope() noexcept {
+    if (env_ == nullptr) {
+      return;
+    }
+
+    CRASH_IF_FALSE(topGCScope_ == getTopGCScope());
+    if (topGCScope_ != nullptr) {
+      vm::GCScope::Marker currentMarker = topGCScope_->createMarker();
+      CRASH_IF_FALSE(gcScopeMarker_.value() == currentMarker);
+    }
+
+    CRASH_IF_FALSE(napiValueStackSize_ <= env_->napiValueStack_.size());
+    CRASH_IF_FALSE(
+        env_->napiValueStack_.size() <= napiValueStackSize_ + resultCount_);
+    CRASH_IF_FALSE(
+        napiValueStackScopesSize_ == env_->napiValueStackScopes_.size());
+
+    CRASH_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
+  }
+
+ private:
+  // To access the protected getTopGCScope function.
+  class HandleRootOwnerAccessor : public vm::HandleRootOwner {
+   public:
+    using vm::HandleRootOwner::getTopGCScope;
+  };
+
+  vm::GCScope *getTopGCScope() noexcept {
+    vm::HandleRootOwner &rootOwner = env_->runtime_;
+    return static_cast<HandleRootOwnerAccessor &>(rootOwner).getTopGCScope();
+  }
+
+ private:
+  NodeApiEnvironment *env_;
+  size_t resultCount_;
+  vm::GCScope *topGCScope_{};
+  std::optional<vm::GCScope::Marker> gcScopeMarker_{};
+  size_t napiValueStackSize_{};
+  size_t napiValueStackScopesSize_{};
 };
 
 // Keep external data with an object.
@@ -4443,6 +4515,7 @@ napi_status NAPI_CDECL napi_create_function(
     napi_callback callback,
     void *callbackData,
     napi_value *result) {
+  DEBUG_CHECK_POST_CONDITIONS(env, 1);
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
   CHECK_ARG(result);
@@ -4548,9 +4621,11 @@ napi_status NAPI_CDECL napi_define_class(
 napi_status NAPI_CDECL
 napi_get_property_names(napi_env env, napi_value object, napi_value *result) {
   CHECK_ENV(env);
+  DEBUG_CHECK_POST_CONDITIONS(env, 1);
   CHECK_STATUS(env->checkPreconditions());
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
   napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
   CHECK_STATUS(env->getForInPropertyNames(
@@ -4795,11 +4870,13 @@ napi_status NAPI_CDECL napi_get_property(
     napi_value object,
     napi_value key,
     napi_value *result) {
+  DEBUG_CHECK_POST_CONDITIONS(env, 1);
   CHECK_ENV(env);
   CHECK_ARG(key);
   CHECK_ARG(result);
   CHECK_STATUS(env->checkPreconditions());
   NodeApiEscapableValueScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
 
   napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
