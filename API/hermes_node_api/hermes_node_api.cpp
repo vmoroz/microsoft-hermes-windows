@@ -4025,6 +4025,7 @@ template <vm::CellKind CellKind>
 /*static*/ constexpr const char *
 NodeApiEnvironment::getTypedArrayName() noexcept {
   static constexpr const char *names[] = {
+
 #define TYPED_ARRAY(name, type) #name "Array",
 #include "hermes/VM/TypedArrays.def"
   };
@@ -5193,14 +5194,12 @@ napi_status NAPI_CDECL napi_create_string_latin1(
     CHECK_ARG(str);
   }
   CHECK_ARG(result);
-  RETURN_STATUS_IF_FALSE(
-      length == NAPI_AUTO_LENGTH ||
-          length <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
-      napi_invalid_arg);
   if (length == NAPI_AUTO_LENGTH) {
     length = std::char_traits<char>::length(str);
   }
-
+  RETURN_STATUS_IF_FALSE(
+      length <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
+      napi_invalid_arg);
   if (isAllASCII(str, str + length)) {
     CHECK_STATUS(env->createStringASCII(str, length, result));
     return scope.escapeResult(result);
@@ -5231,6 +5230,7 @@ napi_status NAPI_CDECL napi_create_string_utf8(
   if (length > 0) {
     CHECK_ARG(str);
   }
+  CHECK_ARG(result);
   if (length == NAPI_AUTO_LENGTH) {
     length = std::char_traits<char>::length(str);
   }
@@ -5263,6 +5263,7 @@ napi_status NAPI_CDECL napi_create_string_utf16(
   if (length > 0) {
     CHECK_ARG(str);
   }
+  CHECK_ARG(result);
   if (length == NAPI_AUTO_LENGTH) {
     length = std::char_traits<char16_t>::length(str);
   }
@@ -6499,7 +6500,7 @@ napi_status NAPI_CDECL napi_instanceof(
         napi_function_expected, "Constructor must be a function");
   }
   vm::CallResult<bool> cr = vm::instanceOfOperator_RJS(
-      env->runtime_, asHandle(object), asHandle(ctorValue));
+      env->runtime_, asHandle(object), asHandle(constructor));
   CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
   *result = *cr;
   return env->clearLastNativeError();
