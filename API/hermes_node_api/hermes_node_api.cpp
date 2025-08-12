@@ -75,6 +75,7 @@
 // TODO: Add debug check to see if JS exception can be thrown.
 // TODO: Make checkGCAccess to be a standalone function
 // TODO: add debug scopes macro in the beginning of each function.
+// TODO: see how to apply post conditions to Node-API scope functions
 
 #define NAPI_EXPERIMENTAL
 #define NODE_API_EXPERIMENTAL_NO_WARNING
@@ -215,13 +216,17 @@
     }                                                                       \
   } while (false)
 
-#ifndef NDEBUG
+#if !defined(NODE_API_CHECK_POSTCONDITIONS) && !defined(NDEBUG)
+#define NODE_API_CHECK_POSTCONDITIONS
+#endif
+
+#ifdef NODE_API_CHECK_POSTCONDITIONS
 // Check Node-API function post conditions.
-#define DEBUG_CHECK_POST_CONDITIONS(env, resultCount)               \
+#define CHECK_POSTCONDITIONS(env, valueStackDelta)                  \
   ::hermes::node_api::NodeApiPostConditionScope postConditionScope{ \
-      env, resultCount};
+      env, valueStackDelta};
 #else
-#define DEBUG_CHECK_POST_CONDITIONS(env, resultCount)
+#define CHECK_POSTCONDITIONS(env, valueStackDelta)
 #endif
 
 #if defined(_WIN32) && !defined(NDEBUG)
@@ -386,6 +391,8 @@ size_t convertUTF16ToUTF8WithReplacements(
     llvh::ArrayRef<char16_t> input,
     char *buf,
     size_t bufSize);
+
+napi_status checkPreconditions(napi_env env) noexcept;
 
 template <typename TLambda>
 class LambdaTask : public Task {
@@ -905,10 +912,6 @@ class NodeApiEnvironment {
   //---------------------------------------------------------------------------
  public:
   void checkGCAccess() noexcept;
-
-  // Internal function to check if there is a pending thrown JS error.
-  // It returns napi_ok or napi_pending_exception.
-  napi_status checkPreconditions() noexcept;
 
   napi_status checkExecutionStatus(vm::ExecutionStatus hermesStatus) noexcept;
 
@@ -1526,8 +1529,8 @@ class NodeApiPostConditionScope {
  public:
   explicit NodeApiPostConditionScope(
       NodeApiEnvironment *env,
-      size_t resultCount) noexcept
-      : env_(env), resultCount_(resultCount) {
+      ptrdiff_t valueStackDelta) noexcept
+      : env_(env), valueStackDelta_(valueStackDelta) {
     if (env_ == nullptr) {
       return;
     }
@@ -1552,9 +1555,17 @@ class NodeApiPostConditionScope {
       CRASH_IF_FALSE(gcScopeMarker_.value() == currentMarker);
     }
 
-    CRASH_IF_FALSE(napiValueStackSize_ <= env_->napiValueStack_.size());
-    CRASH_IF_FALSE(
-        env_->napiValueStack_.size() <= napiValueStackSize_ + resultCount_);
+    // TODO: (vmoroz) add checking for success
+    if (valueStackDelta_ == 0) {
+      CRASH_IF_FALSE(napiValueStackSize_ == env_->napiValueStack_.size());
+    } else if (valueStackDelta_ > 0) {
+      CRASH_IF_FALSE(napiValueStackSize_ <= env_->napiValueStack_.size());
+      CRASH_IF_FALSE(
+          env_->napiValueStack_.size() <=
+          napiValueStackSize_ + valueStackDelta_);
+    } else {
+      // TODO: (vmoroz) add checking for closed scopes
+    }
     CRASH_IF_FALSE(
         napiValueStackScopesSize_ == env_->napiValueStackScopes_.size());
 
@@ -1575,7 +1586,7 @@ class NodeApiPostConditionScope {
 
  private:
   NodeApiEnvironment *env_;
-  size_t resultCount_;
+  ptrdiff_t valueStackDelta_;
   vm::GCScope *topGCScope_{};
   std::optional<vm::GCScope::Marker> gcScopeMarker_{};
   size_t napiValueStackSize_{};
@@ -2731,7 +2742,7 @@ napi_status initializeNodeApiModule(
 }
 
 napi_status checkNodeApiPreconditions(napi_env env) noexcept {
-  return CHECKED_ENV(env)->checkPreconditions();
+  return checkPreconditions(env);
 }
 
 napi_status setNodeApiValue(
@@ -3140,7 +3151,7 @@ napi_status NodeApiEnvironment::initializeModule(
   // module specific Node-API environment, not the current one.
   // Then, we must translate the exports object or the error to the current
   // environment.
-  CHECK_STATUS(checkPreconditions());
+  CHECK_STATUS(checkPreconditions(napiEnv(this)));
   CHECK_ARG(exports);
   NodeApiEscapableValueScope scope{*this};
   vm::CallResult<vm::HermesValue> res =
@@ -3237,7 +3248,8 @@ napi_status NodeApiEnvironment::createJSError(
     napi_value code,
     napi_value message,
     napi_value *result) noexcept {
-  CHECK_STATUS(checkPreconditions());
+  CHECK_STATUS(checkPreconditions(napiEnv(this)));
+  CHECK_POSTCONDITIONS(napiEnv(this), /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*this};
   vm::GCScope gcScope{runtime_};
   CHECK_ARG_IS_STRING(message);
@@ -3255,7 +3267,8 @@ napi_status NodeApiEnvironment::throwJSError(
     const vm::PinnedHermesValue &errorPrototype,
     const char *code,
     const char *message) noexcept {
-  CHECK_STATUS(checkPreconditions());
+  CHECK_STATUS(checkPreconditions(napiEnv(this)));
+  CHECK_POSTCONDITIONS(napiEnv(this), /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*this};
   vm::GCScope gcScope{runtime_};
 
@@ -3311,13 +3324,16 @@ void NodeApiEnvironment::checkGCAccess() noexcept {
   }
 }
 
-napi_status NodeApiEnvironment::checkPreconditions() noexcept {
-  checkGCAccess();
-  RETURN_STATUS_IF_FALSE(thrownJSError_.isEmpty(), napi_pending_exception);
+// Internal function to check if there is a pending thrown JS error.
+// It returns napi_ok or napi_pending_exception.
+napi_status checkPreconditions(napi_env env) noexcept {
+  CHECK_ENV(env);
+  env->checkGCAccess();
+  RETURN_STATUS_IF_FALSE(env->thrownJSError_.isEmpty(), napi_pending_exception);
   RETURN_STATUS_IF_FALSE(
-      !isShuttingDown_ && !isTerminatedOrTerminating(),
-      apiVersion_ >= 10 ? napi_cannot_run_js : napi_pending_exception);
-  return clearLastNativeError();
+      !env->isShuttingDown_ && !env->isTerminatedOrTerminating(),
+      env->apiVersion_ >= 10 ? napi_cannot_run_js : napi_pending_exception);
+  return env->clearLastNativeError();
 }
 
 napi_status NodeApiEnvironment::checkExecutionStatus(
@@ -3503,7 +3519,7 @@ napi_status NodeApiEnvironment::createFunction(
     napi_callback callback,
     void *callbackData,
     vm::MutableHandle<vm::Callable> *result) noexcept {
-  CHECK_STATUS(checkPreconditions());
+  CHECK_STATUS(checkPreconditions(napiEnv(this)));
   std::unique_ptr<NodeApiHostFunctionContext> context =
       std::make_unique<NodeApiHostFunctionContext>(
           *this, callback, callbackData);
@@ -3759,7 +3775,7 @@ template <NodeApiUnwrapAction action>
 napi_status NodeApiEnvironment::unwrapObject(
     napi_value object,
     void **result) noexcept {
-  CHECK_STATUS(checkPreconditions());
+  CHECK_STATUS(checkPreconditions(napiEnv(this)));
   NodeApiValueScope scope{*this};
   vm::GCScope gcScope{runtime_};
 
@@ -4152,6 +4168,8 @@ napi_status NodeApiEnvironment::concludeDeferred(
     napi_deferred deferred,
     NodeApiPredefined predefinedProperty,
     napi_value resolution) noexcept {
+  CHECK_STATUS(checkPreconditions(napiEnv(this)));
+  CHECK_POSTCONDITIONS(this, /*valueStackDelta:*/ 0);
   CHECK_ARG(deferred);
   CHECK_ARG(resolution);
 
@@ -4438,8 +4456,8 @@ napi_status runBytecode(
     vm::RuntimeModuleFlags runtimeFlags,
     const std::string &sourceURL,
     napi_value *result) noexcept {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   vm::CallResult<vm::HermesValue> res = env->runtime_.runBytecode(
@@ -4458,8 +4476,7 @@ napi_status setLastNativeError(
     const char *fileName,
     uint32_t line,
     const std::string &message) noexcept {
-  CHECK_ENV(env);
-  return env->setLastNativeError(status, fileName, line, message);
+  return CHECKED_ENV(env)->setLastNativeError(status, fileName, line, message);
 }
 
 template <>
@@ -4473,20 +4490,17 @@ napi_status setLastNativeError(
 }
 
 napi_status clearLastNativeError(napi_env env) noexcept {
-  CHECK_ENV(env);
-  return env->clearLastNativeError();
+  return CHECKED_ENV(env)->clearLastNativeError();
 }
 
 napi_status hasUnhandledPromiseRejection(napi_env env, bool *result) noexcept {
-  CHECK_ENV(env);
-  return env->hasUnhandledPromiseRejection(result);
+  return CHECKED_ENV(env)->hasUnhandledPromiseRejection(result);
 }
 
 napi_status getAndClearLastUnhandledPromiseRejection(
     napi_env env,
     napi_value *result) noexcept {
-  CHECK_ENV(env);
-  return env->getAndClearLastUnhandledPromiseRejection(result);
+  return CHECKED_ENV(env)->getAndClearLastUnhandledPromiseRejection(result);
 }
 
 } // namespace hermes::node_api
@@ -4500,6 +4514,7 @@ napi_status NAPI_CDECL napi_get_last_error_info(
     const napi_extended_error_info **result) {
   napi_env env = const_cast<napi_env>(basic_env);
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(result);
   if (env->lastError_.error_code == napi_ok) {
     env->lastError_ = {nullptr, 0, 0, napi_ok};
@@ -4515,9 +4530,8 @@ napi_status NAPI_CDECL napi_create_function(
     napi_callback callback,
     void *callbackData,
     napi_value *result) {
-  DEBUG_CHECK_POST_CONDITIONS(env, 1);
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   CHECK_ARG(callback);
   NodeApiEscapableValueScope scope{*env};
@@ -4543,8 +4557,8 @@ napi_status NAPI_CDECL napi_define_class(
     size_t propertyCount,
     const napi_property_descriptor *properties,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   CHECK_ARG(constructor);
   if (propertyCount > 0) {
@@ -4620,9 +4634,8 @@ napi_status NAPI_CDECL napi_define_class(
 
 napi_status NAPI_CDECL
 napi_get_property_names(napi_env env, napi_value object, napi_value *result) {
-  CHECK_ENV(env);
-  DEBUG_CHECK_POST_CONDITIONS(env, 1);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -4640,8 +4653,8 @@ napi_status NAPI_CDECL napi_get_all_property_names(
     napi_key_filter keyFilter,
     napi_key_conversion keyConversion,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -4825,10 +4838,10 @@ napi_status NAPI_CDECL napi_set_property(
     napi_value object,
     napi_value key,
     napi_value value) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(key);
   CHECK_ARG(value);
-  CHECK_STATUS(env->checkPreconditions());
   NodeApiValueScope scope{*env};
 
   napi_value objValue{};
@@ -4849,10 +4862,10 @@ napi_status NAPI_CDECL napi_has_property(
     napi_value object,
     napi_value key,
     bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(key);
   CHECK_ARG(result);
-  CHECK_STATUS(env->checkPreconditions());
   NodeApiValueScope scope{*env};
 
   napi_value objValue{};
@@ -4870,11 +4883,10 @@ napi_status NAPI_CDECL napi_get_property(
     napi_value object,
     napi_value key,
     napi_value *result) {
-  DEBUG_CHECK_POST_CONDITIONS(env, 1);
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(key);
   CHECK_ARG(result);
-  CHECK_STATUS(env->checkPreconditions());
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -4892,9 +4904,9 @@ napi_status NAPI_CDECL napi_delete_property(
     napi_value object,
     napi_value key,
     bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(key);
-  CHECK_STATUS(env->checkPreconditions());
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_}; // It is required
 
@@ -4915,10 +4927,10 @@ napi_status NAPI_CDECL napi_has_own_property(
     napi_value object,
     napi_value key,
     bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(key);
   CHECK_ARG(result);
-  CHECK_STATUS(env->checkPreconditions());
   RETURN_STATUS_IF_FALSE(
       phv(key)->isString() || phv(key)->isSymbol(), napi_name_expected);
   NodeApiValueScope scope{*env};
@@ -4945,8 +4957,8 @@ napi_status NAPI_CDECL napi_set_named_property(
     napi_value object,
     const char *utf8Name,
     napi_value value) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(utf8Name);
@@ -4962,8 +4974,8 @@ napi_status NAPI_CDECL napi_has_named_property(
     napi_value object,
     const char *utf8Name,
     bool *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(result);
@@ -4979,8 +4991,8 @@ napi_status NAPI_CDECL napi_get_named_property(
     napi_value object,
     const char *utf8Name,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   CHECK_ARG(utf8Name);
   NodeApiEscapableValueScope scope{*env};
@@ -4997,8 +5009,8 @@ napi_status NAPI_CDECL napi_set_element(
     napi_value object,
     uint32_t index,
     napi_value value) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -5012,8 +5024,8 @@ napi_status NAPI_CDECL napi_has_element(
     napi_value object,
     uint32_t index,
     bool *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(result);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -5027,8 +5039,9 @@ napi_status NAPI_CDECL napi_get_element(
     napi_value object,
     uint32_t index,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
+  CHECK_STATUS(checkPreconditions(env));
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -5043,8 +5056,8 @@ napi_status NAPI_CDECL napi_delete_element(
     napi_value object,
     uint32_t index,
     bool *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
@@ -5057,8 +5070,8 @@ napi_status NAPI_CDECL napi_define_properties(
     napi_value object,
     size_t propertyCount,
     const napi_property_descriptor *properties) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_OBJECT(object);
@@ -5129,8 +5142,8 @@ napi_status NAPI_CDECL napi_define_properties(
 }
 
 napi_status NAPI_CDECL napi_object_freeze(napi_env env, napi_value object) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
@@ -5141,8 +5154,8 @@ napi_status NAPI_CDECL napi_object_freeze(napi_env env, napi_value object) {
 }
 
 napi_status NAPI_CDECL napi_object_seal(napi_env env, napi_value object) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   napi_value objValue;
@@ -5154,8 +5167,8 @@ napi_status NAPI_CDECL napi_object_seal(napi_env env, napi_value object) {
 
 napi_status NAPI_CDECL
 napi_is_array(napi_env env, napi_value value, bool *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   *result = vm::vmisa<vm::JSArray>(*phv(value));
@@ -5164,8 +5177,8 @@ napi_is_array(napi_env env, napi_value value, bool *result) {
 
 napi_status NAPI_CDECL
 napi_get_array_length(napi_env env, napi_value value, uint32_t *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(result);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -5182,8 +5195,8 @@ napi_get_array_length(napi_env env, napi_value value, uint32_t *result) {
 
 napi_status NAPI_CDECL
 napi_strict_equals(napi_env env, napi_value lhs, napi_value rhs, bool *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(lhs);
   CHECK_ARG(rhs);
   CHECK_ARG(result);
@@ -5218,8 +5231,8 @@ napi_strict_equals(napi_env env, napi_value lhs, napi_value rhs, bool *result) {
 
 napi_status NAPI_CDECL
 napi_get_prototype(napi_env env, napi_value object, napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -5236,8 +5249,8 @@ napi_get_prototype(napi_env env, napi_value object, napi_value *result) {
 }
 
 napi_status NAPI_CDECL napi_create_object(napi_env env, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   vm::PseudoHandle<vm::JSObject> res = vm::JSObject::create(env->runtime_);
   return env->makeResultValue(res.getHermesValue(), result);
@@ -5249,8 +5262,8 @@ napi_status NAPI_CDECL napi_create_array(napi_env env, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_create_array_with_length(napi_env env, size_t length, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -5265,8 +5278,8 @@ napi_status NAPI_CDECL napi_create_string_latin1(
     const char *str,
     size_t length,
     napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   if (length > 0) {
@@ -5302,8 +5315,8 @@ napi_status NAPI_CDECL napi_create_string_utf8(
     const char *str,
     size_t length,
     napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   if (length > 0) {
@@ -5335,8 +5348,8 @@ napi_status NAPI_CDECL napi_create_string_utf16(
     const char16_t *str,
     size_t length,
     napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   if (length > 0) {
@@ -5364,7 +5377,8 @@ napi_status NAPI_CDECL node_api_create_external_string_latin1(
     void *finalizeHint,
     napi_value *result,
     bool *copied) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   // TODO: (vmoroz) Add support to Hermes for external strings.
   CHECK_STATUS(napi_create_string_latin1(env, str, length, result));
   if (finalizeCallback != nullptr) {
@@ -5385,7 +5399,8 @@ napi_status NAPI_CDECL node_api_create_external_string_utf16(
     void *finalizeHint,
     napi_value *result,
     bool *copied) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   // TODO: (vmoroz) Add support to Hermes for external strings.
   CHECK_STATUS(napi_create_string_utf16(env, str, length, result));
   if (finalizeCallback != nullptr) {
@@ -5403,7 +5418,8 @@ napi_status NAPI_CDECL node_api_create_property_key_latin1(
     const char *str,
     size_t length,
     napi_value *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   // TODO: (vmoroz) Use unique strings
   return napi_create_string_latin1(env, str, length, result);
 }
@@ -5413,7 +5429,8 @@ napi_status NAPI_CDECL node_api_create_property_key_utf8(
     const char *str,
     size_t length,
     napi_value *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   // TODO: (vmoroz) Use unique strings
   return napi_create_string_utf8(env, str, length, result);
 }
@@ -5423,15 +5440,16 @@ napi_status NAPI_CDECL node_api_create_property_key_utf16(
     const char16_t *str,
     size_t length,
     napi_value *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   // TODO: (vmoroz) Use unique strings
   return napi_create_string_utf16(env, str, length, result);
 }
 
 napi_status NAPI_CDECL
 napi_create_double(napi_env env, double value, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   return env->makeResultValue(
       vm::HermesValue::encodeUntrustedNumberValue(static_cast<double>(value)),
@@ -5440,8 +5458,8 @@ napi_create_double(napi_env env, double value, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_create_int32(napi_env env, int32_t value, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   return env->makeResultValue(
       vm::HermesValue::encodeTrustedNumberValue(static_cast<double>(value)),
@@ -5450,8 +5468,8 @@ napi_create_int32(napi_env env, int32_t value, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_create_uint32(napi_env env, uint32_t value, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   return env->makeResultValue(
       vm::HermesValue::encodeTrustedNumberValue(static_cast<double>(value)),
@@ -5460,8 +5478,8 @@ napi_create_uint32(napi_env env, uint32_t value, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_create_int64(napi_env env, int64_t value, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   return env->makeResultValue(
       vm::HermesValue::encodeTrustedNumberValue(static_cast<double>(value)),
@@ -5470,8 +5488,8 @@ napi_create_int64(napi_env env, int64_t value, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_create_bigint_int64(napi_env env, int64_t value, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   vm::CallResult<vm::HermesValue> cr =
       vm::BigIntPrimitive::fromSigned(env->runtime_, value);
@@ -5481,8 +5499,8 @@ napi_create_bigint_int64(napi_env env, int64_t value, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_create_bigint_uint64(napi_env env, uint64_t value, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   vm::CallResult<vm::HermesValue> cr =
       vm::BigIntPrimitive::fromUnsigned(env->runtime_, value);
@@ -5496,8 +5514,8 @@ napi_status NAPI_CDECL napi_create_bigint_words(
     size_t wordCount,
     const uint64_t *words,
     napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -5531,16 +5549,17 @@ napi_status NAPI_CDECL napi_create_bigint_words(
 
 napi_status NAPI_CDECL
 napi_get_boolean(napi_env env, bool value, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  // We return only predefined values here. Thus, no stack changes expected.
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(result);
   return env->setBooleanResult(value, result);
 }
 
 napi_status NAPI_CDECL
 napi_create_symbol(napi_env env, napi_value description, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -5565,8 +5584,8 @@ napi_status NAPI_CDECL node_api_symbol_for(
     const char *utf8description,
     size_t length,
     napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -5585,8 +5604,7 @@ napi_status NAPI_CDECL napi_create_error(
     napi_value code,
     napi_value message,
     napi_value *result) {
-  CHECK_ENV(env);
-  return env->createJSError(
+  return CHECKED_ENV(env)->createJSError(
       env->runtime_.ErrorPrototype, code, message, result);
 }
 
@@ -5595,8 +5613,7 @@ napi_status NAPI_CDECL napi_create_type_error(
     napi_value code,
     napi_value message,
     napi_value *result) {
-  CHECK_ENV(env);
-  return env->createJSError(
+  return CHECKED_ENV(env)->createJSError(
       env->runtime_.TypeErrorPrototype, code, message, result);
 }
 
@@ -5605,8 +5622,7 @@ napi_status NAPI_CDECL napi_create_range_error(
     napi_value code,
     napi_value message,
     napi_value *result) {
-  CHECK_ENV(env);
-  return env->createJSError(
+  return CHECKED_ENV(env)->createJSError(
       env->runtime_.RangeErrorPrototype, code, message, result);
 }
 
@@ -5615,14 +5631,14 @@ napi_status NAPI_CDECL node_api_create_syntax_error(
     napi_value code,
     napi_value message,
     napi_value *result) {
-  CHECK_ENV(env);
-  return env->createJSError(
+  return CHECKED_ENV(env)->createJSError(
       env->runtime_.SyntaxErrorPrototype, code, message, result);
 }
 
 napi_status NAPI_CDECL
 napi_typeof(napi_env env, napi_value value, napi_valuetype *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
 
@@ -5660,11 +5676,13 @@ napi_typeof(napi_env env, napi_value value, napi_valuetype *result) {
 
 napi_status NAPI_CDECL napi_get_undefined(napi_env env, napi_value *result) {
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   return env->castResult(&NodeApiEnvironment::UndefinedHermesValue, result);
 }
 
 napi_status NAPI_CDECL napi_get_null(napi_env env, napi_value *result) {
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   return env->castResult(&NodeApiEnvironment::NullHermesValue, result);
 }
 
@@ -5676,6 +5694,7 @@ napi_status NAPI_CDECL napi_get_cb_info(
     napi_value *thisArg,
     void **data) {
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(callbackInfo);
   NodeApiCallbackInfo *cbInfo = asCallbackInfo(callbackInfo);
   if (args != nullptr) {
@@ -5700,6 +5719,7 @@ napi_status NAPI_CDECL napi_get_new_target(
     napi_callback_info callbackInfo,
     napi_value *result) {
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(callbackInfo);
   CHECK_ARG(result);
   return env->castResult(
@@ -5713,8 +5733,8 @@ napi_status NAPI_CDECL napi_call_function(
     size_t argCount,
     const napi_value *args,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -5758,48 +5778,51 @@ napi_status NAPI_CDECL napi_call_function(
 
 napi_status NAPI_CDECL napi_get_global(napi_env env, napi_value *result) {
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   return env->castResult(
       env->runtime_.getGlobal().unsafeGetPinnedHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_throw(napi_env env, napi_value error) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(error);
-  env->runtime_.setThrownValue(*phv(error));
+  env->thrownJSError_ = *phv(error);
   // any VM calls after this point and before returning
   // to the JavaScript invoker will fail
-  return env->clearLastNativeError();
+  return napi_pending_exception;
 }
 
 napi_status NAPI_CDECL
 napi_throw_error(napi_env env, const char *code, const char *message) {
-  CHECK_ENV(env);
-  return env->throwJSError(env->runtime_.ErrorPrototype, code, message);
+  return CHECKED_ENV(env)->throwJSError(
+      env->runtime_.ErrorPrototype, code, message);
 }
 
 napi_status NAPI_CDECL
 napi_throw_type_error(napi_env env, const char *code, const char *message) {
-  CHECK_ENV(env);
-  return env->throwJSError(env->runtime_.TypeErrorPrototype, code, message);
+  return CHECKED_ENV(env)->throwJSError(
+      env->runtime_.TypeErrorPrototype, code, message);
 }
 
 napi_status NAPI_CDECL
 napi_throw_range_error(napi_env env, const char *code, const char *message) {
-  CHECK_ENV(env);
-  return env->throwJSError(env->runtime_.RangeErrorPrototype, code, message);
+  return CHECKED_ENV(env)->throwJSError(
+      env->runtime_.RangeErrorPrototype, code, message);
 }
 
 napi_status NAPI_CDECL node_api_throw_syntax_error(
     napi_env env,
     const char *code,
     const char *message) {
-  CHECK_ENV(env);
-  return env->throwJSError(env->runtime_.SyntaxErrorPrototype, code, message);
+  return CHECKED_ENV(env)->throwJSError(
+      env->runtime_.SyntaxErrorPrototype, code, message);
 }
 
 napi_status NAPI_CDECL
 napi_is_error(napi_env env, napi_value value, bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   *result = vm::vmisa<vm::JSError>(*phv(value));
@@ -5808,8 +5831,8 @@ napi_is_error(napi_env env, napi_value value, bool *result) {
 
 napi_status NAPI_CDECL
 napi_get_value_double(napi_env env, napi_value value, double *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isNumber(), napi_number_expected);
@@ -5819,8 +5842,8 @@ napi_get_value_double(napi_env env, napi_value value, double *result) {
 
 napi_status NAPI_CDECL
 napi_get_value_int32(napi_env env, napi_value value, int32_t *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isNumber(), napi_number_expected);
@@ -5830,8 +5853,8 @@ napi_get_value_int32(napi_env env, napi_value value, int32_t *result) {
 
 napi_status NAPI_CDECL
 napi_get_value_uint32(napi_env env, napi_value value, uint32_t *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isNumber(), napi_number_expected);
@@ -5841,8 +5864,8 @@ napi_get_value_uint32(napi_env env, napi_value value, uint32_t *result) {
 
 napi_status NAPI_CDECL
 napi_get_value_int64(napi_env env, napi_value value, int64_t *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isNumber(), napi_number_expected);
@@ -5855,8 +5878,8 @@ napi_status NAPI_CDECL napi_get_value_bigint_int64(
     napi_value value,
     int64_t *result,
     bool *lossless) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   CHECK_ARG(lossless);
@@ -5873,8 +5896,8 @@ napi_status NAPI_CDECL napi_get_value_bigint_uint64(
     napi_value value,
     uint64_t *result,
     bool *lossless) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   CHECK_ARG(lossless);
@@ -5892,8 +5915,8 @@ napi_status NAPI_CDECL napi_get_value_bigint_words(
     int *signBit,
     size_t *wordCount,
     uint64_t *words) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(wordCount);
   RETURN_STATUS_IF_FALSE(phv(value)->isBigInt(), napi_bigint_expected);
@@ -5928,8 +5951,8 @@ napi_status NAPI_CDECL napi_get_value_bigint_words(
 
 napi_status NAPI_CDECL
 napi_get_value_bool(napi_env env, napi_value value, bool *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   RETURN_STATUS_IF_FALSE(phv(value)->isBool(), napi_boolean_expected);
@@ -5951,8 +5974,8 @@ napi_status NAPI_CDECL napi_get_value_string_latin1(
     char *buf,
     size_t bufSize,
     size_t *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_STRING(value);
@@ -5992,8 +6015,8 @@ napi_status NAPI_CDECL napi_get_value_string_utf8(
     char *buf,
     size_t bufSize,
     size_t *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_STRING(value);
@@ -6042,8 +6065,8 @@ napi_status NAPI_CDECL napi_get_value_string_utf16(
     char16_t *buf,
     size_t bufSize,
     size_t *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG_IS_STRING(value);
@@ -6069,20 +6092,20 @@ napi_status NAPI_CDECL napi_get_value_string_utf16(
 
 napi_status NAPI_CDECL
 napi_coerce_to_bool(napi_env env, napi_value value, napi_value *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(value);
   CHECK_ARG(result);
-  CHECK_STATUS(env->checkPreconditions());
   bool res = vm::toBoolean(*phv(value));
   return env->setBooleanResult(res, result);
 }
 
 napi_status NAPI_CDECL
 napi_coerce_to_number(napi_env env, napi_value value, napi_value *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(value);
   CHECK_ARG(result);
-  CHECK_STATUS(env->checkPreconditions());
   vm::CallResult<vm::HermesValue> res =
       vm::toNumber_RJS(env->runtime_, asHandle<>(value));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
@@ -6091,10 +6114,10 @@ napi_coerce_to_number(napi_env env, napi_value value, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_coerce_to_object(napi_env env, napi_value value, napi_value *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(value);
   CHECK_ARG(result);
-  CHECK_STATUS(env->checkPreconditions());
   vm::CallResult<vm::HermesValue> res =
       vm::toObject(env->runtime_, asHandle<>(value));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
@@ -6103,10 +6126,10 @@ napi_coerce_to_object(napi_env env, napi_value value, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_coerce_to_string(napi_env env, napi_value value, napi_value *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(value);
   CHECK_ARG(result);
-  CHECK_STATUS(env->checkPreconditions());
   vm::CallResult<vm::PseudoHandle<vm::StringPrimitive>> res =
       vm::toString_RJS(env->runtime_, asHandle<>(value));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
@@ -6120,8 +6143,8 @@ napi_status NAPI_CDECL napi_wrap(
     node_api_basic_finalize finalizeCallback,
     void *finalizeHint,
     napi_ref *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -6171,14 +6194,12 @@ napi_status NAPI_CDECL napi_wrap(
 
 napi_status NAPI_CDECL
 napi_unwrap(napi_env env, napi_value obj, void **result) {
-  CHECK_ENV(env);
   return CHECKED_ENV(env)->unwrapObject<NodeApiUnwrapAction::KeepWrap>(
       obj, result);
 }
 
 napi_status NAPI_CDECL
 napi_remove_wrap(napi_env env, napi_value obj, void **result) {
-  CHECK_ENV(env);
   return CHECKED_ENV(env)->unwrapObject<NodeApiUnwrapAction::RemoveWrap>(
       obj, result);
 }
@@ -6189,8 +6210,8 @@ napi_status NAPI_CDECL napi_create_external(
     node_api_basic_finalize finalizeCallback,
     void *finalizeHint,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   vm::GCScope gcScope{env->runtime_};
 
@@ -6214,8 +6235,8 @@ napi_status NAPI_CDECL napi_type_tag_object(
     napi_env env,
     napi_value object,
     const napi_type_tag *typeTag) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -6251,8 +6272,8 @@ napi_status NAPI_CDECL napi_check_object_type_tag(
     napi_value object,
     const napi_type_tag *typeTag,
     bool *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -6283,8 +6304,8 @@ napi_status NAPI_CDECL napi_check_object_type_tag(
 
 napi_status NAPI_CDECL
 napi_get_value_external(napi_env env, napi_value value, void **result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
@@ -6302,8 +6323,8 @@ napi_status NAPI_CDECL napi_create_reference(
     napi_value value,
     uint32_t initialRefCount,
     napi_ref *result) { // Hermes calls cannot throw JS exceptions here.
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
 
@@ -6326,7 +6347,8 @@ napi_status NAPI_CDECL napi_create_reference(
 // For a napi_reference returned from `napi_wrap`, this must be called in the
 // finalizer.
 napi_status NAPI_CDECL napi_delete_reference(napi_env env, napi_ref ref) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(ref);
   delete asReference(ref);
   return env->clearLastNativeError();
@@ -6339,7 +6361,8 @@ napi_status NAPI_CDECL napi_delete_reference(napi_env env, napi_ref ref) {
 // results in an error.
 napi_status NAPI_CDECL
 napi_reference_ref(napi_env env, napi_ref ref, uint32_t *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(ref);
   uint32_t refCount = asReference(ref)->incRefCount(*env);
   if (result != nullptr) {
@@ -6354,7 +6377,8 @@ napi_reference_ref(napi_env env, napi_ref ref, uint32_t *result) {
 // already 0 results in an error.
 napi_status NAPI_CDECL
 napi_reference_unref(napi_env env, napi_ref ref, uint32_t *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(ref);
   uint32_t refCount = asReference(ref)->decRefCount(*env);
   if (result != nullptr) {
@@ -6368,8 +6392,8 @@ napi_reference_unref(napi_env env, napi_ref ref, uint32_t *result) {
 // result is NULL.
 napi_status NAPI_CDECL
 napi_get_reference_value(napi_env env, napi_ref ref, napi_value *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(ref);
   CHECK_ARG(result);
   *result = asReference(ref)->value(*env);
@@ -6378,8 +6402,7 @@ napi_get_reference_value(napi_env env, napi_ref ref, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_open_handle_scope(napi_env env, napi_handle_scope *result) {
-  CHECK_ENV(env);
-  env->checkGCAccess();
+  CHECK_STATUS(checkPreconditions(env));
   CHECK_ARG(result);
   size_t scope = env->napiValueStack_.size();
   env->napiValueStackScopes_.emplace(scope);
@@ -6390,7 +6413,7 @@ napi_open_handle_scope(napi_env env, napi_handle_scope *result) {
 
 napi_status NAPI_CDECL
 napi_close_handle_scope(napi_env env, napi_handle_scope scope) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
   CHECK_ARG(scope);
   RETURN_STATUS_IF_FALSE(
       !env->napiValueStackScopes_.empty(), napi_handle_scope_mismatch);
@@ -6481,8 +6504,8 @@ napi_status NAPI_CDECL napi_new_instance(
     size_t argCount,
     const napi_value *args,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -6562,8 +6585,8 @@ napi_status NAPI_CDECL napi_instanceof(
     napi_value object,
     napi_value constructor,
     bool *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -6585,7 +6608,8 @@ napi_status NAPI_CDECL napi_instanceof(
 
 // Methods to support catching exceptions
 napi_status NAPI_CDECL napi_is_exception_pending(napi_env env, bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(result);
   *result = !env->thrownJSError_.isEmpty();
   return env->clearLastNativeError();
@@ -6593,7 +6617,8 @@ napi_status NAPI_CDECL napi_is_exception_pending(napi_env env, bool *result) {
 
 napi_status NAPI_CDECL
 napi_get_and_clear_last_exception(napi_env env, napi_value *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   if (env->thrownJSError_.isEmpty()) {
     return napi_get_undefined(env, result);
@@ -6605,7 +6630,8 @@ napi_get_and_clear_last_exception(napi_env env, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_is_arraybuffer(napi_env env, napi_value value, bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   *result = vm::vmisa<vm::JSArrayBuffer>(*phv(value));
@@ -6617,8 +6643,8 @@ napi_status NAPI_CDECL napi_create_arraybuffer(
     size_t byteLength,
     void **data,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -6642,8 +6668,8 @@ napi_status NAPI_CDECL napi_create_external_arraybuffer(
     node_api_basic_finalize finalizeCallback,
     void *finalizeHint,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -6679,7 +6705,8 @@ napi_status NAPI_CDECL napi_get_arraybuffer_info(
     napi_value arrayBuffer,
     void **data,
     size_t *byteLength) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(arrayBuffer);
   RETURN_STATUS_IF_FALSE(
       vm::vmisa<vm::JSArrayBuffer>(*phv(arrayBuffer)), napi_invalid_arg);
@@ -6698,7 +6725,8 @@ napi_status NAPI_CDECL napi_get_arraybuffer_info(
 
 napi_status NAPI_CDECL
 napi_is_typedarray(napi_env env, napi_value value, bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   *result = vm::vmisa<vm::JSTypedArrayBase>(*phv(value));
@@ -6712,8 +6740,8 @@ napi_status NAPI_CDECL napi_create_typedarray(
     napi_value arrayBuffer,
     size_t byteOffset,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(arrayBuffer);
@@ -6791,7 +6819,8 @@ napi_status NAPI_CDECL napi_get_typedarray_info(
     void **data,
     napi_value *arrayBuffer,
     size_t *byteOffset) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(typedArray);
 
   vm::JSTypedArrayBase *array =
@@ -6858,8 +6887,8 @@ napi_status NAPI_CDECL napi_create_dataview(
     napi_value arrayBuffer,
     size_t byteOffset,
     napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(arrayBuffer);
@@ -6886,7 +6915,8 @@ napi_status NAPI_CDECL napi_create_dataview(
 
 napi_status NAPI_CDECL
 napi_is_dataview(napi_env env, napi_value value, bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   *result = vm::vmisa<vm::JSDataView>(*phv(value));
@@ -6900,7 +6930,8 @@ napi_status NAPI_CDECL napi_get_dataview_info(
     void **data,
     napi_value *arrayBuffer,
     size_t *byteOffset) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(dataView);
 
   vm::JSDataView *view = vm::dyn_vmcast_or_null<vm::JSDataView>(*phv(dataView));
@@ -6935,6 +6966,7 @@ napi_status NAPI_CDECL
 napi_get_version(node_api_basic_env basic_env, uint32_t *result) {
   napi_env env = const_cast<napi_env>(basic_env);
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(result);
   *result = static_cast<uint32_t>(env->apiVersion_);
   return env->clearLastNativeError();
@@ -6944,8 +6976,8 @@ napi_status NAPI_CDECL napi_create_promise(
     napi_env env,
     napi_deferred *deferred,
     napi_value *promise) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(deferred);
@@ -6971,8 +7003,7 @@ napi_status NAPI_CDECL napi_resolve_deferred(
     napi_env env,
     napi_deferred deferred,
     napi_value resolution) {
-  CHECK_ENV(env);
-  return env->concludeDeferred(
+  return CHECKED_ENV(env)->concludeDeferred(
       deferred, NodeApiPredefined::resolve, resolution);
 }
 
@@ -6980,13 +7011,14 @@ napi_status NAPI_CDECL napi_reject_deferred(
     napi_env env,
     napi_deferred deferred,
     napi_value resolution) {
-  CHECK_ENV(env);
-  return env->concludeDeferred(deferred, NodeApiPredefined::reject, resolution);
+  return CHECKED_ENV(env)->concludeDeferred(
+      deferred, NodeApiPredefined::reject, resolution);
 }
 
 napi_status NAPI_CDECL
 napi_is_promise(napi_env env, napi_value value, bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
 
   napi_value global, promiseConstructor;
@@ -6999,8 +7031,8 @@ napi_is_promise(napi_env env, napi_value value, bool *result) {
 
 napi_status NAPI_CDECL
 napi_create_date(napi_env env, double dateTime, napi_value *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   vm::PseudoHandle<vm::JSDate> dateHandle = vm::JSDate::create(
       env->runtime_,
@@ -7011,7 +7043,8 @@ napi_create_date(napi_env env, double dateTime, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_is_date(napi_env env, napi_value value, bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   *result = vm::vmisa<vm::JSDate>(*phv(value));
@@ -7020,7 +7053,8 @@ napi_is_date(napi_env env, napi_value value, bool *result) {
 
 napi_status NAPI_CDECL
 napi_get_date_value(napi_env env, napi_value value, double *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   vm::JSDate *date = vm::dyn_vmcast_or_null<vm::JSDate>(*phv(value));
@@ -7042,8 +7076,8 @@ napi_run_script(napi_env env, napi_value script, napi_value *result) {
     std::string string_;
   };
 
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
@@ -7072,8 +7106,8 @@ napi_status NAPI_CDECL napi_add_finalizer(
     node_api_basic_finalize finalizeCallback,
     void *finalizeHint,
     napi_ref *result) {
-  CHECK_ENV(env);
-  CHECK_STATUS(env->checkPreconditions());
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG_IS_OBJECT(object);
   CHECK_ARG(finalizeCallback);
 
@@ -7106,6 +7140,7 @@ napi_status NAPI_CDECL node_api_post_finalizer(
     void *finalizeHint) {
   napi_env env = const_cast<napi_env>(basic_env);
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(finalizeCallback);
 
   // Create NodeApiTrackedFinalizer and add to task runner queue
@@ -7129,6 +7164,7 @@ napi_status NAPI_CDECL napi_adjust_external_memory(
     int64_t *adjusted_value) {
   napi_env env = const_cast<napi_env>(basic_env);
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   return GENERIC_FAILURE("Not implemented");
 }
 
@@ -7139,6 +7175,7 @@ napi_status NAPI_CDECL napi_set_instance_data(
     void *finalizeHint) {
   napi_env env = const_cast<napi_env>(basic_env);
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   NodeApiTrackedFinalizer *oldData = std::exchange(env->instanceData_, nullptr);
   if (oldData != nullptr) {
     // Our contract so far has been to not finalize any old data there may be.
@@ -7154,6 +7191,7 @@ napi_status NAPI_CDECL
 napi_get_instance_data(node_api_basic_env basic_env, void **nativeData) {
   napi_env env = const_cast<napi_env>(basic_env);
   CHECK_ENV(env);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(nativeData);
   *nativeData = env->instanceData_ != nullptr ? env->instanceData_->nativeData()
                                               : nullptr;
@@ -7162,7 +7200,8 @@ napi_get_instance_data(node_api_basic_env basic_env, void **nativeData) {
 
 napi_status NAPI_CDECL
 napi_detach_arraybuffer(napi_env env, napi_value arrayBuffer) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(arrayBuffer);
   vm::Handle<vm::JSArrayBuffer> buffer =
       env->makeHandle<vm::JSArrayBuffer>(arrayBuffer);
@@ -7175,7 +7214,8 @@ napi_status NAPI_CDECL napi_is_detached_arraybuffer(
     napi_env env,
     napi_value arrayBuffer,
     bool *result) {
-  CHECK_ENV(env);
+  CHECK_STATUS(checkPreconditions(env));
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(arrayBuffer);
   CHECK_ARG(result);
   vm::JSArrayBuffer *buffer =
