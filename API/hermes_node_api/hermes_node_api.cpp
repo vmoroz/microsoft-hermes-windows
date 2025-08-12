@@ -5454,8 +5454,7 @@ napi_get_boolean(napi_env env, bool value, napi_value *result) {
   CHECK_ENV(env);
   env->checkGCAccess();
   CHECK_ARG(result);
-  return env->setBooleanResult(
-      env->runtime_.getBoolValue(value).unsafeGetPinnedHermesValue(), result);
+  return env->setBooleanResult(value, result);
 }
 
 napi_status NAPI_CDECL
