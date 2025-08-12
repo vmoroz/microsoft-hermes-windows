@@ -73,6 +73,8 @@
 // TODO: Remove the most GCScope.
 // TODO: Add debug check for GCScope stack to see if GCScope is needed.
 // TODO: Add debug check to see if JS exception can be thrown.
+// TODO: Make checkGCAccess to be a standalone function
+// TODO: add debug scopes macro in the beginning of each function.
 
 #define NAPI_EXPERIMENTAL
 #define NODE_API_EXPERIMENTAL_NO_WARNING
@@ -3148,7 +3150,9 @@ napi_status NodeApiEnvironment::setLastNativeError(
 }
 
 napi_status NodeApiEnvironment::clearLastNativeError() noexcept {
-  lastError_.error_code = napi_ok;
+  if (LLVM_UNLIKELY(lastError_.error_code != napi_ok)) {
+    lastError_.error_code = napi_ok;
+  }
   return napi_ok;
 }
 
@@ -3540,9 +3544,11 @@ napi_status NodeApiEnvironment::hasNamedProperty(
     TObject object,
     vm::SymbolID name,
     bool *result) noexcept {
-  vm::CallResult<bool> res =
+  vm::CallResult<bool> cr =
       vm::JSObject::hasNamed(makeHandle<vm::JSObject>(object), runtime_, name);
-  return setResult(std::move(res), result);
+  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
+  *result = *cr;
+  return clearLastNativeError();
 }
 
 template <class TObject>
@@ -3550,12 +3556,13 @@ napi_status NodeApiEnvironment::getNamedProperty(
     TObject object,
     vm::SymbolID name,
     napi_value *result) noexcept {
-  vm::CallResult<vm::PseudoHandle<>> res = vm::JSObject::getNamed_RJS(
+  vm::CallResult<vm::PseudoHandle<>> cr = vm::JSObject::getNamed_RJS(
       makeHandle<vm::JSObject>(object),
       runtime_,
       name,
       vm::PropOpFlags().plusThrowOnError());
-  return setResult(std::move(res), result);
+  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
+  return makeResultValue(cr->getHermesValue(), result);
 }
 
 template <class TObject, class TValue>
@@ -3564,13 +3571,17 @@ napi_status NodeApiEnvironment::setNamedProperty(
     vm::SymbolID name,
     TValue &&value,
     bool *optResult) noexcept {
-  vm::CallResult<bool> res = vm::JSObject::putNamed_RJS(
+  vm::CallResult<bool> cr = vm::JSObject::putNamed_RJS(
       makeHandle<vm::JSObject>(object),
       runtime_,
       name,
       makeHandle(std::forward<TValue>(value)),
       vm::PropOpFlags().plusThrowOnError());
-  return setOptionalResult(std::move(res), optResult);
+  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
+  if (optResult != nullptr) {
+    *optResult = *cr;
+  }
+  return clearLastNativeError();
 }
 
 template <class TObject, class TKey>
@@ -3578,9 +3589,11 @@ napi_status NodeApiEnvironment::hasComputedProperty(
     TObject object,
     TKey key,
     bool *result) noexcept {
-  vm::CallResult<bool> res = vm::JSObject::hasComputed(
+  vm::CallResult<bool> cr = vm::JSObject::hasComputed(
       makeHandle<vm::JSObject>(object), runtime_, makeHandle(key));
-  return setResult(std::move(res), result);
+  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
+  *result = *cr;
+  return clearLastNativeError();
 }
 
 template <class TObject, class TKey>
@@ -3588,9 +3601,10 @@ napi_status NodeApiEnvironment::getComputedProperty(
     TObject object,
     TKey key,
     napi_value *result) noexcept {
-  vm::CallResult<vm::PseudoHandle<>> res = vm::JSObject::getComputed_RJS(
+  vm::CallResult<vm::PseudoHandle<>> cr = vm::JSObject::getComputed_RJS(
       makeHandle<vm::JSObject>(object), runtime_, makeHandle(key));
-  return setResult(std::move(res), result);
+  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
+  return makeResultValue(cr->getHermesValue(), result);
 }
 
 template <class TObject, class TKey, class TValue>
@@ -3599,13 +3613,17 @@ napi_status NodeApiEnvironment::setComputedProperty(
     TKey key,
     TValue value,
     bool *optResult) noexcept {
-  vm::CallResult<bool> res = vm::JSObject::putComputed_RJS(
+  vm::CallResult<bool> cr = vm::JSObject::putComputed_RJS(
       makeHandle<vm::JSObject>(object),
       runtime_,
       makeHandle(key),
       makeHandle(value),
       vm::PropOpFlags().plusThrowOnError());
-  return setOptionalResult(std::move(res), optResult);
+  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
+  if (optResult != nullptr) {
+    *optResult = *cr;
+  }
+  return clearLastNativeError();
 }
 
 template <class TObject, class TKey>
@@ -3613,12 +3631,16 @@ napi_status NodeApiEnvironment::deleteComputedProperty(
     TObject object,
     TKey key,
     bool *optResult) noexcept {
-  vm::CallResult<bool> res = vm::JSObject::deleteComputed(
+  vm::CallResult<bool> cr = vm::JSObject::deleteComputed(
       makeHandle<vm::JSObject>(object),
       runtime_,
       makeHandle(key),
       vm::PropOpFlags());
-  return setOptionalResult(std::move(res), optResult);
+  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
+  if (optResult != nullptr) {
+    *optResult = *cr;
+  }
+  return clearLastNativeError();
 }
 
 template <class TObject, class TKey>
@@ -3628,13 +3650,17 @@ napi_status NodeApiEnvironment::getOwnComputedPropertyDescriptor(
     vm::MutableHandle<vm::SymbolID> &tmpSymbolStorage,
     vm::ComputedPropertyDescriptor &desc,
     bool *result) noexcept {
-  vm::CallResult<bool> res = vm::JSObject::getOwnComputedDescriptor(
+  vm::CallResult<bool> cr = vm::JSObject::getOwnComputedDescriptor(
       makeHandle<vm::JSObject>(object),
       runtime_,
       makeHandle(key),
       tmpSymbolStorage,
       desc);
-  return setOptionalResult(std::move(res), result);
+  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
+  if (optResult != nullptr) {
+    *optResult = *cr;
+  }
+  return clearLastNativeError();
 }
 
 template <class TObject>
@@ -3644,14 +3670,18 @@ napi_status NodeApiEnvironment::defineOwnProperty(
     vm::DefinePropertyFlags dpFlags,
     vm::Handle<> valueOrAccessor,
     bool *result) noexcept {
-  vm::CallResult<bool> res = vm::JSObject::defineOwnProperty(
+  vm::CallResult<bool> cr = vm::JSObject::defineOwnProperty(
       makeHandle<vm::JSObject>(object),
       runtime_,
       name,
       dpFlags,
       valueOrAccessor,
       vm::PropOpFlags().plusThrowOnError());
-  return setOptionalResult(std::move(res), result);
+  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
+  if (result != nullptr) {
+    *result = *cr;
+  }
+  return clearLastNativeError();
 }
 
 template <NodeApiUnwrapAction action>
@@ -3659,7 +3689,7 @@ napi_status NodeApiEnvironment::unwrapObject(
     napi_value object,
     void **result) noexcept {
   CHECK_STATUS(checkPreconditions());
-  NodeApiHandleScope scope{*this};
+  NodeApiValueScope scope{*this};
   vm::GCScope gcScope{runtime_};
 
   CHECK_ARG_IS_OBJECT(object);
@@ -3764,7 +3794,8 @@ napi_status NodeApiEnvironment::getExternalPropertyValue(
         makeHandle(decoratedObj),
         nullptr));
   }
-  return setResult(std::move(externalValue), result);
+  *result = externalValue;
+  return clearLastNativeError();
 }
 
 napi_status NodeApiEnvironment::addObjectFinalizer(
@@ -5941,15 +5972,20 @@ napi_status NAPI_CDECL napi_get_value_string_utf16(
       env->runtime_, env->makeHandle<vm::StringPrimitive>(value));
 
   if (buf == nullptr) {
-    return env->setResult(view.length(), result);
+    CHECK_ARG(result);
+    *result = view.length();
   } else if (bufSize != 0) {
     size_t copied = std::min(bufSize - 1, view.length());
     std::copy(view.begin(), view.begin() + copied, buf);
     buf[copied] = '\0';
-    return env->setOptionalResult(std::move(copied), result);
-  } else {
-    return env->setOptionalResult(static_cast<size_t>(0), result);
+    if (result != nullptr) {
+      *result = copied;
+    }
+  } else if (result != nullptr) {
+    *result = 0;
   }
+
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
@@ -6033,6 +6069,7 @@ napi_status NAPI_CDECL napi_wrap(
         nativeData,
         reinterpret_cast<napi_finalize>(finalizeCallback),
         finalizeHint);
+    *result = reinterpret_cast<napi_ref>(reference);
   } else if (finalizeCallback != nullptr) {
     // Create a self-deleting reference.
     reference = NodeApiReferenceWithFinalizer::create(
@@ -6050,7 +6087,7 @@ napi_status NAPI_CDECL napi_wrap(
   }
 
   externalValue->setNativeData(reference);
-  return env->setOptionalResult(reinterpret_cast<napi_ref>(reference), result);
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
@@ -6075,10 +6112,9 @@ napi_status NAPI_CDECL napi_create_external(
     napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
-  NodeApiEscapableValueScope scope{*env};
+  CHECK_ARG(result);
   vm::GCScope gcScope{env->runtime_};
 
-  CHECK_ARG(result);
   vm::Handle<vm::DecoratedObject> decoratedObj =
       env->createExternalObject(nativeData, nullptr);
   if (finalizeCallback != nullptr) {
@@ -6091,7 +6127,7 @@ napi_status NAPI_CDECL napi_create_external(
         basicFinalize(finalizeCallback),
         finalizeHint);
   }
-  return scope.setResult(std::move(decoratedObj));
+  return env->makeResultValue(decoratedObj.getHermesValue(), result);
 }
 
 // TODO: (vmoroz) Update the tag implementation per new code in Node.js
@@ -6142,6 +6178,7 @@ napi_status NAPI_CDECL napi_check_object_type_tag(
   vm::GCScope gcScope{env->runtime_};
 
   CHECK_ARG(typeTag);
+  CHECK_ARG(result);
   napi_value objValue;
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
 
@@ -6151,18 +6188,18 @@ napi_status NAPI_CDECL napi_check_object_type_tag(
   vm::JSArrayBuffer *tagBuffer =
       vm::dyn_vmcast_or_null<vm::JSArrayBuffer>(*phv(tagBufferValue));
   if (tagBuffer == nullptr) {
-    return env->setResult(false, result);
+    *result = false;
+    return env->clearLastNativeError();
   }
 
   const uint8_t *source = reinterpret_cast<const uint8_t *>(typeTag);
   const uint8_t *tagBufferData = tagBuffer->getDataBlock(env->runtime_);
-  return env->setResult(
-      std::equal(
-          source,
-          source + sizeof(napi_type_tag),
-          tagBufferData,
-          tagBufferData + sizeof(napi_type_tag)),
-      result);
+  *result = std::equal(
+      source,
+      source + sizeof(napi_type_tag),
+      tagBufferData,
+      tagBufferData + sizeof(napi_type_tag));
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
@@ -6172,10 +6209,12 @@ napi_get_value_external(napi_env env, napi_value value, void **result) {
   NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(value);
+  CHECK_ARG(result);
   NodeApiExternalValue *externalValue =
       env->getExternalObjectValue(*phv(value));
   RETURN_STATUS_IF_FALSE(externalValue != nullptr, napi_invalid_arg);
-  return env->setResult(externalValue->nativeData(), result);
+  *result = externalValue->nativeData();
+  return env->clearLastNativeError();
 }
 
 // Set initial_refcount to 0 for a weak reference, >0 for a strong reference.
@@ -6224,7 +6263,10 @@ napi_reference_ref(napi_env env, napi_ref ref, uint32_t *result) {
   CHECK_ENV(env);
   CHECK_ARG(ref);
   uint32_t refCount = asReference(ref)->incRefCount(*env);
-  return env->setOptionalResult(std::move(refCount), result);
+  if (result != nullptr) {
+    *result = refCount;
+  }
+  return env->clearLastNativeError();
 }
 
 // Decrements the reference count, optionally returning the resulting count. If
@@ -6236,7 +6278,10 @@ napi_reference_unref(napi_env env, napi_ref ref, uint32_t *result) {
   CHECK_ENV(env);
   CHECK_ARG(ref);
   uint32_t refCount = asReference(ref)->decRefCount(*env);
-  return env->setOptionalResult(std::move(refCount), result);
+  if (result != nullptr) {
+    *result = refCount;
+  }
+  return env->clearLastNativeError();
 }
 
 // Attempts to get a referenced value. If the reference is weak, the value might
@@ -6245,6 +6290,7 @@ napi_reference_unref(napi_env env, napi_ref ref, uint32_t *result) {
 napi_status NAPI_CDECL
 napi_get_reference_value(napi_env env, napi_ref ref, napi_value *result) {
   CHECK_ENV(env);
+  env->checkGCAccess();
   CHECK_ARG(ref);
   CHECK_ARG(result);
   *result = asReference(ref)->value(*env);
@@ -6254,11 +6300,13 @@ napi_get_reference_value(napi_env env, napi_ref ref, napi_value *result) {
 napi_status NAPI_CDECL
 napi_open_handle_scope(napi_env env, napi_handle_scope *result) {
   CHECK_ENV(env);
+  env->checkGCAccess();
+  CHECK_ARG(result);
   size_t scope = env->napiValueStack_.size();
   env->napiValueStackScopes_.emplace(scope);
-  return env->setResult(
-      reinterpret_cast<napi_handle_scope>(&env->napiValueStackScopes_.top()),
-      result);
+  *result =
+      reinterpret_cast<napi_handle_scope>(&env->napiValueStackScopes_.top());
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
@@ -6323,6 +6371,7 @@ napi_status NAPI_CDECL napi_escape_handle(
   CHECK_ENV(env);
   CHECK_ARG(scope);
   CHECK_ARG(escapee);
+  CHECK_ARG(result);
 
   size_t *stackScope = reinterpret_cast<size_t *>(scope);
   RETURN_STATUS_IF_FALSE(*stackScope > 1, napi_invalid_arg);
@@ -6344,7 +6393,7 @@ napi_status NAPI_CDECL napi_escape_handle(
   sentinelTag = vm::HermesValue::encodeNativeUInt32(
       NodeApiEnvironment::kUsedEscapableSentinelTag);
 
-  return env->setResult(napiValue(&escapedValue), result);
+  return env->castResult(&escapedValue, result);
 }
 
 napi_status NAPI_CDECL napi_new_instance(
@@ -6362,6 +6411,7 @@ napi_status NAPI_CDECL napi_new_instance(
   if (argCount > 0) {
     CHECK_ARG(args);
   }
+  CHECK_ARG(result);
 
   RETURN_STATUS_IF_FALSE(
       vm::vmisa<vm::Callable>(*phv(constructor)), napi_invalid_arg);
@@ -6423,9 +6473,9 @@ napi_status NAPI_CDECL napi_new_instance(
   // 13.2.2.10:
   //    Return obj
   vm::HermesValue resultValue = callRes->get();
-  return scope.setResult(
-      resultValue.isObject() ? std::move(resultValue)
-                             : thisHandle.getHermesValue());
+  return scope.escapeResult(
+      resultValue.isObject() ? resultValue : thisHandle.getHermesValue(),
+      result);
 }
 
 napi_status NAPI_CDECL napi_instanceof(
@@ -6440,6 +6490,7 @@ napi_status NAPI_CDECL napi_instanceof(
 
   CHECK_ARG(object);
   CHECK_ARG(constructor);
+  CHECK_ARG(result);
   napi_value ctorValue;
   CHECK_STATUS(napi_coerce_to_object(env, constructor, &ctorValue));
   if (!vm::vmisa<vm::Callable>(*phv(ctorValue))) {
@@ -6448,25 +6499,29 @@ napi_status NAPI_CDECL napi_instanceof(
     return ERROR_STATUS(
         napi_function_expected, "Constructor must be a function");
   }
-  return env->setResult(
-      vm::instanceOfOperator_RJS(
-          env->runtime_, env->makeHandle(object), env->makeHandle(constructor)),
-      result);
+  vm::CallResult<bool> cr = vm::instanceOfOperator_RJS(
+      env->runtime_, asHandle(object), asHandle(ctorValue));
+  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
+  *result = *cr;
+  return env->clearLastNativeError();
 }
 
 // Methods to support catching exceptions
 napi_status NAPI_CDECL napi_is_exception_pending(napi_env env, bool *result) {
   CHECK_ENV(env);
-  return env->setResult(!env->thrownJSError_.isEmpty(), result);
+  CHECK_ARG(result);
+  *result = !env->thrownJSError_.isEmpty();
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
 napi_get_and_clear_last_exception(napi_env env, napi_value *result) {
   CHECK_ENV(env);
+  CHECK_ARG(result);
   if (env->thrownJSError_.isEmpty()) {
     return napi_get_undefined(env, result);
   }
-  return env->setResult(
+  return env->makeResultValue(
       std::exchange(env->thrownJSError_, NodeApiEnvironment::EmptyHermesValue),
       result);
 }
@@ -6475,7 +6530,9 @@ napi_status NAPI_CDECL
 napi_is_arraybuffer(napi_env env, napi_value value, bool *result) {
   CHECK_ENV(env);
   CHECK_ARG(value);
-  return env->setResult(vm::vmisa<vm::JSArrayBuffer>(*phv(value)), result);
+  CHECK_ARG(result);
+  *result = vm::vmisa<vm::JSArrayBuffer>(*phv(value));
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_create_arraybuffer(
@@ -6485,6 +6542,7 @@ napi_status NAPI_CDECL napi_create_arraybuffer(
     napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
+  CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   vm::Handle<vm::JSArrayBuffer> buffer = env->makeHandle(
@@ -6497,7 +6555,7 @@ napi_status NAPI_CDECL napi_create_arraybuffer(
   if (data != nullptr) {
     *data = buffer->getDataBlock(env->runtime_);
   }
-  return scope.setResult(std::move(buffer));
+  return scope.escapeResult(buffer.getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_create_external_arraybuffer(
@@ -6509,6 +6567,7 @@ napi_status NAPI_CDECL napi_create_external_arraybuffer(
     napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
+  CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   vm::Handle<vm::JSArrayBuffer> buffer = env->makeHandle(
@@ -6523,18 +6582,19 @@ napi_status NAPI_CDECL napi_create_external_arraybuffer(
             byteLength,
             basicFinalize(finalizeCallback),
             finalizeHint);
-    vm::JSArrayBuffer::setExternalDataBlock(
-        env->runtime_,
-        buffer,
-        reinterpret_cast<uint8_t *>(externalData),
-        byteLength,
-        externalBuffer.release(),
-        [](vm::GC & /*gc*/, vm::NativeState *ns) {
-          std::unique_ptr<NodeApiExternalBuffer> externalBuffer(
-              reinterpret_cast<NodeApiExternalBuffer *>(ns->context()));
-        });
+    CHECK_STATUS(env->checkExecutionStatus(
+        vm::JSArrayBuffer::setExternalDataBlock(
+            env->runtime_,
+            buffer,
+            reinterpret_cast<uint8_t *>(externalData),
+            byteLength,
+            externalBuffer.release(),
+            [](vm::GC & /*gc*/, vm::NativeState *ns) {
+              std::unique_ptr<NodeApiExternalBuffer> externalBuffer(
+                  reinterpret_cast<NodeApiExternalBuffer *>(ns->context()));
+            })));
   }
-  return scope.setResult(std::move(buffer));
+  return scope.escapeResult(buffer.getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_get_arraybuffer_info(
@@ -6563,7 +6623,9 @@ napi_status NAPI_CDECL
 napi_is_typedarray(napi_env env, napi_value value, bool *result) {
   CHECK_ENV(env);
   CHECK_ARG(value);
-  return env->setResult(vm::vmisa<vm::JSTypedArrayBase>(*phv(value)), result);
+  CHECK_ARG(result);
+  *result = vm::vmisa<vm::JSTypedArrayBase>(*phv(value));
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_create_typedarray(
@@ -6578,6 +6640,7 @@ napi_status NAPI_CDECL napi_create_typedarray(
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(arrayBuffer);
+  CHECK_ARG(result);
 
   vm::JSArrayBuffer *buffer =
       vm::dyn_vmcast_or_null<vm::JSArrayBuffer>(*phv(arrayBuffer));
@@ -6640,7 +6703,7 @@ napi_status NAPI_CDECL napi_create_typedarray(
           napi_invalid_arg, "Unsupported TypedArray type: ", type);
   }
 
-  return scope.setResult(std::move(typedArray));
+  return scope.escapeResult(typedArray.getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_get_typedarray_info(
@@ -6723,6 +6786,7 @@ napi_status NAPI_CDECL napi_create_dataview(
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(arrayBuffer);
+  CHECK_ARG(result);
 
   vm::JSArrayBuffer *buffer =
       vm::dyn_vmcast_or_null<vm::JSArrayBuffer>(*phv(arrayBuffer));
@@ -6740,14 +6804,16 @@ napi_status NAPI_CDECL napi_create_dataview(
           env->runtime_,
           env->makeHandle<vm::JSObject>(env->runtime_.dataViewPrototype)));
   viewHandle->setBuffer(env->runtime_, buffer, byteOffset, byteLength);
-  return scope.setResult(std::move(viewHandle));
+  return scope.escapeResult(viewHandle.getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL
 napi_is_dataview(napi_env env, napi_value value, bool *result) {
   CHECK_ENV(env);
   CHECK_ARG(value);
-  return env->setResult(vm::vmisa<vm::JSDataView>(*phv(value)), result);
+  CHECK_ARG(result);
+  *result = vm::vmisa<vm::JSDataView>(*phv(value));
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_get_dataview_info(
@@ -6792,7 +6858,9 @@ napi_status NAPI_CDECL
 napi_get_version(node_api_basic_env basic_env, uint32_t *result) {
   napi_env env = const_cast<napi_env>(basic_env);
   CHECK_ENV(env);
-  return env->setResult(static_cast<uint32_t>(env->apiVersion_), result);
+  CHECK_ARG(result);
+  *result = static_cast<uint32_t>(env->apiVersion_);
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_create_promise(
@@ -6801,9 +6869,10 @@ napi_status NAPI_CDECL napi_create_promise(
     napi_value *promise) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
-  NodeApiHandleScope scope{*env, promise};
+  NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(deferred);
+  CHECK_ARG(promise);
 
   napi_value jsPromise, jsDeferred;
   vm::MutableHandle<> jsResolve{env->runtime_};
@@ -6818,7 +6887,7 @@ napi_status NAPI_CDECL napi_create_promise(
 
   *deferred = reinterpret_cast<napi_deferred>(NodeApiReference::create(
       *env, phv(jsDeferred), 1, NodeApiReferenceOwnership::kUserland));
-  return scope.setResult(std::move(jsPromise));
+  return scope.escapeResult(*phv(jsPromise), promise);
 }
 
 napi_status NAPI_CDECL napi_resolve_deferred(
@@ -6855,29 +6924,32 @@ napi_status NAPI_CDECL
 napi_create_date(napi_env env, double dateTime, napi_value *result) {
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
-  NodeApiEscapableValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
+  CHECK_ARG(result);
   vm::PseudoHandle<vm::JSDate> dateHandle = vm::JSDate::create(
       env->runtime_,
       dateTime,
-      env->makeHandle<vm::JSObject>(&env->runtime_.datePrototype));
-  return scope.setResult(std::move(dateHandle));
+      vm::Handle<vm::JSObject>::vmcast(&env->runtime_.datePrototype));
+  return env->makeResultValue(dateHandle.getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL
 napi_is_date(napi_env env, napi_value value, bool *result) {
   CHECK_ENV(env);
   CHECK_ARG(value);
-  return env->setResult(vm::vmisa<vm::JSDate>(*phv(value)), result);
+  CHECK_ARG(result);
+  *result = vm::vmisa<vm::JSDate>(*phv(value));
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
 napi_get_date_value(napi_env env, napi_value value, double *result) {
   CHECK_ENV(env);
   CHECK_ARG(value);
+  CHECK_ARG(result);
   vm::JSDate *date = vm::dyn_vmcast_or_null<vm::JSDate>(*phv(value));
   RETURN_STATUS_IF_FALSE(date != nullptr, napi_date_expected);
-  return env->setResult(date->getPrimitiveValue(), result);
+  *result = date->getPrimitiveValue();
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
@@ -6895,6 +6967,7 @@ napi_run_script(napi_env env, napi_value script, napi_value *result) {
 
   CHECK_ENV(env);
   CHECK_STATUS(env->checkPreconditions());
+  CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -6909,9 +6982,10 @@ napi_run_script(napi_env env, napi_value script, napi_value *result) {
   // Create a buffer for the code.
   std::unique_ptr<hermes::Buffer> codeBuffer(new StringBuffer(std::move(code)));
 
-  hermes::vm::CallResult<hermes::vm::HermesValue> runResult = env->runtime_.run(
+  vm::CallResult<vm::HermesValue> cr = env->runtime_.run(
       std::move(codeBuffer), llvh::StringRef(), env->compileFlags_);
-  return scope.setResult(std::move(runResult));
+  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
+  return scope.escapeResult(*cr, result);
 }
 
 napi_status NAPI_CDECL napi_add_finalizer(
@@ -7026,8 +7100,10 @@ napi_status NAPI_CDECL napi_is_detached_arraybuffer(
     bool *result) {
   CHECK_ENV(env);
   CHECK_ARG(arrayBuffer);
+  CHECK_ARG(result);
   vm::JSArrayBuffer *buffer =
       vm::dyn_vmcast_or_null<vm::JSArrayBuffer>(*phv(arrayBuffer));
-  RETURN_STATUS_IF_FALSE(buffer, napi_arraybuffer_expected);
-  return env->setResult(!buffer->attached(), result);
+  RETURN_STATUS_IF_FALSE(buffer != nullptr, napi_arraybuffer_expected);
+  *result = !buffer->attached();
+  return env->clearLastNativeError();
 }
