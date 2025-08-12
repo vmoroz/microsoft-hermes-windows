@@ -4844,6 +4844,7 @@ napi_status NAPI_CDECL napi_set_property(
   CHECK_ARG(key);
   CHECK_ARG(value);
   NodeApiValueScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
 
   napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
@@ -4868,6 +4869,7 @@ napi_status NAPI_CDECL napi_has_property(
   CHECK_ARG(key);
   CHECK_ARG(result);
   NodeApiValueScope scope{*env};
+  vm::GCScope gcScope{env->runtime_};
 
   napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
@@ -4909,7 +4911,7 @@ napi_status NAPI_CDECL napi_delete_property(
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(key);
   NodeApiValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_}; // It is required
+  vm::GCScope gcScope{env->runtime_};
 
   napi_value objValue{};
   CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
