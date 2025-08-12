@@ -6964,8 +6964,10 @@ napi_status NAPI_CDECL napi_get_dataview_info(
     napi_value *arrayBuffer,
     size_t *byteOffset) {
   CHECK_ENV(env);
-  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(dataView);
+
+  vm::GCScope gcScope{env->runtime_}; // for view->getBuffer
 
   vm::JSDataView *view = vm::dyn_vmcast_or_null<vm::JSDataView>(*phv(dataView));
   RETURN_STATUS_IF_FALSE(view, napi_invalid_arg);
