@@ -3191,20 +3191,19 @@ napi_status NodeApiEnvironment::throwJSError(
   CHECK_STATUS(napi_create_string_utf8(
       napiEnv(this), message, NAPI_AUTO_LENGTH, &messageValue));
 
-  vm::Handle<vm::JSError> errorHandle =
-      runtime_.makeHandle<vm::JSError>(vm::JSError::create(
-          runtime_, vm::Handle<vm::JSObject>::vmcast(&errorPrototype)));
+  vm::Handle<vm::JSError> errorHandle = makeHandle(
+      vm::JSError::create(runtime_, makeHandle<vm::JSObject>(&errorPrototype)));
   CHECK_STATUS(checkExecutionStatus(
       vm::JSError::recordStackTrace(errorHandle, runtime_)));
   CHECK_STATUS(checkExecutionStatus(
       vm::JSError::setMessage(errorHandle, runtime_, asHandle(messageValue))));
   CHECK_STATUS(setJSErrorCode(errorHandle, nullptr, code));
 
-  runtime_.setThrownValue(errorHandle.getHermesValue());
+  thrownJSError_ = errorHandle.getHermesValue();
 
   // any VM calls after this point and before returning
   // to the JavaScript invoker will fail
-  return clearLastNativeError();
+  return napi_pending_exception;
 }
 
 napi_status NodeApiEnvironment::setJSErrorCode(
@@ -6497,13 +6496,11 @@ napi_status NAPI_CDECL napi_instanceof(
   napi_value ctorValue;
   CHECK_STATUS(napi_coerce_to_object(env, constructor, &ctorValue));
   if (!vm::vmisa<vm::Callable>(*phv(ctorValue))) {
-    napi_throw_type_error(
+    return napi_throw_type_error(
         env, "ERR_NAPI_CONS_FUNCTION", "Constructor must be a function");
-    return ERROR_STATUS(
-        napi_function_expected, "Constructor must be a function");
   }
   vm::CallResult<bool> cr = vm::instanceOfOperator_RJS(
-      env->runtime_, asHandle(object), asHandle(constructor));
+      env->runtime_, env->makeHandle(object), env->makeHandle(constructor));
   CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
   *result = *cr;
   return env->clearLastNativeError();
