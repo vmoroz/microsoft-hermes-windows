@@ -7183,6 +7183,7 @@ napi_status NAPI_CDECL node_api_post_finalizer(
   CHECK_ENV(env);
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(finalizeCallback);
+  NodeApiValueScope scope{*env};
 
   // Create NodeApiTrackedFinalizer and add to task runner queue
   NodeApiTrackedFinalizer *finalizer = NodeApiTrackedFinalizer::create(
