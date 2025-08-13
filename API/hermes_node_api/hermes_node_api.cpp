@@ -5225,7 +5225,7 @@ napi_strict_equals(napi_env env, napi_value lhs, napi_value rhs, bool *result) {
       return env->clearLastNativeError();
     }
   } else if (lhsTag == vm::HermesValue::Tag::BigInt) {
-    *result = phv(lhs)->getBigInt()->compare(phv(rhs)->getBigInt());
+    *result = phv(lhs)->getBigInt()->compare(phv(rhs)->getBigInt()) == 0;
     return env->clearLastNativeError();
   } else {
     *result = phv(lhs)->getRaw() == phv(rhs)->getRaw();
