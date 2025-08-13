@@ -4173,6 +4173,7 @@ napi_status NodeApiEnvironment::concludeDeferred(
   CHECK_POSTCONDITIONS(this, /*valueStackDelta:*/ 0);
   CHECK_ARG(deferred);
   CHECK_ARG(resolution);
+  NodeApiValueScope scope{*this};
 
   NodeApiReference *deferredRef = asReference(deferred);
 
@@ -6361,6 +6362,7 @@ napi_status NAPI_CDECL napi_create_reference(
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
+  NodeApiValueScope scope{*env};
 
   const vm::PinnedHermesValue *hermesValue = phv(value);
   if (env->apiVersion_ < 10) {
@@ -7058,8 +7060,9 @@ napi_is_promise(napi_env env, napi_value value, bool *result) {
   CHECK_ENV(env);
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
+  NodeApiValueScope scope{*env};
 
-  napi_value global, promiseConstructor;
+  napi_value global{}, promiseConstructor{};
   CHECK_STATUS(napi_get_global(env, &global));
   CHECK_STATUS(env->getPredefinedProperty(
       global, NodeApiPredefined::Promise, &promiseConstructor));
