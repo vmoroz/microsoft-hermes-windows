@@ -1314,16 +1314,17 @@ class NodeApiEnvironment {
   class CurrentEnvironmentScope {
    public:
     explicit CurrentEnvironmentScope(NodeApiEnvironment *env) noexcept
-        : previousEnv_(NodeApiEnvironment::tlsCurrentEnvironment_) {
-      tlsCurrentEnvironment_ = env;
+        : env_(napiEnv(env)) {
+      CRASH_IF_FALSE(openNodeApiScope(env_, &scope_) == napi_ok);
     }
 
     ~CurrentEnvironmentScope() noexcept {
-      tlsCurrentEnvironment_ = previousEnv_;
+      CRASH_IF_FALSE(closeNodeApiScope(env_, scope_) == napi_ok);
     }
 
    private:
-    NodeApiEnvironment *previousEnv_;
+    napi_env env_{};
+    void *scope_{};
   };
 
   // tlsCurrentEnvironment_ RAII helper class
@@ -1353,6 +1354,9 @@ class NodeApiEnvironment {
 
   // Thread-local storage for current environment
   static thread_local NodeApiEnvironment *tlsCurrentEnvironment_;
+
+  static thread_local llvh::SmallVector<NodeApiEnvironment *, 8>
+      tlsCurrentEnvStack_;
 
   // Controls the lifetime of this class instances.
   std::atomic<int> refCount_{1};
@@ -1472,6 +1476,8 @@ class NodeApiEnvironment {
 };
 
 thread_local NodeApiEnvironment *NodeApiEnvironment::tlsCurrentEnvironment_{};
+thread_local llvh::SmallVector<NodeApiEnvironment *, 8>
+    NodeApiEnvironment::tlsCurrentEnvStack_{};
 
 // RAII class to control scope of napi_value variables.
 class NodeApiValueScope {
@@ -1569,8 +1575,8 @@ class NodeApiPostConditionScope {
     CRASH_IF_FALSE(
         napiValueStackScopesSize_ == env_->napiValueStackScopes_.size());
 
-    //TODO: (vmoroz) enable
-    // CRASH_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
+    // TODO: (vmoroz) enable
+    //  CRASH_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
   }
 
  private:
@@ -1618,6 +1624,7 @@ class NodeApiExternalValue final : public vm::DecoratedObject::Decoration {
     if (finalizerHolder_ && !finalizerHolder_->isEmpty()) {
       pendingFinalizers_->addFinalizerHolder(std::move(finalizerHolder_));
       // If we are on JS thread, we can process finalizers immediately.
+      // TODO: (vmoroz) Ensure that the right env is on the right thread
       if (NodeApiEnvironment::isOnJSThread()) {
         pendingFinalizers_->processPendingFinalizers();
       }
@@ -4505,6 +4512,28 @@ napi_status getAndClearLastUnhandledPromiseRejection(
   return CHECKED_ENV(env)->getAndClearLastUnhandledPromiseRejection(result);
 }
 
+napi_status openNodeApiScope(napi_env env, void **scope) noexcept {
+  CHECK_ENV(env);
+  CHECK_ARG(scope);
+  if (env->tlsCurrentEnvironment_) {
+    env->tlsCurrentEnvStack_.push_back(env->tlsCurrentEnvironment_);
+  }
+  env->tlsCurrentEnvironment_ = env;
+  *scope = env;
+  return env->clearLastNativeError();
+}
+
+napi_status closeNodeApiScope(napi_env env, void *scope) noexcept {
+  CHECK_ENV(env);
+  CHECK_ARG(scope);
+  RETURN_STATUS_IF_FALSE(
+      env->tlsCurrentEnvironment_ == scope, napi_invalid_arg);
+  env->tlsCurrentEnvironment_ = env->tlsCurrentEnvStack_.empty()
+      ? nullptr
+      : env->tlsCurrentEnvStack_.pop_back_val();
+  return env->clearLastNativeError();
+}
+
 } // namespace hermes::node_api
 
 //=============================================================================
@@ -6136,7 +6165,7 @@ napi_coerce_to_number(napi_env env, napi_value value, napi_value *result) {
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(value);
   CHECK_ARG(result);
-  vm::GCScope gcScope{env->runtime_}; 
+  vm::GCScope gcScope{env->runtime_};
   vm::CallResult<vm::HermesValue> res =
       vm::toNumber_RJS(env->runtime_, asHandle<>(value));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
@@ -6149,7 +6178,7 @@ napi_coerce_to_object(napi_env env, napi_value value, napi_value *result) {
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(value);
   CHECK_ARG(result);
-  vm::GCScope gcScope{env->runtime_}; 
+  vm::GCScope gcScope{env->runtime_};
   vm::CallResult<vm::HermesValue> res =
       vm::toObject(env->runtime_, asHandle<>(value));
   CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));

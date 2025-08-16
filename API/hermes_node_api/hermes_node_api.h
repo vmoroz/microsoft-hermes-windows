@@ -141,6 +141,9 @@ napi_status setLastNativeError(
 
 napi_status clearLastNativeError(napi_env env) noexcept;
 
+napi_status openNodeApiScope(napi_env env, void **scope) noexcept;
+napi_status closeNodeApiScope(napi_env env, void *scope) noexcept;
+
 } // namespace hermes::node_api
 
 #endif // HERMES_NODE_API_H

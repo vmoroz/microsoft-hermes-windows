@@ -1121,17 +1121,14 @@ JSR_API jsr_is_inspectable(napi_env env, bool *result) {
   return CHECKED_ENV_RUNTIME(env)->isInspectable(result);
 }
 
-JSR_API jsr_open_napi_env_scope(napi_env /*env*/, jsr_napi_env_scope *scope) {
-  if (scope != nullptr) {
-    *scope = nullptr;
-  }
-  return napi_ok;
+JSR_API jsr_open_napi_env_scope(napi_env env, jsr_napi_env_scope *scope) {
+  return hermes::node_api::openNodeApiScope(
+      env, reinterpret_cast<void **>(scope));
 }
 
-JSR_API jsr_close_napi_env_scope(
-    napi_env /*env*/,
-    jsr_napi_env_scope /*scope*/) {
-  return napi_ok;
+JSR_API jsr_close_napi_env_scope(napi_env env, jsr_napi_env_scope scope) {
+  return hermes::node_api::closeNodeApiScope(
+      env, reinterpret_cast<void *>(scope));
 }
 
 //-----------------------------------------------------------------------------
