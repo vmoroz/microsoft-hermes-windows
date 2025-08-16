@@ -959,7 +959,7 @@ class NodeApiEnvironment {
   // strings. The function wraps up the Hermes optimized function that caches
   // results.
   napi_status getForInPropertyNames(
-      napi_value object,
+      vm::Handle<vm::JSObject> object,
       napi_key_conversion keyConversion,
       napi_value *result) noexcept;
 
@@ -3425,7 +3425,7 @@ napi_status NodeApiEnvironment::getUniqueSymbolID(
 }
 
 napi_status NodeApiEnvironment::getForInPropertyNames(
-    napi_value object,
+    vm::Handle<vm::JSObject> object,
     napi_key_conversion keyConversion,
     napi_value *result) noexcept {
   // Hermes optimizes retrieving property names for the 'for..in' implementation
@@ -3433,8 +3433,7 @@ napi_status NodeApiEnvironment::getForInPropertyNames(
   uint32_t beginIndex;
   uint32_t endIndex;
   vm::CallResult<vm::Handle<vm::BigStorage>> keyStorage =
-      vm::getForInPropertyNames(
-          runtime_, makeHandle<vm::JSObject>(object), beginIndex, endIndex);
+      vm::getForInPropertyNames(runtime_, object, beginIndex, endIndex);
   CHECK_STATUS(checkExecutionStatus(keyStorage.getStatus()));
   return convertKeyStorageToArray(
       *keyStorage, beginIndex, endIndex - beginIndex, keyConversion, result);
@@ -4667,11 +4666,18 @@ napi_status NAPI_CDECL
 napi_get_property_names(napi_env env, napi_value object, napi_value *result) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
+  CHECK_ARG(object);
   CHECK_ARG(result);
+
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
-  napi_value objValue{};
-  CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
+
+  vm::CallResult<vm::HermesValue> cr =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
+  vm::Handle<vm::JSObject> objValue =
+      env->runtime_.makeHandle<vm::JSObject>(*cr);
+
   CHECK_STATUS(env->getForInPropertyNames(
       objValue, napi_key_numbers_to_strings, result));
   return scope.escapeResult(result);
@@ -4686,12 +4692,17 @@ napi_status NAPI_CDECL napi_get_all_property_names(
     napi_value *result) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
+  CHECK_ARG(object);
   CHECK_ARG(result);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
-  napi_value objValue{};
-  CHECK_STATUS(napi_coerce_to_object(env, object, &objValue));
+  vm::CallResult<vm::HermesValue> cr =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
+  vm::Handle<vm::JSObject> objValue =
+      env->runtime_.makeHandle<vm::JSObject>(*cr);
+
   RETURN_STATUS_IF_FALSE(
       isInEnumRange(keyMode, napi_key_include_prototypes, napi_key_own_only),
       napi_invalid_arg);
@@ -4709,7 +4720,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
   }
 
   // The fast path used for the 'for..in' implementation.
-  if (keyFilter == (napi_key_enumerable | napi_key_skip_symbols) &&
+  if ((keyFilter == (napi_key_enumerable | napi_key_skip_symbols)) &&
       (keyMode == napi_key_include_prototypes || !hasParent)) {
     CHECK_STATUS(env->getForInPropertyNames(objValue, keyConversion, result));
     return scope.escapeResult(result);
@@ -4728,7 +4739,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
       (keyFilter & (napi_key_writable | napi_key_configurable)) == 0) {
     vm::CallResult<vm::Handle<vm::JSArray>> ownKeysRes =
         vm::JSObject::getOwnPropertyKeys(
-            env->makeHandle<vm::JSObject>(objValue),
+            objValue,
             env->runtime_,
             ownKeyFlags.setIncludeNonEnumerable(
                 (keyFilter & napi_key_enumerable) == 0));
@@ -4766,8 +4777,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
        (napi_key_writable | napi_key_enumerable | napi_key_configurable)) != 0;
 
   // Keep the mutable variables outside of loop for efficiency
-  vm::MutableHandle<vm::JSObject> currentObj(
-      env->runtime_, getObjectUnsafe(objValue));
+  vm::MutableHandle<vm::JSObject> currentObj(env->runtime_, objValue.get());
   vm::MutableHandle<> prop{env->runtime_};
   OptValue<uint32_t> propIndexOpt;
   vm::MutableHandle<vm::StringPrimitive> propString{env->runtime_};
