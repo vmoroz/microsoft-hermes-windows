@@ -41,7 +41,7 @@ namespace vm {
 /// the end of the descriptor array, thus encoding the original insertion order.
 ///
 /// Deleted properties are removed from the hash table and marked by a "deleted"
-/// SymbolID in the descriptor array. Then the desctiptor is added to a list of
+/// SymbolID in the descriptor array. Then the descriptor is added to a list of
 /// deleted property slots - PropertyDescriptor::flags is overloaded to serve as
 /// the "next deleted" link. We remove an entry from the "deleted" list when we
 /// need to allocate a slot for a new property - then finally the entry is
@@ -58,7 +58,7 @@ namespace vm {
 /// Reallocation first scans the descriptor array and inserts valid (and not
 /// deleted) properties in the new hash table and descriptor array. We must also
 /// preserve the list of deleted properties, so then it walks the deleted list
-/// and appends the descriptors to the new desctiptor array.
+/// and appends the descriptors to the new descriptor array.
 ///
 /// A property descriptor is always in one of these states:
 ///  - "uninitialized". It is beyond \c numDescriptors.
