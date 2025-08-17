@@ -1070,31 +1070,6 @@ class NodeApiEnvironment {
       TValue &&value,
       bool *optResult = nullptr) noexcept;
 
-  // Internal function to check if property exists by key of any type.
-  template <class TObject, class TKey>
-  napi_status
-  hasComputedProperty(TObject object, TKey key, bool *result) noexcept;
-
-  // Internal function to get property value by key of any type.
-  template <class TObject, class TKey>
-  napi_status
-  getComputedProperty(TObject object, TKey key, napi_value *result) noexcept;
-
-  // Internal function to set property value by key of any type.
-  template <class TObject, class TKey, class TValue>
-  napi_status setComputedProperty(
-      TObject object,
-      TKey key,
-      TValue value,
-      bool *optResult = nullptr) noexcept;
-
-  // Internal function to delete property by key of any type.
-  template <class TObject, class TKey>
-  napi_status deleteComputedProperty(
-      TObject object,
-      TKey key,
-      bool *optResult = nullptr) noexcept;
-
   // Internal function to get own descriptor by key of any type.
   template <class TObject, class TKey>
   napi_status getOwnComputedPropertyDescriptor(
@@ -3682,65 +3657,6 @@ napi_status NodeApiEnvironment::setNamedProperty(
       name,
       makeHandle(std::forward<TValue>(value)),
       vm::PropOpFlags().plusThrowOnError());
-  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
-  if (optResult != nullptr) {
-    *optResult = *cr;
-  }
-  return clearLastNativeError();
-}
-
-template <class TObject, class TKey>
-napi_status NodeApiEnvironment::hasComputedProperty(
-    TObject object,
-    TKey key,
-    bool *result) noexcept {
-  vm::CallResult<bool> cr = vm::JSObject::hasComputed(
-      makeHandle<vm::JSObject>(object), runtime_, makeHandle(key));
-  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
-  *result = *cr;
-  return clearLastNativeError();
-}
-
-template <class TObject, class TKey>
-napi_status NodeApiEnvironment::getComputedProperty(
-    TObject object,
-    TKey key,
-    napi_value *result) noexcept {
-  vm::CallResult<vm::PseudoHandle<>> cr = vm::JSObject::getComputed_RJS(
-      makeHandle<vm::JSObject>(object), runtime_, makeHandle(key));
-  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
-  return makeResultValue(cr->getHermesValue(), result);
-}
-
-template <class TObject, class TKey, class TValue>
-napi_status NodeApiEnvironment::setComputedProperty(
-    TObject object,
-    TKey key,
-    TValue value,
-    bool *optResult) noexcept {
-  vm::CallResult<bool> cr = vm::JSObject::putComputed_RJS(
-      makeHandle<vm::JSObject>(object),
-      runtime_,
-      makeHandle(key),
-      makeHandle(value),
-      vm::PropOpFlags().plusThrowOnError());
-  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
-  if (optResult != nullptr) {
-    *optResult = *cr;
-  }
-  return clearLastNativeError();
-}
-
-template <class TObject, class TKey>
-napi_status NodeApiEnvironment::deleteComputedProperty(
-    TObject object,
-    TKey key,
-    bool *optResult) noexcept {
-  vm::CallResult<bool> cr = vm::JSObject::deleteComputed(
-      makeHandle<vm::JSObject>(object),
-      runtime_,
-      makeHandle(key),
-      vm::PropOpFlags());
   CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
   if (optResult != nullptr) {
     *optResult = *cr;
