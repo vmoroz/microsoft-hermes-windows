@@ -3237,7 +3237,7 @@ napi_status NodeApiEnvironment::throwJSError(
 
   // any VM calls after this point and before returning
   // to the JavaScript invoker will fail
-  return napi_pending_exception;
+  return clearLastNativeError();
 }
 
 napi_status NodeApiEnvironment::setJSErrorCode(
@@ -5867,12 +5867,11 @@ napi_status NAPI_CDECL napi_get_global(napi_env env, napi_value *result) {
       env->runtime_.getGlobal().unsafeGetPinnedHermesValue(), result);
 }
 
-// TODO: (vmoroz) change to match the other throw error functions
 napi_status NAPI_CDECL napi_throw(napi_env env, napi_value error) {
   CHECK_ENV(env);
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(error);
-  env->runtime_.setThrownValue(*phv(error));
+  env->thrownJSError_ = *phv(error);
   // any VM calls after this point and before returning
   // to the JavaScript invoker will fail
   return env->clearLastNativeError();
