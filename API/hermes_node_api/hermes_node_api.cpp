@@ -1070,15 +1070,6 @@ class NodeApiEnvironment {
       TValue &&value,
       bool *optResult = nullptr) noexcept;
 
-  // Internal function to get own descriptor by key of any type.
-  template <class TObject, class TKey>
-  napi_status getOwnComputedPropertyDescriptor(
-      TObject object,
-      TKey key,
-      vm::MutableHandle<vm::SymbolID> &tmpSymbolStorage,
-      vm::ComputedPropertyDescriptor &desc,
-      bool *result) noexcept;
-
   // Internal function to define a property.
   template <class TObject>
   napi_status defineOwnProperty(
@@ -3657,26 +3648,6 @@ napi_status NodeApiEnvironment::setNamedProperty(
       name,
       makeHandle(std::forward<TValue>(value)),
       vm::PropOpFlags().plusThrowOnError());
-  CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
-  if (optResult != nullptr) {
-    *optResult = *cr;
-  }
-  return clearLastNativeError();
-}
-
-template <class TObject, class TKey>
-napi_status NodeApiEnvironment::getOwnComputedPropertyDescriptor(
-    TObject object,
-    TKey key,
-    vm::MutableHandle<vm::SymbolID> &tmpSymbolStorage,
-    vm::ComputedPropertyDescriptor &desc,
-    bool *result) noexcept {
-  vm::CallResult<bool> cr = vm::JSObject::getOwnComputedDescriptor(
-      makeHandle<vm::JSObject>(object),
-      runtime_,
-      makeHandle(key),
-      tmpSymbolStorage,
-      desc);
   CHECK_STATUS(checkExecutionStatus(cr.getStatus()));
   if (optResult != nullptr) {
     *optResult = *cr;
