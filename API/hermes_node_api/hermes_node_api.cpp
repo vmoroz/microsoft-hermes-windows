@@ -4892,6 +4892,7 @@ napi_status NAPI_CDECL napi_set_property(
     napi_value value) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
+  CHECK_ARG(object);
   CHECK_ARG(key);
   CHECK_ARG(value);
   NodeApiValueScope scope{*env};
@@ -5092,19 +5093,43 @@ napi_status NAPI_CDECL napi_has_named_property(
     bool *result) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
-  NodeApiValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
-  CHECK_ARG(result);
+  CHECK_ARG(object);
   CHECK_ARG(utf8Name);
-  napi_value objValue, name;
-  vm::CallResult<vm::HermesValue> cr =
-      vm::toObject(env->runtime_, asHandle<>(object));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  vm::Handle<vm::JSObject> objValue =
-      env->runtime_.makeHandle<vm::JSObject>(*cr);
+  CHECK_ARG(result);
 
-  CHECK_STATUS(napi_create_string_utf8(env, utf8Name, NAPI_AUTO_LENGTH, &name));
-  return env->hasComputedProperty(objValue, name, result);
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> objRes =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  if (objRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  vm::Handle<vm::JSObject> objHandle =
+      env->runtime_.makeHandle<vm::JSObject>(*objRes);
+
+  vm::CallResult<vm::HermesValue> strRes = vm::StringPrimitive::createEfficient(
+      env->runtime_,
+      llvh::makeArrayRef(
+          reinterpret_cast<const uint8_t *>(utf8Name),
+          std::char_traits<char>::length(utf8Name)),
+      /*IgnoreInputErrors:*/ true);
+  if (strRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  vm::CallResult<vm::Handle<vm::SymbolID>> symRes = vm::stringToSymbolID(
+      env->runtime_, vm::createPseudoHandle(strRes->getString()));
+  if (symRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  vm::CallResult<bool> valueRes =
+      objHandle->hasNamedOrIndexed(objHandle, env->runtime_, symRes->get());
+  if (valueRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  *result = *valueRes;
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_get_named_property(
@@ -5113,7 +5138,7 @@ napi_status NAPI_CDECL napi_get_named_property(
     const char *utf8Name,
     napi_value *result) {
   CHECK_STATUS(checkPreconditions(env));
-  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(object);
   CHECK_ARG(utf8Name);
   CHECK_ARG(result);
@@ -5160,17 +5185,31 @@ napi_status NAPI_CDECL napi_set_element(
     napi_value value) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
+  CHECK_ARG(object);
   CHECK_ARG(value);
-  NodeApiValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
-  napi_value objValue;
-  vm::CallResult<vm::HermesValue> cr =
-      vm::toObject(env->runtime_, asHandle<>(object));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  vm::Handle<vm::JSObject> objValue =
-      env->runtime_.makeHandle<vm::JSObject>(*cr);
 
-  return env->setComputedProperty(objValue, index, value);
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> objRes =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  if (objRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  vm::Handle<vm::JSObject> objHandle =
+      env->runtime_.makeHandle<vm::JSObject>(*objRes);
+
+  vm::CallResult<bool> res = objHandle->putComputed_RJS(
+      objHandle,
+      env->runtime_,
+      env->runtime_.makeHandle(
+          vm::HermesValue::encodeTrustedNumberValue(index)),
+      asHandle(value),
+      vm::PropOpFlags().plusThrowOnError());
+  if (res.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_has_element(
@@ -5180,17 +5219,29 @@ napi_status NAPI_CDECL napi_has_element(
     bool *result) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
+  CHECK_ARG(object);
   CHECK_ARG(result);
-  NodeApiValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
-  napi_value objValue;
-  vm::CallResult<vm::HermesValue> cr =
-      vm::toObject(env->runtime_, asHandle<>(object));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  vm::Handle<vm::JSObject> objValue =
-      env->runtime_.makeHandle<vm::JSObject>(*cr);
 
-  return env->hasComputedProperty(objValue, index, result);
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> objRes =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  if (objRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  vm::Handle<vm::JSObject> objHandle =
+      env->runtime_.makeHandle<vm::JSObject>(*objRes);
+
+  vm::CallResult<bool> res = objHandle->hasComputed(
+      objHandle,
+      env->runtime_,
+      env->runtime_.makeHandle(
+          vm::HermesValue::encodeTrustedNumberValue(index)));
+  if (res.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  *result = *res;
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_get_element(
@@ -5200,18 +5251,29 @@ napi_status NAPI_CDECL napi_get_element(
     napi_value *result) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
+  CHECK_ARG(object);
   CHECK_ARG(result);
-  NodeApiEscapableValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
-  napi_value objValue{};
-  vm::CallResult<vm::HermesValue> cr =
-      vm::toObject(env->runtime_, asHandle<>(object));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  vm::Handle<vm::JSObject> objValue =
-      env->runtime_.makeHandle<vm::JSObject>(*cr);
 
-  CHECK_STATUS(env->getComputedProperty(objValue, index, result));
-  return scope.escapeResult(result);
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> objRes =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  if (objRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  vm::Handle<vm::JSObject> objHandle =
+      env->runtime_.makeHandle<vm::JSObject>(*objRes);
+
+  vm::CallResult<vm::PseudoHandle<>> valueRes = objHandle->getComputed_RJS(
+      objHandle,
+      env->runtime_,
+      env->runtime_.makeHandle(
+          vm::HermesValue::encodeTrustedNumberValue(index)));
+  if (valueRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  return env->makeResultValue(valueRes->getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_delete_element(
@@ -5221,16 +5283,30 @@ napi_status NAPI_CDECL napi_delete_element(
     bool *result) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
-  NodeApiValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
-  napi_value objValue;
-  vm::CallResult<vm::HermesValue> cr =
-      vm::toObject(env->runtime_, asHandle<>(object));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  vm::Handle<vm::JSObject> objValue =
-      env->runtime_.makeHandle<vm::JSObject>(*cr);
+  CHECK_ARG(object);
 
-  return env->deleteComputedProperty(objValue, index, result);
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> objRes =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  if (objRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  vm::Handle<vm::JSObject> objHandle =
+      env->runtime_.makeHandle<vm::JSObject>(*objRes);
+
+  vm::CallResult<bool> res = objHandle->deleteComputed(
+      objHandle,
+      env->runtime_,
+      env->runtime_.makeHandle(
+          vm::HermesValue::encodeTrustedNumberValue(index)));
+  if (res.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  if (result != nullptr) {
+    *result = *res;
+  }
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_define_properties(
@@ -5316,35 +5392,45 @@ napi_status NAPI_CDECL napi_define_properties(
 napi_status NAPI_CDECL napi_object_freeze(napi_env env, napi_value object) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
-  NodeApiValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
-  napi_value objValue;
-  vm::CallResult<vm::HermesValue> cr =
-      vm::toObject(env->runtime_, asHandle<>(object));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  vm::Handle<vm::JSObject> objValue =
-      env->runtime_.makeHandle<vm::JSObject>(*cr);
+  CHECK_ARG(object);
 
-  return env->checkExecutionStatus(
-      vm::JSObject::freeze(
-          env->makeHandle<vm::JSObject>(objValue), env->runtime_));
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> objRes =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  if (objRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  vm::ExecutionStatus status = vm::JSObject::freeze(
+      env->makeHandle<vm::JSObject>(*objRes), env->runtime_);
+  if (status == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL napi_object_seal(napi_env env, napi_value object) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
-  NodeApiValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
-  napi_value objValue;
-  vm::CallResult<vm::HermesValue> cr =
-      vm::toObject(env->runtime_, asHandle<>(object));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  vm::Handle<vm::JSObject> objValue =
-      env->runtime_.makeHandle<vm::JSObject>(*cr);
+  CHECK_ARG(object);
 
-  return env->checkExecutionStatus(
-      vm::JSObject::seal(
-          env->makeHandle<vm::JSObject>(objValue), env->runtime_));
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> objRes =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  if (objRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  vm::ExecutionStatus status =
+      vm::JSObject::seal(env->makeHandle<vm::JSObject>(*objRes), env->runtime_);
+  if (status == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
@@ -5416,24 +5502,27 @@ napi_status NAPI_CDECL
 napi_get_prototype(napi_env env, napi_value object, napi_value *result) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
+  CHECK_ARG(object);
   CHECK_ARG(result);
-  NodeApiEscapableValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
-  napi_value objValue{};
-  vm::CallResult<vm::HermesValue> cr =
-      vm::toObject(env->runtime_, asHandle<>(object));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  vm::Handle<vm::JSObject> objValue =
-      env->runtime_.makeHandle<vm::JSObject>(*cr);
 
-  vm::CallResult<vm::PseudoHandle<vm::JSObject>> cr =
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> objRes =
+      vm::toObject(env->runtime_, asHandle<>(object));
+  if (objRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  vm::CallResult<vm::PseudoHandle<vm::JSObject>> protoRes =
       vm::JSObject::getPrototypeOf(
-          asHandle<vm::JSObject>(objValue), env->runtime_);
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  if (!*cr) {
+          env->runtime_.makeHandle<vm::JSObject>(*objRes), env->runtime_);
+  if (protoRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  if (!*protoRes) {
     return env->castResult(&env->NullHermesValue, result);
   }
-  return scope.escapeResult(cr->getHermesValue(), result);
+  return env->makeResultValue(protoRes->getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_create_object(napi_env env, napi_value *result) {
@@ -6815,22 +6904,19 @@ napi_status NAPI_CDECL napi_instanceof(
     bool *result) {
   CHECK_STATUS(checkPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
-  NodeApiValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
-
   CHECK_ARG(object);
   CHECK_ARG(constructor);
   CHECK_ARG(result);
-  napi_value ctorValue;
-  CHECK_STATUS(napi_coerce_to_object(env, constructor, &ctorValue));
 
-  vm::CallResult<vm::HermesValue> cr =
-      vm::toObject(env->runtime_, asHandle<>(object));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  vm::Handle<vm::JSObject> objValue =
-      env->runtime_.makeHandle<vm::JSObject>(*cr);
+  vm::GCScope gcScope{env->runtime_};
 
-  if (!vm::vmisa<vm::Callable>(*phv(ctorValue))) {
+  vm::CallResult<vm::HermesValue> ctorRes =
+      vm::toObject(env->runtime_, asHandle<>(constructor));
+  if (ctorRes.getStatus() != vm::ExecutionStatus::RETURNED) {
+    return env->setJSException();
+  }
+
+  if (!vm::vmisa<vm::Callable>(ctorRes.getValue())) {
     return napi_throw_type_error(
         env, "ERR_NAPI_CONS_FUNCTION", "Constructor must be a function");
   }
