@@ -461,7 +461,7 @@ void NodeLiteRuntime::OnUncaughtException(napi_value error) {
         {error, NodeApi::CreateString(env_, "uncaughtException")});
     // If at least one callback returns false, we do not exit.
     // TODO: (vmoroz) Investigate the Node.js behavior in that case
-    //if (shouldExit && NodeApi::TypeOf(env_, result) == napi_boolean) {
+    // if (shouldExit && NodeApi::TypeOf(env_, result) == napi_boolean) {
     //  shouldExit = NodeApi::GetBoolean(env_, result);
     //}
     shouldExit = false;
@@ -883,17 +883,20 @@ NodeApiEnvScope& NodeApiEnvScope::operator=(NodeApiEnvScope&& other) noexcept {
 
 /*static*/ [[noreturn]] void NodeLiteErrorHandler::OnNodeApiFailed(
     napi_env env, napi_status error_code) {
-  const napi_extended_error_info* error_info{};
-  napi_status status = napi_get_last_error_info(env, &error_info);
-  if (status != napi_ok) {
-    NodeLiteErrorHandler::ExitWithMessage("", [&](std::ostream& os) {
-      os << "Failed to get last error info: " << status;
-    });
-  }
+  const char* errorMessage = "An exception is pending";
   if (NodeApi::IsExceptionPending(env)) {
     error_code = napi_pending_exception;
+  } else {
+    const napi_extended_error_info* error_info{};
+    napi_status status = napi_get_last_error_info(env, &error_info);
+    if (status != napi_ok) {
+      NodeLiteErrorHandler::ExitWithMessage("", [&](std::ostream& os) {
+        os << "Failed to get last error info: " << status;
+      });
+    }
+    errorMessage = error_info->error_message;
   }
-  throw NodeLiteException(error_code, error_info->error_message);
+  throw NodeLiteException(error_code, errorMessage);
 }
 
 /*static*/ [[noreturn]] void NodeLiteErrorHandler::OnAssertFailed(
