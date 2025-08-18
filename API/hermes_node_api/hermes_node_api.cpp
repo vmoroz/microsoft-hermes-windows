@@ -6519,7 +6519,7 @@ napi_open_handle_scope(napi_env env, napi_handle_scope *result) {
 
 napi_status NAPI_CDECL
 napi_close_handle_scope(napi_env env, napi_handle_scope scope) {
-  CHECK_STATUS(checkGCPreconditions(env));
+  CHECK_STATUS(checkGCPreconditions<NodeApiPendingExceptionCheck::kSkip>(env));
   CHECK_ARG(scope);
   RETURN_STATUS_IF_FALSE(
       !env->napiValueStackScopes_.empty(), napi_handle_scope_mismatch);
@@ -6552,7 +6552,7 @@ napi_status NAPI_CDECL napi_open_escapable_handle_scope(
 napi_status NAPI_CDECL napi_close_escapable_handle_scope(
     napi_env env,
     napi_escapable_handle_scope scope) {
-  CHECK_STATUS(checkGCPreconditions(env));
+  CHECK_STATUS(checkGCPreconditions<NodeApiPendingExceptionCheck::kSkip>(env));
   CHECK_STATUS(
       napi_close_handle_scope(env, reinterpret_cast<napi_handle_scope>(scope)));
 
