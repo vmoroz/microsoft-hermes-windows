@@ -251,6 +251,11 @@ struct hash<napi_type_tag> {
 
 namespace hermes::node_api {
 
+// The default version of Node-API to use when user did not request a specific
+// version. The version 8 was the last version that was active before Node-API
+// is added a mechanism to specify a Node-API version per module.
+static const int32_t NodeApiDefaultVersion = 8;
+
 //=============================================================================
 // Forward declaration of all classes.
 //=============================================================================
@@ -1290,8 +1295,8 @@ class NodeApiEnvironment {
   // Reference to the wrapped Hermes runtime.
   vm::Runtime &runtime_;
 
-  // TODO: Use default version 8 if not specified.
-  int32_t apiVersion_{8};
+  // The Node-API version requested by the user of Node-API environment.
+  int32_t apiVersion_{NodeApiDefaultVersion};
 
   // Reference to itself for convenient use in macros.
   NodeApiEnvironment &env{*this};
@@ -1498,8 +1503,7 @@ class NodeApiPostConditionScope {
     CRASH_IF_FALSE(
         napiValueStackScopesSize_ == env_->napiValueStackScopes_.size());
 
-    // TODO: (vmoroz) enable
-    //  CRASH_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
+    CRASH_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
   }
 
  private:
