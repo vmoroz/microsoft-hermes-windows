@@ -225,8 +225,10 @@
 #define CHECK_POSTCONDITIONS(env, valueStackDelta)                  \
   ::hermes::node_api::NodeApiPostConditionScope postConditionScope{ \
       env, valueStackDelta};
+#define NO_RESULT_IF_NULL(expr) postConditionScope.noResultIfNull(expr)
 #else
 #define CHECK_POSTCONDITIONS(env, valueStackDelta)
+#define NO_RESULT_IF_NULL(expr) expr
 #endif
 
 #if defined(_WIN32) && !defined(NDEBUG)
@@ -1226,8 +1228,6 @@ class NodeApiEnvironment {
       const vm::HermesValue &value,
       napi_value *result) noexcept;
 
-  napi_status setBooleanResult(bool value, napi_value *result) noexcept;
-
   napi_status castResult(
       const vm::PinnedHermesValue *value,
       napi_value *result) noexcept;
@@ -1458,6 +1458,7 @@ class NodeApiEscapableValueScope {
   bool isValueEscaped_{false};
 };
 
+#ifdef NODE_API_CHECK_POSTCONDITIONS
 // Verifies Node-API function postconditions
 class NodeApiPostConditionScope {
  public:
@@ -1474,8 +1475,8 @@ class NodeApiPostConditionScope {
       gcScopeMarker_.emplace(topGCScope_->createMarker());
     }
 
-    napiValueStackSize_ = env_->napiValueStack_.size();
-    napiValueStackScopesSize_ = env_->napiValueStackScopes_.size();
+    oldValueStackSize_ = env_->napiValueStack_.size();
+    oldValueStackScopesSize_ = env_->napiValueStackScopes_.size();
   }
 
   ~NodeApiPostConditionScope() noexcept {
@@ -1483,27 +1484,43 @@ class NodeApiPostConditionScope {
       return;
     }
 
+    // Make sure that the GCScope handle stack does not change.
     CRASH_IF_FALSE(topGCScope_ == getTopGCScope());
     if (topGCScope_ != nullptr) {
       vm::GCScope::Marker currentMarker = topGCScope_->createMarker();
       CRASH_IF_FALSE(gcScopeMarker_.value() == currentMarker);
     }
 
-    // TODO: (vmoroz) add checking for success
+    // Verify that the value stack is updated as expected.
     if (valueStackDelta_ == 0) {
-      CRASH_IF_FALSE(napiValueStackSize_ == env_->napiValueStack_.size());
+      CRASH_IF_FALSE(oldValueStackSize_ == env_->napiValueStack_.size());
     } else if (valueStackDelta_ > 0) {
-      CRASH_IF_FALSE(napiValueStackSize_ <= env_->napiValueStack_.size());
-      CRASH_IF_FALSE(
-          env_->napiValueStack_.size() <=
-          napiValueStackSize_ + valueStackDelta_);
+      if (env_->lastError_.error_code == napi_ok) {
+        // Only change the stack if function succeeded.
+        CRASH_IF_FALSE(
+            env_->napiValueStack_.size() ==
+            oldValueStackSize_ + valueStackDelta_);
+      } else {
+        CRASH_IF_FALSE(oldValueStackSize_ == env_->napiValueStack_.size());
+      }
     } else {
       // TODO: (vmoroz) add checking for closed scopes
     }
-    CRASH_IF_FALSE(
-        napiValueStackScopesSize_ == env_->napiValueStackScopes_.size());
 
+    // Verify that the scope count is not changed.
+    CRASH_IF_FALSE(
+        oldValueStackScopesSize_ == env_->napiValueStackScopes_.size());
+
+    // See that vm::Runtime has no unhandled JS exceptions.
     CRASH_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
+  }
+
+  template <typename T>
+  T *noResultIfNull(T *value) noexcept {
+    if (value == nullptr) {
+      valueStackDelta_ = 0;
+    }
+    return value;
   }
 
  private:
@@ -1523,9 +1540,10 @@ class NodeApiPostConditionScope {
   ptrdiff_t valueStackDelta_;
   vm::GCScope *topGCScope_{};
   std::optional<vm::GCScope::Marker> gcScopeMarker_{};
-  size_t napiValueStackSize_{};
-  size_t napiValueStackScopesSize_{};
+  size_t oldValueStackSize_{};
+  size_t oldValueStackScopesSize_{};
 };
+#endif
 
 // Keep external data with an object.
 class NodeApiExternalValue final : public vm::DecoratedObject::Decoration {
@@ -3319,18 +3337,19 @@ napi_status NodeApiEnvironment::checkExecutionStatus(
   thrownJSError_ = runtime_.getThrownValue();
   runtime_.clearThrownValue();
   if (!thrownJSError_.isEmpty()) {
-    return napi_pending_exception;
+    return ERROR_STATUS(napi_pending_exception);
   }
-  return napi_generic_failure;
+  return ERROR_STATUS(napi_generic_failure);
 }
 
+// TODO: pass file name and line number
 napi_status NodeApiEnvironment::setJSException() noexcept {
   thrownJSError_ = runtime_.getThrownValue();
   runtime_.clearThrownValue();
   if (!thrownJSError_.isEmpty()) {
-    return napi_pending_exception;
+    return ERROR_STATUS(napi_pending_exception);
   }
-  return napi_generic_failure;
+  return ERROR_STATUS(napi_generic_failure);
 }
 
 void NodeApiEnvironment::checkRuntimeThrownValue() noexcept {
@@ -4195,12 +4214,6 @@ napi_status NodeApiEnvironment::makeResultValue(
     const vm::HermesValue &value,
     napi_value *result) noexcept {
   *result = pushNewNodeApiValue(value);
-  return clearLastNativeError();
-}
-napi_status NodeApiEnvironment::setBooleanResult(
-    bool value,
-    napi_value *result) noexcept {
-  *result = napiValue(value ? &TrueHermesValue : &FalseHermesValue);
   return clearLastNativeError();
 }
 
@@ -5610,7 +5623,7 @@ napi_status NAPI_CDECL napi_create_bigint_words(
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
-  NodeApiEscapableValueScope scope{*env};
+
   vm::GCScope gcScope{env->runtime_};
   CHECK_ARG(words);
   RETURN_STATUS_IF_FALSE(wordCount <= INT_MAX, napi_invalid_arg);
@@ -5645,7 +5658,8 @@ napi_get_boolean(napi_env env, bool value, napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(result);
-  return env->setBooleanResult(value, result);
+  *result = napiValue(value ? &env->TrueHermesValue : &env->FalseHermesValue);
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
@@ -5832,7 +5846,7 @@ napi_status NAPI_CDECL napi_call_function(
     const napi_value *args,
     napi_value *result) {
   CHECK_STATUS(checkJSPreconditions(env));
-  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ result ? 1 : 0);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
@@ -6191,11 +6205,12 @@ napi_status NAPI_CDECL napi_get_value_string_utf16(
 napi_status NAPI_CDECL
 napi_coerce_to_bool(napi_env env, napi_value value, napi_value *result) {
   CHECK_STATUS(checkJSPreconditions(env));
-  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(value);
   CHECK_ARG(result);
   bool res = vm::toBoolean(*phv(value));
-  return env->setBooleanResult(res, result);
+  *result = napiValue(res ? &env->TrueHermesValue : &env->FalseHermesValue);
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL
@@ -6509,7 +6524,7 @@ napi_get_reference_value(napi_env env, napi_ref ref, napi_value *result) {
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(ref);
   CHECK_ARG(result);
-  *result = asReference(ref)->value(*env);
+  *result = NO_RESULT_IF_NULL(asReference(ref)->value(*env));
   return env->clearLastNativeError();
 }
 
@@ -7024,11 +7039,12 @@ napi_status NAPI_CDECL napi_create_dataview(
   RETURN_STATUS_IF_FALSE(buffer != nullptr, napi_invalid_arg);
 
   if (byteLength + byteOffset > buffer->size()) {
-    return napi_throw_range_error(
+    napi_throw_range_error(
         env,
         "ERR_NAPI_INVALID_DATAVIEW_ARGS",
         "byte_offset + byte_length should be less than or "
         "equal to the size in bytes of the array passed in");
+    return ERROR_STATUS(napi_pending_exception);
   }
   vm::Handle<vm::JSDataView> viewHandle = env->runtime_.makeHandle(
       vm::JSDataView::create(
