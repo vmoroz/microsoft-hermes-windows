@@ -76,6 +76,7 @@
 // TODO: add debug scopes macro in the beginning of each function.
 // TODO: see how to apply post conditions to Node-API scope functions
 
+// The Node-API implementation always contains experimental code.
 #define NAPI_EXPERIMENTAL
 #define NODE_API_EXPERIMENTAL_NO_WARNING
 
@@ -832,7 +833,6 @@ class NodeApiEnvironment {
           NodeApiPendingFinalizers::create()) noexcept;
 
  public:
-  // TODO: Remove the ref count
   // Exported function to increment the ref count by one.
   napi_status incRefCount() noexcept;
 
@@ -5767,13 +5767,15 @@ napi_typeof(napi_env env, napi_value value, napi_valuetype *result) {
 }
 
 napi_status NAPI_CDECL napi_get_undefined(napi_env env, napi_value *result) {
-  CHECK_STATUS(checkBasicPreconditions(env));
+  CHECK_STATUS(
+      checkBasicPreconditions<NodeApiPendingExceptionCheck::kSkip>(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   return env->castResult(&NodeApiEnvironment::UndefinedHermesValue, result);
 }
 
 napi_status NAPI_CDECL napi_get_null(napi_env env, napi_value *result) {
-  CHECK_STATUS(checkBasicPreconditions(env));
+  CHECK_STATUS(
+      checkBasicPreconditions<NodeApiPendingExceptionCheck::kSkip>(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   return env->castResult(&NodeApiEnvironment::NullHermesValue, result);
 }
@@ -6450,7 +6452,8 @@ napi_status NAPI_CDECL napi_create_reference(
 // For a napi_reference returned from `napi_wrap`, this must be called in the
 // finalizer.
 napi_status NAPI_CDECL napi_delete_reference(napi_env env, napi_ref ref) {
-  CHECK_STATUS(checkBasicPreconditions(env));
+  CHECK_STATUS(
+      checkBasicPreconditions<NodeApiPendingExceptionCheck::kSkip>(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(ref);
   delete asReference(ref);
@@ -6508,7 +6511,8 @@ napi_get_reference_value(napi_env env, napi_ref ref, napi_value *result) {
 
 napi_status NAPI_CDECL
 napi_open_handle_scope(napi_env env, napi_handle_scope *result) {
-  CHECK_STATUS(checkGCPreconditions(env));
+  CHECK_STATUS(
+      checkBasicPreconditions<NodeApiPendingExceptionCheck::kSkip>(env));
   CHECK_ARG(result);
   size_t scope = env->napiValueStack_.size();
   env->napiValueStackScopes_.emplace(scope);
@@ -6519,7 +6523,8 @@ napi_open_handle_scope(napi_env env, napi_handle_scope *result) {
 
 napi_status NAPI_CDECL
 napi_close_handle_scope(napi_env env, napi_handle_scope scope) {
-  CHECK_STATUS(checkGCPreconditions<NodeApiPendingExceptionCheck::kSkip>(env));
+  CHECK_STATUS(
+      checkBasicPreconditions<NodeApiPendingExceptionCheck::kSkip>(env));
   CHECK_ARG(scope);
   RETURN_STATUS_IF_FALSE(
       !env->napiValueStackScopes_.empty(), napi_handle_scope_mismatch);
@@ -6537,7 +6542,8 @@ napi_close_handle_scope(napi_env env, napi_handle_scope scope) {
 napi_status NAPI_CDECL napi_open_escapable_handle_scope(
     napi_env env,
     napi_escapable_handle_scope *result) {
-  CHECK_STATUS(checkGCPreconditions(env));
+  CHECK_STATUS(
+      checkBasicPreconditions<NodeApiPendingExceptionCheck::kSkip>(env));
   CHECK_ARG(result);
 
   env->napiValueStack_.emplace(); // value to escape to parent scope
@@ -6572,7 +6578,7 @@ napi_status NAPI_CDECL napi_close_escapable_handle_scope(
 }
 
 // TODO: (vmoroz) simplify all handle scope functions
-// TODO: (vmoroz) add pots conditions to all handle scope functions
+// TODO: (vmoroz) add post conditions to all handle scope functions
 napi_status NAPI_CDECL napi_escape_handle(
     napi_env env,
     napi_escapable_handle_scope scope,
