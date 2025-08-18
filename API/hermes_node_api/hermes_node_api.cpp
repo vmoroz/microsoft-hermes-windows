@@ -6450,7 +6450,7 @@ napi_status NAPI_CDECL napi_create_reference(
 // For a napi_reference returned from `napi_wrap`, this must be called in the
 // finalizer.
 napi_status NAPI_CDECL napi_delete_reference(napi_env env, napi_ref ref) {
-  CHECK_STATUS(checkGCPreconditions(env));
+  CHECK_STATUS(checkBasicPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(ref);
   delete asReference(ref);
@@ -7264,6 +7264,8 @@ napi_status NAPI_CDECL node_api_post_finalizer(
   CHECK_STATUS(checkBasicPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG(finalizeCallback);
+
+  NodeApiValueScope scope{*env};
 
   NodeApiTrackedFinalizer *finalizer = NodeApiTrackedFinalizer::create(
       *env, finalizeData, finalizeCallback, finalizeHint);
