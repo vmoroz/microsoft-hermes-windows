@@ -5279,8 +5279,6 @@ napi_status NAPI_CDECL napi_create_string_utf8(
     napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  NodeApiEscapableValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
   if (length > 0) {
     CHECK_ARG(str);
   }
@@ -5292,17 +5290,17 @@ napi_status NAPI_CDECL napi_create_string_utf8(
       length <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
       napi_invalid_arg);
 
-  if (isAllASCII(str, str + length)) {
-    CHECK_STATUS(env->createStringASCII(str, length, result));
-    return scope.escapeResult(result);
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> strRes = vm::StringPrimitive::createEfficient(
+      env->runtime_,
+      llvh::makeArrayRef(reinterpret_cast<const uint8_t *>(str), length),
+      /*IgnoreInputError:*/ true);
+  if (strRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
   }
 
-  std::u16string u16str;
-  CHECK_STATUS(env->convertUTF8ToUTF16(str, length, u16str));
-  vm::CallResult<vm::HermesValue> cr =
-      vm::StringPrimitive::createEfficient(env->runtime_, std::move(u16str));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  return scope.escapeResult(*cr, result);
+  return env->makeResultValue(*strRes, result);
 }
 
 napi_status NAPI_CDECL napi_create_string_utf16(
@@ -5312,8 +5310,6 @@ napi_status NAPI_CDECL napi_create_string_utf16(
     napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  NodeApiEscapableValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
   if (length > 0) {
     CHECK_ARG(str);
   }
@@ -5325,10 +5321,15 @@ napi_status NAPI_CDECL napi_create_string_utf16(
       length <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
       napi_invalid_arg);
 
-  vm::CallResult<vm::HermesValue> cr = vm::StringPrimitive::createEfficient(
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> strRes = vm::StringPrimitive::createEfficient(
       env->runtime_, llvh::makeArrayRef(str, length));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  return scope.escapeResult(*cr, result);
+  if (strRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  return env->makeResultValue(*strRes, result);
 }
 
 napi_status NAPI_CDECL node_api_create_external_string_latin1(
