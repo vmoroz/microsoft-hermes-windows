@@ -61,21 +61,27 @@ napi_status getNodeApiEnvironmentData(
     const napi_type_tag &tag,
     void **data) noexcept;
 
+// TODO: can we remove it?
 napi_status checkNodeApiPreconditions(napi_env env) noexcept;
 
+// TODO: can we remove it?
 napi_status setNodeApiValue(
     napi_env env,
     ::hermes::vm::CallResult<::hermes::vm::HermesValue> hvResult,
     napi_value *result);
 
+// TODO: can we remove it?
 napi_status checkJSErrorStatus(
     napi_env env,
     vm::ExecutionStatus hermesStatus) noexcept;
 
+// TODO: remove it
 napi_status queueMicrotask(napi_env env, napi_value callback) noexcept;
 
+// TODO: remove it
 napi_status collectGarbage(napi_env env) noexcept;
 
+// TODO: remove it
 napi_status runBytecode(
     napi_env env,
     std::shared_ptr<hbc::BCProvider> bytecodeProvider,
@@ -83,6 +89,7 @@ napi_status runBytecode(
     const std::string &sourceURL,
     napi_value *result) noexcept;
 
+// TODO: can we remove it?
 template <class... TArgs>
 napi_status setLastNativeError(
     napi_env env,
@@ -96,6 +103,7 @@ napi_status setLastNativeError(
   return setLastNativeError(env, status, fileName, line, message);
 }
 
+// TODO: can we remove it?
 template <>
 napi_status setLastNativeError(
     napi_env env,
@@ -104,10 +112,13 @@ napi_status setLastNativeError(
     uint32_t line,
     const std::string &message) noexcept;
 
+// TODO: can we remove it?
 napi_status clearLastNativeError(napi_env env) noexcept;
 
+// TODO: can we replace it with smething else?
 napi_status openNodeApiScope(napi_env env, void **scope) noexcept;
 
+// TODO: can we replace it with smething else?
 napi_status closeNodeApiScope(napi_env env, void *scope) noexcept;
 
 } // namespace hermes::node_api
