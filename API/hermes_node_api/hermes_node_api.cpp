@@ -344,12 +344,6 @@ NodeApiReference *asReference(void *ref) noexcept;
 // Reinterpret cast to NodeApiHostFunctionContext::NodeApiCallbackInfo
 NodeApiCallbackInfo *asCallbackInfo(napi_callback_info callbackInfo) noexcept;
 
-// Get object from HermesValue and cast it to JSObject
-vm::JSObject *getObjectUnsafe(const vm::HermesValue &value) noexcept;
-
-// Get object from napi_value and cast it to JSObject
-vm::JSObject *getObjectUnsafe(napi_value value) noexcept;
-
 // Copy ASCII input to UTF8 buffer. It is a convenience function to match the
 // convertUTF16ToUTF8WithReplacements signature when using std::copy.
 size_t copyASCIIToUTF8(
@@ -424,7 +418,7 @@ class NodeApiRefCountedPtr final {
     }
   }
 
-  NodeApiRefCountedPtr(NodeApiRefCountedPtr &&other)
+  NodeApiRefCountedPtr(NodeApiRefCountedPtr &&other) noexcept
       : ptr_(std::exchange(other.ptr_, nullptr)) {}
 
   ~NodeApiRefCountedPtr() noexcept {
@@ -2690,14 +2684,6 @@ NodeApiReference *asReference(void *ref) noexcept {
 
 NodeApiCallbackInfo *asCallbackInfo(napi_callback_info callbackInfo) noexcept {
   return reinterpret_cast<NodeApiCallbackInfo *>(callbackInfo);
-}
-
-vm::JSObject *getObjectUnsafe(const vm::HermesValue &value) noexcept {
-  return vm::vmcast<vm::JSObject>(value);
-}
-
-vm::JSObject *getObjectUnsafe(napi_value value) noexcept {
-  return vm::vmcast<vm::JSObject>(*phv(value));
 }
 
 size_t copyASCIIToUTF8(
