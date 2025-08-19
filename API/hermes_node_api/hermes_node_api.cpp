@@ -57,7 +57,6 @@
 
 // TODO: Create NodeApiEnvironment with JSI Runtime
 // TODO: Arrays with 2^32-1 elements (sparse arrays?)
-// TODO: Remove handling of unhandled promise rejections
 // TODO: Reduce GCScope and value scopes.
 // TODO: Add support for unique strings (aka PropNameID).
 // TODO: make sure that all functions that return napi_value have top level
@@ -1191,26 +1190,6 @@ class NodeApiEnvironment {
       napi_value *promise,
       vm::MutableHandle<> *resolveFunction,
       vm::MutableHandle<> *rejectFunction) noexcept;
-
-  // Internal function to enable Promise rejection tracker.
-  napi_status enablePromiseRejectionTracker() noexcept;
-
-  // Internal callback to handle Promise rejection notifications.
-  static vm::CallResult<vm::HermesValue> handleRejectionNotification(
-      void *context,
-      vm::Runtime &runtime,
-      vm::NativeArgs args,
-      void (*handler)(
-          NodeApiEnvironment *env,
-          int32_t id,
-          vm::HermesValue error)) noexcept;
-
-  // Exported function to check if there is an unhandled Promise rejection.
-  napi_status hasUnhandledPromiseRejection(bool *result) noexcept;
-
-  // Exported function to get an clear last unhandled Promise rejection.
-  napi_status getAndClearLastUnhandledPromiseRejection(
-      napi_value *result) noexcept;
 
   //---------------------------------------------------------------------------
   // Result setting helpers
@@ -2971,8 +2950,6 @@ NodeApiEnvironment::NodeApiEnvironment(
       vm::HermesValue::encodeSymbolValue(
           runtime_.getIdentifierTable().registerLazyIdentifier(
               vm::createASCIIRef("resolve"))));
-
-  CRASH_IF_FALSE(enablePromiseRejectionTracker() == napi_ok);
 }
 
 NodeApiEnvironment::~NodeApiEnvironment() = default;
@@ -4085,108 +4062,6 @@ static napi_status concludeDeferred(
   return env->clearLastNativeError();
 }
 
-napi_status NodeApiEnvironment::enablePromiseRejectionTracker() noexcept {
-  NodeApiValueScope scope{*this};
-  vm::GCScope gcScope{runtime_};
-
-  vm::Handle<vm::NativeFunction> onUnhandled =
-      vm::NativeFunction::createWithoutPrototype(
-          runtime_,
-          this,
-          [](void *context,
-             vm::Runtime &runtime,
-             vm::NativeArgs args) -> vm::CallResult<vm::HermesValue> {
-            return handleRejectionNotification(
-                context,
-                runtime,
-                args,
-                [](NodeApiEnvironment *env, int32_t id, vm::HermesValue error) {
-                  env->lastUnhandledRejectionId_ = id;
-                  env->lastUnhandledRejection_ = error;
-                });
-          },
-          getPredefinedValue(NodeApiPredefined::onUnhandled).getSymbol(),
-          /*paramCount:*/ 2);
-  vm::Handle<vm::NativeFunction> onHandled =
-      vm::NativeFunction::createWithoutPrototype(
-          runtime_,
-          this,
-          [](void *context,
-             vm::Runtime &runtime,
-             vm::NativeArgs args) -> vm::CallResult<vm::HermesValue> {
-            return handleRejectionNotification(
-                context,
-                runtime,
-                args,
-                [](NodeApiEnvironment *env, int32_t id, vm::HermesValue error) {
-                  if (env->lastUnhandledRejectionId_ == id) {
-                    env->lastUnhandledRejectionId_ = -1;
-                    env->lastUnhandledRejection_ = EmptyHermesValue;
-                  }
-                });
-          },
-          getPredefinedValue(NodeApiPredefined::onHandled).getSymbol(),
-          /*paramCount:*/ 2);
-
-  napi_value options;
-  CHECK_STATUS(napi_create_object(napiEnv(this), &options));
-  CHECK_STATUS(setPredefinedProperty(
-      asHandle<vm::JSObject>(options),
-      NodeApiPredefined::allRejections,
-      vm::Runtime::getBoolValue(true)));
-  CHECK_STATUS(setPredefinedProperty(
-      asHandle<vm::JSObject>(options),
-      NodeApiPredefined::onUnhandled,
-      onUnhandled));
-  CHECK_STATUS(setPredefinedProperty(
-      asHandle<vm::JSObject>(options),
-      NodeApiPredefined::onHandled,
-      onHandled));
-
-  vm::Handle<vm::Callable> hookFunc = vm::Handle<vm::Callable>::dyn_vmcast(
-      asHandle(&runtime_.promiseRejectionTrackingHook_));
-  RETURN_FAILURE_IF_FALSE(hookFunc);
-  return checkExecutionStatus(
-      vm::Callable::executeCall1(
-          hookFunc, runtime_, vm::Runtime::getUndefinedValue(), *phv(options))
-          .getStatus());
-}
-
-/*static*/ vm::CallResult<vm::HermesValue>
-NodeApiEnvironment::handleRejectionNotification(
-    void *context,
-    vm::Runtime &runtime,
-    vm::NativeArgs args,
-    void (*handler)(
-        NodeApiEnvironment *env,
-        int32_t id,
-        vm::HermesValue error)) noexcept {
-  // Args: id, error
-  RAISE_ERROR_IF_FALSE(args.getArgCount() >= 2, u"Expected two arguments.");
-  vm::HermesValue idArg = args.getArg(0);
-  RAISE_ERROR_IF_FALSE(idArg.isNumber(), "id arg must be a Number.");
-  int32_t id = NodeApiDoubleConversion::toInt32(idArg.getDouble());
-
-  RAISE_ERROR_IF_FALSE(context != nullptr, u"Context must not be null.");
-  NodeApiEnvironment *env = reinterpret_cast<NodeApiEnvironment *>(context);
-
-  (*handler)(env, id, args.getArg(1));
-  return env->getUndefined();
-}
-
-napi_status NodeApiEnvironment::hasUnhandledPromiseRejection(
-    bool *result) noexcept {
-  *result = lastUnhandledRejectionId_ != -1;
-  return clearLastNativeError();
-}
-
-napi_status NodeApiEnvironment::getAndClearLastUnhandledPromiseRejection(
-    napi_value *result) noexcept {
-  lastUnhandledRejectionId_ = -1;
-  return makeResultValue(
-      std::exchange(lastUnhandledRejection_, EmptyHermesValue), result);
-}
-
 //---------------------------------------------------------------------------
 // Result setting helpers
 //---------------------------------------------------------------------------
@@ -4307,16 +4182,6 @@ napi_status setLastNativeError(
 
 napi_status clearLastNativeError(napi_env env) noexcept {
   return CHECKED_ENV(env)->clearLastNativeError();
-}
-
-napi_status hasUnhandledPromiseRejection(napi_env env, bool *result) noexcept {
-  return CHECKED_ENV(env)->hasUnhandledPromiseRejection(result);
-}
-
-napi_status getAndClearLastUnhandledPromiseRejection(
-    napi_env env,
-    napi_value *result) noexcept {
-  return CHECKED_ENV(env)->getAndClearLastUnhandledPromiseRejection(result);
 }
 
 napi_status openNodeApiScope(napi_env env, void **scope) noexcept {

@@ -84,12 +84,6 @@ napi_status queueMicrotask(napi_env env, napi_value callback) noexcept;
 
 napi_status collectGarbage(napi_env env) noexcept;
 
-napi_status hasUnhandledPromiseRejection(napi_env env, bool *result) noexcept;
-
-napi_status getAndClearLastUnhandledPromiseRejection(
-    napi_env env,
-    napi_value *result) noexcept;
-
 napi_status runBytecode(
     napi_env env,
     std::shared_ptr<hbc::BCProvider> bytecodeProvider,

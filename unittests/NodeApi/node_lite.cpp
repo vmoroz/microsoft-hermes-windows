@@ -412,19 +412,6 @@ void NodeLiteRuntime::AddNativeModule(
       succeeded, "Failed to register module: %s", module_name.c_str());
 }
 
-void NodeLiteRuntime::HandleUnhandledPromiseRejections() {
-  napi_env env = env_;
-  bool hasException{false};
-  NODE_LITE_CALL(jsr_has_unhandled_promise_rejection(env, &hasException));
-  if (hasException) {
-    napi_value error{};
-    NODE_LITE_CALL(
-        jsr_get_and_clear_last_unhandled_promise_rejection(env, &error));
-    // TODO: (vmoroz) Handle unhandled promise rejections.
-    // throw NodeApiTestException(env, error);
-  }
-}
-
 void NodeLiteRuntime::RunTestScript(const std::string& script_path) {
   NodeApiEnvScope env_scope{env_};
   NodeApiHandleScope handle_scope{env_};
@@ -437,7 +424,6 @@ void NodeLiteRuntime::RunTestScript(const std::string& script_path) {
     ExitOnException(env_, [this]() {
       task_runner_->DrainTaskQueue();
       OnExit();
-      // HandleUnhandledPromiseRejections();
       on_exit_callbacks_.clear();
       on_uncaughtException_callbacks_.clear();
     });

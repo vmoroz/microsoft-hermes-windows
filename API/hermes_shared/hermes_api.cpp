@@ -1093,15 +1093,14 @@ JSR_API jsr_collect_garbage(napi_env env) {
 }
 
 JSR_API
-jsr_has_unhandled_promise_rejection(napi_env env, bool *result) {
-  return hermes::node_api::hasUnhandledPromiseRejection(env, result);
+jsr_has_unhandled_promise_rejection(napi_env /*env*/, bool * /*result*/) {
+  return napi_generic_failure;
 }
 
 JSR_API jsr_get_and_clear_last_unhandled_promise_rejection(
-    napi_env env,
-    napi_value *result) {
-  return hermes::node_api::getAndClearLastUnhandledPromiseRejection(
-      env, result);
+    napi_env /*env*/,
+    napi_value * /*result*/) {
+  return napi_generic_failure;
 }
 
 JSR_API jsr_get_description(napi_env env, const char **result) {
