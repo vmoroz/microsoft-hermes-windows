@@ -55,26 +55,20 @@
 //   of "if-return" statements, and to report failing expressions along with the
 //   file name and code line number.
 
-// TODO: Update with the latest Node.js Node-API implementation that uses the
-// version info.
-
-// TODO: Allow DebugBreak in unexpected cases - add functions to indicate
-//       expected errors
 // TODO: Create NodeApiEnvironment with JSI Runtime
-// TODO: Fix Inspector CMake definitions
-
-// TODO: Cannot use functions as a base class
-// TODO: NativeFunction vs NativeConstructor
-// TODO: Different error messages
 // TODO: Arrays with 2^32-1 elements (sparse arrays?)
-// TODO: How to provide detailed error messages without breaking tests?
-// TODO: Why console.log compiles in V8_JSI?
 // TODO: Remove handling of unhandled promise rejections
-// TODO: Remove the most GCScope.
-// TODO: Add debug check for GCScope stack to see if GCScope is needed.
-// TODO: Add debug check to see if JS exception can be thrown.
-// TODO: add debug scopes macro in the beginning of each function.
-// TODO: see how to apply post conditions to Node-API scope functions
+// TODO: Reduce GCScope and value scopes.
+// TODO: Add support for unique strings (aka PropNameID).
+// TODO: make sure that all functions that return napi_value have top level
+//       handle scope
+// TODO: simplify all handle scope functions
+// TODO: add post conditions to all handle scope functions
+// TODO: Check the latest JSI impl for new instance and function calls
+// TODO: Fix Clang compiler warnings
+// TODO: Fix the bit comparison warning in napi_get_all_property_names
+// TODO: verify Reference classes against Node.js
+// TODO: Simplify non-Node-API API
 
 // The Node-API implementation always contains experimental code.
 #define NAPI_EXPERIMENTAL
@@ -1324,8 +1318,6 @@ class NodeApiEnvironment {
 
   // Task runner finalizer queue for asynchronous finalizer execution
   // Contains NodeApiRefTracker instances that require JS thread execution via
-  // TaskRunner Used by: node_api_post_finalizer, invokeFinalizerFromGC
-  // (non-pure finalizers)
   std::unordered_set<NodeApiRefTracker *> taskRunnerFinalizerQueue_{};
 
   // To ensure that the finalizerQueue_ is being processed only from a single
@@ -1503,8 +1495,6 @@ class NodeApiPostConditionScope {
       } else {
         CRASH_IF_FALSE(oldValueStackSize_ == env_->napiValueStack_.size());
       }
-    } else {
-      // TODO: (vmoroz) add checking for closed scopes
     }
 
     // Verify that the scope count is not changed.
@@ -1569,7 +1559,7 @@ class NodeApiExternalValue final : public vm::DecoratedObject::Decoration {
     if (finalizerHolder_ && !finalizerHolder_->isEmpty()) {
       pendingFinalizers_->addFinalizerHolder(std::move(finalizerHolder_));
       // If we are on JS thread, we can process finalizers immediately.
-      // TODO: (vmoroz) Ensure that the right env is on the right thread
+      // TODO: Ensure that the right env is on the right thread
       if (NodeApiEnvironment::isOnJSThread()) {
         pendingFinalizers_->processPendingFinalizers();
       }
@@ -2082,7 +2072,7 @@ class NodeApiReference : public NodeApiRefTracker {
       vm::JSObject *lockedObject =
           weakRoot_.get(env.runtime(), env.runtime().getHeap());
       if (lockedObject == nullptr) {
-        // TODO: (vmoroz)(refs) Should we return an empty value here?
+        // TODO: Should we return an empty value here?
         // The weakly referenced object has been collected; return undefined.
         return napiValue(&env.getUndefined());
       }
@@ -2985,10 +2975,6 @@ NodeApiEnvironment::NodeApiEnvironment(
   CRASH_IF_FALSE(enablePromiseRejectionTracker() == napi_ok);
 }
 
-// Task 007 Fix: Destructor made default to prevent crashes from accessing
-// deleted members All proper cleanup logic has been moved to DeleteMe() method
-// which must be called before destruction. The destructor should only handle
-// default destruction of members.
 NodeApiEnvironment::~NodeApiEnvironment() = default;
 
 napi_status NodeApiEnvironment::incRefCount() noexcept {
@@ -3182,11 +3168,6 @@ napi_status NodeApiEnvironment::setLastNativeError(
   // TODO: Find a better way to provide the extended error message
   lastError_ = {errorMessages[status], 0, 0, status};
 
-#if defined(_WIN32) && !defined(NDEBUG)
-// TODO: Enable this.
-//  DebugBreak();
-#endif
-
   return status;
 }
 
@@ -3295,7 +3276,7 @@ static napi_status checkBasicPreconditions(napi_env env) noexcept {
   return napi_ok;
 }
 
-// TODO: (vmoroz) Can we remove this method?
+// TODO: Can we remove this method?
 // Aborts process with a disallowed GC access message.
 [[noreturn]] static void abortOnDisallowedGCAccess() noexcept {
   std::cerr << "Finalizer is calling a function that may affect GC state.\n"
@@ -5485,13 +5466,13 @@ napi_status NAPI_CDECL node_api_create_external_string_latin1(
     bool *copied) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  // TODO: (vmoroz) Add support to Hermes for external strings.
+  // TODO: Add support to Hermes for external strings.
   CHECK_STATUS(napi_create_string_latin1(env, str, length, result));
   if (finalizeCallback != nullptr) {
     finalizeCallback(env, str, finalizeHint);
   }
   if (copied != nullptr) {
-    // TODO: (vmoroz) we report here false to pass the Node-API tests.
+    // TODO: we report here false to pass the Node-API tests.
     *copied = false;
   }
   return napi_ok;
@@ -5507,13 +5488,13 @@ napi_status NAPI_CDECL node_api_create_external_string_utf16(
     bool *copied) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  // TODO: (vmoroz) Add support to Hermes for external strings.
+  // TODO: Add support to Hermes for external strings.
   CHECK_STATUS(napi_create_string_utf16(env, str, length, result));
   if (finalizeCallback != nullptr) {
     finalizeCallback(env, str, finalizeHint);
   }
   if (copied != nullptr) {
-    // TODO: (vmoroz) we report here false to pass the Node-API tests.
+    // TODO: we report here false to pass the Node-API tests.
     *copied = false;
   }
   return napi_ok;
@@ -5526,7 +5507,7 @@ napi_status NAPI_CDECL node_api_create_property_key_latin1(
     napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  // TODO: (vmoroz) Use unique strings
+  // TODO: Use unique strings
   return napi_create_string_latin1(env, str, length, result);
 }
 
@@ -5537,7 +5518,7 @@ napi_status NAPI_CDECL node_api_create_property_key_utf8(
     napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  // TODO: (vmoroz) Use unique strings
+  // TODO: Use unique strings
   return napi_create_string_utf8(env, str, length, result);
 }
 
@@ -5548,7 +5529,7 @@ napi_status NAPI_CDECL node_api_create_property_key_utf16(
     napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  // TODO: (vmoroz) Use unique strings
+  // TODO: Use unique strings
   return napi_create_string_utf16(env, str, length, result);
 }
 
@@ -6346,7 +6327,7 @@ napi_status NAPI_CDECL napi_create_external(
   return env->makeResultValue(decoratedObj.getHermesValue(), result);
 }
 
-// TODO: (vmoroz) Update the tag implementation per new code in Node.js
+// TODO: Update the tag implementation per new code in Node.js
 napi_status NAPI_CDECL napi_type_tag_object(
     napi_env env,
     napi_value object,
@@ -6386,7 +6367,7 @@ napi_status NAPI_CDECL napi_type_tag_object(
       nullptr);
 }
 
-// TODO: (vmoroz) match Node.js code for tags
+// TODO: match Node.js code for tags
 napi_status NAPI_CDECL napi_check_object_type_tag(
     napi_env env,
     napi_value object,
@@ -6512,9 +6493,6 @@ napi_reference_unref(napi_env env, napi_ref ref, uint32_t *result) {
   return env->clearLastNativeError();
 }
 
-// TODO: (vmoroz) make sure that all functions that return napi_value have top
-// level handle scope
-
 // Attempts to get a referenced value. If the reference is weak, the value might
 // no longer be available, in that case the call is still successful but the
 // result is NULL.
@@ -6596,8 +6574,6 @@ napi_status NAPI_CDECL napi_close_escapable_handle_scope(
   return env->clearLastNativeError();
 }
 
-// TODO: (vmoroz) simplify all handle scope functions
-// TODO: (vmoroz) add post conditions to all handle scope functions
 napi_status NAPI_CDECL napi_escape_handle(
     napi_env env,
     napi_escapable_handle_scope scope,
@@ -6631,7 +6607,6 @@ napi_status NAPI_CDECL napi_escape_handle(
   return env->castResult(&escapedValue, result);
 }
 
-// TODO: (vmoroz) Check the latest JSI impl
 napi_status NAPI_CDECL napi_new_instance(
     napi_env env,
     napi_value constructor,
@@ -7307,7 +7282,8 @@ napi_status NAPI_CDECL napi_adjust_external_memory(
     node_api_basic_env basic_env,
     int64_t change_in_bytes,
     int64_t *adjusted_value) {
-  // TDOD: (vmoroz) Implement (check the JSArrayBuffer detach as example)
+  // TODO: Implement napi_adjust_external_memory (check the JSArrayBuffer detach
+  // as example)
   napi_env env = const_cast<napi_env>(basic_env);
   CHECK_STATUS(checkBasicPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
