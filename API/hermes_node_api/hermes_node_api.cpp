@@ -4080,6 +4080,20 @@ napi_status NodeApiEnvironment::castResult(
   return clearLastNativeError();
 }
 
+//---------------------------------------------------------------------------
+// String helpers
+//---------------------------------------------------------------------------
+
+std::u16string latin1ToUtf16(const char *str, size_t length) noexcept {
+  // Latin1 has the same codes as Unicode.
+  // We just need to expand char to char16_t.
+  std::u16string u16str(length, u'\0');
+  // Cast to unsigned to avoid signed value expansion to 16 bit.
+  const uint8_t *ustr = reinterpret_cast<const uint8_t *>(str);
+  std::copy(ustr, ustr + length, &u16str[0]);
+  return u16str;
+}
+
 //-----------------------------------------------------------------------------
 // non Node-API external APIs
 //-----------------------------------------------------------------------------
@@ -5232,8 +5246,6 @@ napi_status NAPI_CDECL napi_create_string_latin1(
     napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  NodeApiEscapableValueScope scope{*env};
-  vm::GCScope gcScope{env->runtime_};
   if (length > 0) {
     CHECK_ARG(str);
   }
@@ -5244,22 +5256,20 @@ napi_status NAPI_CDECL napi_create_string_latin1(
   RETURN_STATUS_IF_FALSE(
       length <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
       napi_invalid_arg);
-  if (isAllASCII(str, str + length)) {
-    CHECK_STATUS(env->createStringASCII(str, length, result));
-    return scope.escapeResult(result);
+
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> strRes =
+      ::hermes::isAllASCII(str, str + length)
+      ? vm::StringPrimitive::createEfficient(
+            env->runtime_, llvh::makeArrayRef(str, length))
+      : vm::StringPrimitive::createEfficient(
+            env->runtime_, latin1ToUtf16(str, length));
+  if (strRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
   }
 
-  // Latin1 has the same codes as Unicode.
-  // We just need to expand char to char16_t.
-  std::u16string u16str(length, u'\0');
-  // Cast to unsigned to avoid signed value expansion to 16 bit.
-  const uint8_t *ustr = reinterpret_cast<const uint8_t *>(str);
-  std::copy(ustr, ustr + length, &u16str[0]);
-
-  vm::CallResult<vm::HermesValue> cr =
-      vm::StringPrimitive::createEfficient(env->runtime_, std::move(u16str));
-  CHECK_STATUS(env->checkExecutionStatus(cr.getStatus()));
-  return scope.escapeResult(*cr, result);
+  return env->makeResultValue(*strRes, result);
 }
 
 napi_status NAPI_CDECL napi_create_string_utf8(
