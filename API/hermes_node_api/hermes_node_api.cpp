@@ -117,7 +117,7 @@
 #define ABORT() abort()
 #endif
 
-#define CRASH_IF_FALSE(condition)  \
+#define ABORT_IF_FALSE(condition)  \
   do {                             \
     if (!(condition)) {            \
       assert(false && #condition); \
@@ -536,13 +536,13 @@ class NodeApiStableAddressStack final {
   }
 
   void pop() noexcept {
-    CRASH_IF_FALSE(size_ > 0 && "Size must be non zero.");
+    ABORT_IF_FALSE(size_ > 0 && "Size must be non zero.");
     --size_;
     reduceChunkCount();
   }
 
   void resize(size_t newSize) noexcept {
-    CRASH_IF_FALSE(newSize <= size_ && "Size cannot be increased by resizing.");
+    ABORT_IF_FALSE(newSize <= size_ && "Size cannot be increased by resizing.");
     if (newSize < size_) {
       size_ = newSize;
       reduceChunkCount();
@@ -558,13 +558,13 @@ class NodeApiStableAddressStack final {
   }
 
   T &top() noexcept {
-    CRASH_IF_FALSE(size_ > 0 && "Size must be non zero.");
+    ABORT_IF_FALSE(size_ > 0 && "Size must be non zero.");
     size_t lastIndex = size_ - 1;
     return storage_[lastIndex / ChunkSize][lastIndex % ChunkSize];
   }
 
   T &operator[](size_t index) noexcept {
-    CRASH_IF_FALSE(index < size_ && "Index must be less than size.");
+    ABORT_IF_FALSE(index < size_ && "Index must be less than size.");
     return storage_[index / ChunkSize][index % ChunkSize];
   }
 
@@ -788,15 +788,15 @@ class NodeApiPendingFinalizers {
 
   void incRefCount() noexcept {
     int refCount = refCount_.fetch_add(1, std::memory_order_relaxed) + 1;
-    CRASH_IF_FALSE(refCount > 1 && "The ref count cannot bounce from zero.");
-    CRASH_IF_FALSE(
+    ABORT_IF_FALSE(refCount > 1 && "The ref count cannot bounce from zero.");
+    ABORT_IF_FALSE(
         refCount < std::numeric_limits<int>::max() &&
         "The ref count is too big.");
   }
 
   void decRefCount() noexcept {
     int refCount = refCount_.fetch_sub(1, std::memory_order_release) - 1;
-    CRASH_IF_FALSE(refCount >= 0 && "The ref count must not be negative.");
+    ABORT_IF_FALSE(refCount >= 0 && "The ref count must not be negative.");
     if (refCount == 0) {
       std::atomic_thread_fence(std::memory_order_acquire);
       delete this;
@@ -1183,11 +1183,11 @@ class NodeApiEnvironment {
    public:
     explicit CurrentEnvironmentScope(NodeApiEnvironment *env) noexcept
         : env_(napiEnv(env)) {
-      CRASH_IF_FALSE(openNodeApiScope(env_, &scope_) == napi_ok);
+      ABORT_IF_FALSE(openNodeApiScope(env_, &scope_) == napi_ok);
     }
 
     ~CurrentEnvironmentScope() noexcept {
-      CRASH_IF_FALSE(closeNodeApiScope(env_, scope_) == napi_ok);
+      ABORT_IF_FALSE(closeNodeApiScope(env_, scope_) == napi_ok);
     }
 
    private:
@@ -1377,7 +1377,7 @@ class NodeApiEscapableValueScope {
   napi_status escapeResult(
       const vm::HermesValue &value,
       napi_value *result) noexcept {
-    CRASH_IF_FALSE(!isValueEscaped_ && "The value is already escaped.");
+    ABORT_IF_FALSE(!isValueEscaped_ && "The value is already escaped.");
     if (result != nullptr) {
       isValueEscaped_ = true;
       env_.napiValueStack_[savedScope_] = value;
@@ -1423,32 +1423,32 @@ class NodeApiPostConditionScope {
     }
 
     // Make sure that the GCScope handle stack does not change.
-    CRASH_IF_FALSE(topGCScope_ == getTopGCScope());
+    ABORT_IF_FALSE(topGCScope_ == getTopGCScope());
     if (topGCScope_ != nullptr) {
       vm::GCScope::Marker currentMarker = topGCScope_->createMarker();
-      CRASH_IF_FALSE(gcScopeMarker_.value() == currentMarker);
+      ABORT_IF_FALSE(gcScopeMarker_.value() == currentMarker);
     }
 
     // Verify that the value stack is updated as expected.
     if (valueStackDelta_ == 0) {
-      CRASH_IF_FALSE(oldValueStackSize_ == env_->napiValueStack_.size());
+      ABORT_IF_FALSE(oldValueStackSize_ == env_->napiValueStack_.size());
     } else if (valueStackDelta_ > 0) {
       if (env_->lastError_.error_code == napi_ok) {
         // Only change the stack if function succeeded.
-        CRASH_IF_FALSE(
+        ABORT_IF_FALSE(
             env_->napiValueStack_.size() ==
             oldValueStackSize_ + valueStackDelta_);
       } else {
-        CRASH_IF_FALSE(oldValueStackSize_ == env_->napiValueStack_.size());
+        ABORT_IF_FALSE(oldValueStackSize_ == env_->napiValueStack_.size());
       }
     }
 
     // Verify that the scope count is not changed.
-    CRASH_IF_FALSE(
+    ABORT_IF_FALSE(
         oldValueStackScopesSize_ == env_->napiValueStackScopes_.size());
 
     // See that vm::Runtime has no unhandled JS exceptions.
-    CRASH_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
+    ABORT_IF_FALSE(env_->runtime_.getThrownValue().isEmpty());
   }
 
   template <typename T>
@@ -1949,7 +1949,7 @@ class NodeApiReference : public NodeApiRefTracker {
     if (!isUsingWeakStorage_) {
       return; // It is already a value storage.
     }
-    CRASH_IF_FALSE(canBeWeak_ && "This value cannot use the weak storage.");
+    ABORT_IF_FALSE(canBeWeak_ && "This value cannot use the weak storage.");
 
     // Remove from finalizerHolder_ when becoming strong (O(1) removal)
     if (finalizerHolder_ != nullptr) {
@@ -1989,7 +1989,7 @@ class NodeApiReference : public NodeApiRefTracker {
       return;
     }
 
-    CRASH_IF_FALSE(value_.isObject() && "Expected an Object");
+    ABORT_IF_FALSE(value_.isObject() && "Expected an Object");
 
     // Check if finalizerHolder_ is not null and add directly if possible
     if (finalizerHolder_ != nullptr) {
@@ -2506,7 +2506,7 @@ class NodeApiEnvironmentHolder {
   }
 
   NodeApiEnvironment *createModuleEnvironment(int32_t apiVersion) noexcept {
-    CRASH_IF_FALSE(rootEnv_ != nullptr);
+    ABORT_IF_FALSE(rootEnv_ != nullptr);
     NodeApiRefCountedPtr<NodeApiEnvironment> moduleEnv{
         new NodeApiEnvironment(
             rootEnv_->runtime(),
@@ -2968,9 +2968,9 @@ void NodeApiEnvironment::DeleteMe() noexcept {
   }
   NodeApiRefTracker::finalizeAll(references_);
 
-  CRASH_IF_FALSE(taskRunnerFinalizerQueue_.empty());
-  CRASH_IF_FALSE(finalizingReferences_.isEmpty());
-  CRASH_IF_FALSE(references_.isEmpty());
+  ABORT_IF_FALSE(taskRunnerFinalizerQueue_.empty());
+  ABORT_IF_FALSE(finalizingReferences_.isEmpty());
+  ABORT_IF_FALSE(references_.isEmpty());
 
   // 5. Now safe to delete - all finalizers have been executed
   delete this;
@@ -3009,7 +3009,7 @@ vm::CallResult<vm::HermesValue> NodeApiEnvironment::callModuleInitializer(
   NodeApiValueScope scope{*this};
   vm::GCScope gcScope(runtime_);
   napi_value exports{};
-  CRASH_IF_FALSE(napi_create_object(napiEnv(this), &exports) == napi_ok);
+  ABORT_IF_FALSE(napi_create_object(napiEnv(this), &exports) == napi_ok);
   vm::ExecutionStatus status = callIntoModule(
       [&](NodeApiEnvironment *env) {
         napi_value returned_exports = registerModule(napiEnv(env), exports);
@@ -3462,7 +3462,7 @@ vm::ExecutionStatus NodeApiEnvironment::callIntoModule(
   size_t openHandleScopesBefore = napiValueStackScopes_.size();
   clearLastNativeError();
   call(this);
-  CRASH_IF_FALSE(openHandleScopesBefore == napiValueStackScopes_.size());
+  ABORT_IF_FALSE(openHandleScopesBefore == napiValueStackScopes_.size());
 
   if (!thrownJSError_.isEmpty()) {
     exceptionHandler(this, &thrownJSError_);
