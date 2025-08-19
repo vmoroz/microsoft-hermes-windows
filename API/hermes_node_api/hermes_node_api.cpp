@@ -771,15 +771,15 @@ class NodeApiPendingFinalizers {
   NodeApiPendingFinalizers() noexcept = default;
 
   void incRefCount() noexcept {
-    int refCount = refCount_.fetch_add(1, std::memory_order_relaxed) + 1;
+    int32_t refCount = refCount_.fetch_add(1, std::memory_order_relaxed) + 1;
     ABORT_IF_FALSE(refCount > 1 && "The ref count cannot bounce from zero.");
     ABORT_IF_FALSE(
-        refCount < std::numeric_limits<int>::max() &&
+        refCount < std::numeric_limits<int32_t>::max() &&
         "The ref count is too big.");
   }
 
   void decRefCount() noexcept {
-    int refCount = refCount_.fetch_sub(1, std::memory_order_release) - 1;
+    int32_t refCount = refCount_.fetch_sub(1, std::memory_order_release) - 1;
     ABORT_IF_FALSE(refCount >= 0 && "The ref count must not be negative.");
     if (refCount == 0) {
       std::atomic_thread_fence(std::memory_order_acquire);
@@ -788,7 +788,7 @@ class NodeApiPendingFinalizers {
   }
 
  private:
-  std::atomic<int> refCount_{1};
+  std::atomic<int32_t> refCount_{1};
   std::recursive_mutex mutex_;
 
   std::vector<std::unique_ptr<NodeApiFinalizerHolder>> finalizerHolders_;
@@ -881,13 +881,6 @@ class NodeApiEnvironment {
   napi_status setJSException() noexcept;
 
   void checkRuntimeThrownValue() noexcept;
-
-  //---------------------------------------------------------------------------
-  // Getters for common singletons
-  //---------------------------------------------------------------------------
- public:
-  // Internal function to get the `undefined` value.
-  const vm::PinnedHermesValue &getUndefined() noexcept;
 
   //---------------------------------------------------------------------------
   // Methods to work with Strings
@@ -1063,9 +1056,6 @@ class NodeApiEnvironment {
 
   void invokeFinalizerFromGC(NodeApiRefTracker *finalizer) noexcept;
 
-  bool isTerminatedOrTerminating() const noexcept;
-  void setTerminatedOrTerminating(bool value) noexcept;
-
   void processPendingFinalizers() noexcept;
 
   // Internal function to process finalizer queue immediately upon exiting
@@ -1211,7 +1201,7 @@ class NodeApiEnvironment {
       tlsCurrentEnvStack_;
 
   // Controls the lifetime of this class instances.
-  std::atomic<int> refCount_{1};
+  std::atomic<int32_t> refCount_{1};
 
   // Used for safe update of finalizer queue.
   NodeApiRefCountedPtr<NodeApiPendingFinalizers> pendingFinalizers_;
@@ -1265,7 +1255,7 @@ class NodeApiEnvironment {
 
   // Used by handleFinalizerException to determine if environment is in
   // termination state
-  std::atomic<bool> isTerminatedOrTerminating_{false};
+  bool isTerminatedOrTerminating_{false};
 
   // Temporary GC roots for ordered sets used to collect property names.
   llvh::SmallVector<NodeApiOrderedSet<vm::HermesValue> *, 16> orderedSets_;
@@ -1580,7 +1570,7 @@ class NodeApiCallbackInfo final {
       buffer[i] = napiValue(&nativeArgs_.begin()[i]);
     }
     for (; i < bufferLength; ++i) {
-      buffer[i] = napiValue(&context_.env_.getUndefined());
+      buffer[i] = napiValue(&context_.env_.UndefinedHermesValue);
     }
   }
 
@@ -1633,7 +1623,7 @@ class NodeApiCallbackInfo final {
   if (result) {
     return *phv(result);
   } else {
-    return env.getUndefined();
+    return env.UndefinedHermesValue;
   }
 }
 
@@ -2004,7 +1994,7 @@ class NodeApiReference : public NodeApiRefTracker {
       if (lockedObject == nullptr) {
         // TODO: Should we return an empty value here?
         // The weakly referenced object has been collected; return undefined.
-        return napiValue(&env.getUndefined());
+        return napiValue(&env.UndefinedHermesValue);
       }
       rawValue = vm::HermesValue::encodeObjectValue(lockedObject);
     } else {
@@ -2392,7 +2382,7 @@ class NodeApiDoubleConversion final {
       return static_cast<int32_t>(value);
     }
     uint64_t u64 = toUint64Bits(value);
-    int exponent = getExponent(u64);
+    int32_t exponent = getExponent(u64);
     uint64_t bits;
     if (exponent < 0) {
       if (exponent <= -kSignificandSize) {
@@ -2441,13 +2431,13 @@ class NodeApiDoubleConversion final {
     return result;
   }
 
-  static int getSign(uint64_t u64) noexcept {
+  static int32_t getSign(uint64_t u64) noexcept {
     return (u64 & kSignMask) == 0 ? 1 : -1;
   }
 
-  static int getExponent(uint64_t u64) noexcept {
-    int biased_e =
-        static_cast<int>((u64 & kExponentMask) >> kPhysicalSignificandSize);
+  static int32_t getExponent(uint64_t u64) noexcept {
+    int32_t biased_e =
+        static_cast<int32_t>((u64 & kExponentMask) >> kPhysicalSignificandSize);
     return biased_e - kExponentBias;
   }
 
@@ -2459,9 +2449,9 @@ class NodeApiDoubleConversion final {
   static constexpr uint64_t kExponentMask = 0x7FF0'0000'0000'0000;
   static constexpr uint64_t kSignificandMask = 0x000F'FFFF'FFFF'FFFF;
   static constexpr uint64_t kHiddenBit = 0x0010'0000'0000'0000;
-  static constexpr int kPhysicalSignificandSize = 52;
-  static constexpr int kSignificandSize = 53;
-  static constexpr int kExponentBias = 0x3FF + kPhysicalSignificandSize;
+  static constexpr int32_t kPhysicalSignificandSize = 52;
+  static constexpr int32_t kSignificandSize = 53;
+  static constexpr int32_t kExponentBias = 0x3FF + kPhysicalSignificandSize;
 };
 
 class NodeApiEnvironmentHolder {
@@ -2551,11 +2541,11 @@ class NodeApiEnvironmentHolder {
 
     // Notify all environments of runtime termination
     if (holder->rootEnv_) {
-      holder->rootEnv_->setTerminatedOrTerminating(true);
+      holder->rootEnv_->isTerminatedOrTerminating_ = true;
     }
     for (auto &moduleEnv : holder->moduleEnvs_) {
       if (moduleEnv) {
-        moduleEnv->setTerminatedOrTerminating(true);
+        moduleEnv->isTerminatedOrTerminating_ = true;
       }
     }
 
@@ -3010,7 +3000,7 @@ vm::CallResult<vm::HermesValue> NodeApiEnvironment::callModuleInitializer(
   if (exports != nullptr) {
     return *phv(exports);
   } else {
-    return getUndefined();
+    return UndefinedHermesValue;
   }
 }
 
@@ -3074,7 +3064,7 @@ napi_status NodeApiEnvironment::setLastNativeError(
   // message in the `napi_status` enum each time a new error message is added.
   // We don't have a napi_status_last as this would result in an ABI
   // change each time a message was added.
-  const int lastStatus = napi_cannot_run_js;
+  const int32_t lastStatus = napi_cannot_run_js;
   static_assert(
       size(errorMessages) == lastStatus + 1,
       "Count of error messages must match count of error values");
@@ -3232,7 +3222,7 @@ static napi_status checkGCPreconditions(napi_env env) noexcept {
 static napi_status checkJSPreconditions(napi_env env) noexcept {
   CHECK_STATUS(checkGCPreconditions(env));
   RETURN_STATUS_IF_FALSE(
-      !env->isShuttingDown_ && !env->isTerminatedOrTerminating(),
+      !env->isShuttingDown_ && !env->isTerminatedOrTerminating_,
       env->apiVersion_ >= 10 ? napi_cannot_run_js : napi_pending_exception);
   return napi_ok;
 }
@@ -3267,10 +3257,6 @@ void NodeApiEnvironment::checkRuntimeThrownValue() noexcept {
     thrownJSError_ = thrownValue;
     runtime_.clearThrownValue();
   }
-}
-
-const vm::PinnedHermesValue &NodeApiEnvironment::getUndefined() noexcept {
-  return *runtime_.getUndefinedValue().unsafeGetPinnedHermesValue();
 }
 
 napi_status NodeApiEnvironment::getUniqueSymbolID(
@@ -3770,16 +3756,6 @@ void NodeApiEnvironment::invokeFinalizerFromGC(
   }
 }
 
-// Termination state tracking methods for Node.js-aligned error handling
-// These methods support coordination for environment termination
-bool NodeApiEnvironment::isTerminatedOrTerminating() const noexcept {
-  return isTerminatedOrTerminating_.load(std::memory_order_acquire);
-}
-
-void NodeApiEnvironment::setTerminatedOrTerminating(bool value) noexcept {
-  isTerminatedOrTerminating_.store(value, std::memory_order_release);
-}
-
 void NodeApiEnvironment::processPendingFinalizers() noexcept {
   if (pendingFinalizers_->hasPendingFinalizers()) {
     pendingFinalizers_->processPendingFinalizers();
@@ -3839,7 +3815,7 @@ const vm::PinnedHermesValue &NodeApiEnvironment::lockWeakRoot(
   if (vm::JSObject *ptr = weakRoot.get(runtime_, runtime_.getHeap())) {
     return *phv(pushNewNodeApiValue(vm::HermesValue::encodeObjectValue(ptr)));
   }
-  return getUndefined();
+  return UndefinedHermesValue;
 }
 
 //-----------------------------------------------------------------------------
@@ -3931,7 +3907,7 @@ napi_status NodeApiEnvironment::createPromise(
     vm::CallResult<vm::HermesValue> callback(const vm::NativeArgs &args) {
       *resolve = args.getArg(0);
       *reject = args.getArg(1);
-      return env_->getUndefined();
+      return env_->UndefinedHermesValue;
     }
 
     NodeApiEnvironment *env_{};
@@ -3970,7 +3946,7 @@ static napi_status concludeDeferred(
       asHandle<vm::JSObject>(jsDeferred), predefinedProperty, &resolver));
   CHECK_STATUS(napi_call_function(
       env,
-      napiValue(&env->getUndefined()),
+      napiValue(&env->UndefinedHermesValue),
       resolver,
       1,
       &resolution,
@@ -5476,7 +5452,7 @@ napi_create_bigint_uint64(napi_env env, uint64_t value, napi_value *result) {
 
 napi_status NAPI_CDECL napi_create_bigint_words(
     napi_env env,
-    int signBit,
+    int32_t signBit,
     size_t wordCount,
     const uint64_t *words,
     napi_value *result) {
@@ -5727,7 +5703,7 @@ napi_status NAPI_CDECL napi_call_function(
       env->runtime_,
       static_cast<uint32_t>(argCount),
       funcHandle.getHermesValue(),
-      /*newTarget:*/ env->getUndefined(),
+      /*newTarget:*/ env->UndefinedHermesValue,
       *phv(thisArg)};
   if (LLVM_UNLIKELY(newFrame.overflowed())) {
     CHECK_STATUS(env->checkExecutionStatus(env->runtime_.raiseStackOverflow(
@@ -5884,7 +5860,7 @@ napi_status NAPI_CDECL napi_get_value_bigint_uint64(
 napi_status NAPI_CDECL napi_get_value_bigint_words(
     napi_env env,
     napi_value value,
-    int *signBit,
+    int32_t *signBit,
     size_t *wordCount,
     uint64_t *words) {
   CHECK_STATUS(checkGCPreconditions(env));
@@ -6865,7 +6841,7 @@ napi_status NAPI_CDECL napi_get_typedarray_info(
         ? env->pushNewNodeApiValue(
               vm::HermesValue::encodeObjectValue(
                   array->getBuffer(env->runtime_)))
-        : napiValue(&env->getUndefined());
+        : napiValue(&env->UndefinedHermesValue);
   }
 
   if (byteOffset != nullptr) {
@@ -6949,7 +6925,7 @@ napi_status NAPI_CDECL napi_get_dataview_info(
     *arrayBuffer = view->attached(env->runtime_)
         ? env->pushNewNodeApiValue(
               view->getBuffer(env->runtime_).getHermesValue())
-        : napiValue(&env->getUndefined());
+        : napiValue(&env->UndefinedHermesValue);
   }
 
   if (byteOffset != nullptr) {
