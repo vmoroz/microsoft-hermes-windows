@@ -140,17 +140,6 @@
       : reinterpret_cast<hermes::node_api::NodeApiEnvironment *>( \
             const_cast<napi_env>(env))
 
-// Check env and return error status with message.
-#define CHECKED_ENV_ERROR_STATUS(env, status, ...) \
-  ((env) == nullptr)                               \
-      ? napi_invalid_arg                           \
-      : ::hermes::node_api::setLastNativeError(    \
-            env, (status), (__FILE__), (uint32_t)(__LINE__), __VA_ARGS__)
-
-// Check env and return napi_generic_failure with message.
-#define CHECKED_ENV_GENERIC_FAILURE(env, ...) \
-  CHECKED_ENV_ERROR_STATUS(env, napi_generic_failure, __VA_ARGS__)
-
 // Check conditions and return error status with message if it is false.
 #define RETURN_STATUS_IF_FALSE_WITH_MESSAGE(condition, status, ...)      \
   do {                                                                   \
@@ -164,11 +153,6 @@
 #define RETURN_STATUS_IF_FALSE(condition, status) \
   RETURN_STATUS_IF_FALSE_WITH_MESSAGE(            \
       (condition), (status), "Condition is false: " #condition)
-
-// Check conditions and return napi_generic_failure if it is false.
-#define RETURN_FAILURE_IF_FALSE(condition) \
-  RETURN_STATUS_IF_FALSE_WITH_MESSAGE(     \
-      (condition), napi_generic_failure, "Condition is false: " #condition)
 
 // Check that the argument is not nullptr.
 #define CHECK_ARG(arg)                 \
@@ -3669,7 +3653,7 @@ napi_status NodeApiEnvironment::getExternalPropertyValue(
   if (status == napi_ok &&
       vm::vmisa<vm::DecoratedObject>(*phv(napiExternalValue))) {
     externalValue = getExternalObjectValue(*phv(napiExternalValue));
-    RETURN_FAILURE_IF_FALSE(externalValue != nullptr);
+    RETURN_STATUS_IF_FALSE(externalValue != nullptr, napi_generic_failure);
   } else if (ifNotFound == NodeApiIfNotFound::ThenCreate) {
     vm::Handle<vm::DecoratedObject> decoratedObj =
         createExternalObject(nullptr, &externalValue);
@@ -5758,7 +5742,7 @@ napi_status NAPI_CDECL napi_call_function(
   CHECK_STATUS(env->checkExecutionStatus(callRes.getStatus()));
 
   if (result) {
-    RETURN_FAILURE_IF_FALSE(!callRes->get().isEmpty());
+    RETURN_STATUS_IF_FALSE(!callRes->get().isEmpty(), napi_generic_failure);
     return scope.escapeResult(callRes->get(), result);
   }
   return env->clearLastNativeError();
