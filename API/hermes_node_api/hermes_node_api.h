@@ -51,14 +51,6 @@ napi_status initializeNodeApiModule(
     int32_t apiVersion,
     napi_value *exports) noexcept;
 
-napi_status runScript(
-    napi_env env,
-    const char *script,
-    size_t script_length,
-    const char *filename,
-    size_t filename_length,
-    napi_value *result) noexcept;
-
 napi_status setNodeApiEnvironmentData(
     napi_env env,
     const napi_type_tag &tag,
@@ -104,19 +96,6 @@ napi_status setLastNativeError(
   return setLastNativeError(env, status, fileName, line, message);
 }
 
-template <class... TArgs>
-napi_status setLastNativeError(
-    NodeApiEnvironment &env,
-    napi_status status,
-    const char *fileName,
-    uint32_t line,
-    TArgs &&...args) noexcept {
-  std::ostringstream sb;
-  (void)(sb << ... << args);
-  const std::string message = sb.str();
-  return setLastNativeError(env, status, fileName, line, message);
-}
-
 template <>
 napi_status setLastNativeError(
     napi_env env,
@@ -125,17 +104,10 @@ napi_status setLastNativeError(
     uint32_t line,
     const std::string &message) noexcept;
 
-template <>
-napi_status setLastNativeError(
-    NodeApiEnvironment &env,
-    napi_status status,
-    const char *fileName,
-    uint32_t line,
-    const std::string &message) noexcept;
-
 napi_status clearLastNativeError(napi_env env) noexcept;
 
 napi_status openNodeApiScope(napi_env env, void **scope) noexcept;
+
 napi_status closeNodeApiScope(napi_env env, void *scope) noexcept;
 
 } // namespace hermes::node_api

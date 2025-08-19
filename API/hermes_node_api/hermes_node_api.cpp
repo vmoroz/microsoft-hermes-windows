@@ -202,13 +202,6 @@
         "Argument is not a String: " #arg); \
   } while (false)
 
-#define RAISE_ERROR_IF_FALSE(condition, message)                            \
-  do {                                                                      \
-    if (!(condition)) {                                                     \
-      return runtime.raiseTypeError(message " Condition: " u## #condition); \
-    }                                                                       \
-  } while (false)
-
 #if !defined(NODE_API_CHECK_POSTCONDITIONS) && !defined(NDEBUG)
 #define NODE_API_CHECK_POSTCONDITIONS
 #endif
@@ -888,20 +881,6 @@ class NodeApiEnvironment {
   // Methods to support JS error handling
   //---------------------------------------------------------------------------
  public:
-  // Internal function to create JS error with the specified prototype.
-  napi_status createJSError(
-      const vm::PinnedHermesValue &errorPrototype,
-      napi_value code,
-      napi_value message,
-      napi_value *result) noexcept;
-
-  // Internal function to create and throw JS error object with the specified
-  // prototype.
-  napi_status throwJSError(
-      const vm::PinnedHermesValue &prototype,
-      const char *code,
-      const char *message) noexcept;
-
   // Internal function to set code property for the error object.
   // Node.js has a predefined set of codes for common errors.
   napi_status setJSErrorCode(
@@ -1260,7 +1239,7 @@ class NodeApiEnvironment {
   int32_t apiVersion_{NodeApiDefaultVersion};
 
   // Reference to itself for convenient use in macros.
-  NodeApiEnvironment &env{*this};
+  napi_env env{napiEnv(this)};
 
   // Flags used by byte code compiler.
   hbc::CompileFlags compileFlags_{};
@@ -3027,7 +3006,7 @@ NodeApiEnvironment::napiValueStack() noexcept {
 
 vm::CallResult<vm::HermesValue> NodeApiEnvironment::callModuleInitializer(
     napi_addon_register_func registerModule) noexcept {
-  NodeApiValueScope scope{env};
+  NodeApiValueScope scope{*this};
   vm::GCScope gcScope(runtime_);
   napi_value exports{};
   CRASH_IF_FALSE(napi_create_object(napiEnv(this), &exports) == napi_ok);
@@ -4136,16 +4115,6 @@ napi_status setLastNativeError(
     uint32_t line,
     const std::string &message) noexcept {
   return CHECKED_ENV(env)->setLastNativeError(status, fileName, line, message);
-}
-
-template <>
-napi_status setLastNativeError(
-    NodeApiEnvironment &env,
-    napi_status status,
-    const char *fileName,
-    uint32_t line,
-    const std::string &message) noexcept {
-  return env.setLastNativeError(status, fileName, line, message);
 }
 
 napi_status clearLastNativeError(napi_env env) noexcept {
