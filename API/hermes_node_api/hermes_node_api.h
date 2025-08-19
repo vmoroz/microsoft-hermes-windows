@@ -105,7 +105,7 @@ napi_status setLastNativeError(
     uint32_t line,
     TArgs &&...args) noexcept {
   std::ostringstream sb;
-  (sb << ... << args);
+  (void)(sb << ... << args);
   const std::string message = sb.str();
   return setLastNativeError(env, status, fileName, line, message);
 }
@@ -118,7 +118,7 @@ napi_status setLastNativeError(
     uint32_t line,
     TArgs &&...args) noexcept {
   std::ostringstream sb;
-  (sb << ... << args);
+  (void)(sb << ... << args);
   const std::string message = sb.str();
   return setLastNativeError(env, status, fileName, line, message);
 }

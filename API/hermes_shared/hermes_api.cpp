@@ -90,7 +90,7 @@ class CrashManagerImpl : public ::hermes::vm::CrashManager {
       _largeMemBlocks[(intptr_t)mem] = length;
 
       auto pieceCount = length / WER_MAX_MEM_BLOCK_SIZE;
-      for (auto i = 0; i < pieceCount; i++) {
+      for (size_t i = 0; i < pieceCount; i++) {
         WerRegisterMemoryBlock(
             (char *)mem + i * WER_MAX_MEM_BLOCK_SIZE, WER_MAX_MEM_BLOCK_SIZE);
       }
@@ -108,7 +108,7 @@ class CrashManagerImpl : public ::hermes::vm::CrashManager {
       // This memory was larger than what WER supports so we split it up into
       // chunks of size WER_MAX_MEM_BLOCK_SIZE
       auto pieceCount = _largeMemBlocks[(intptr_t)mem] / WER_MAX_MEM_BLOCK_SIZE;
-      for (auto i = 0; i < pieceCount; i++) {
+      for (size_t i = 0; i < pieceCount; i++) {
         WerUnregisterMemoryBlock((char *)mem + i * WER_MAX_MEM_BLOCK_SIZE);
       }
 
@@ -796,7 +796,7 @@ class RuntimeWrapper {
         cache = scriptCache_->tryGetPreparedScript(
             scriptSignature, runtimeSignature, prepareTag);
         bcErr = ::hermes::hbc::BCProviderFromBuffer::createBCProviderFromBuffer(
-            std::make_unique<JsiBuffer>(move(cache)));
+            std::make_unique<JsiBuffer>(std::move(cache)));
       }
 
       ::hermes::hbc::BCProviderFromSrc *bytecodeProviderFromSrc{};

@@ -3318,9 +3318,9 @@ napi_status NodeApiEnvironment::checkExecutionStatus(
   thrownJSError_ = runtime_.getThrownValue();
   runtime_.clearThrownValue();
   if (!thrownJSError_.isEmpty()) {
-    return ERROR_STATUS(napi_pending_exception);
+    return ERROR_STATUS(napi_pending_exception, "Exception pending");
   }
-  return ERROR_STATUS(napi_generic_failure);
+  return ERROR_STATUS(napi_generic_failure, "Generic error");
 }
 
 // TODO: pass file name and line number
