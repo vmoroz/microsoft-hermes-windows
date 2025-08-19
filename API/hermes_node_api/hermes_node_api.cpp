@@ -930,18 +930,6 @@ class NodeApiEnvironment {
   // Methods to work with Strings
   //---------------------------------------------------------------------------
  public:
-  // Internal function to create napi_value from an ASCII string.
-  napi_status createStringASCII(
-      const char *str,
-      size_t length,
-      napi_value *result) noexcept;
-
-  // Internal function to convert UTF-8 string to UTF-16.
-  napi_status convertUTF8ToUTF16(
-      const char *utf8,
-      size_t length,
-      std::u16string &out) noexcept;
-
   // Internal function to get or create unique UTF-8 string SymbolID.
   // Note that unique SymbolID is used by Hermes for string-based identifiers,
   // and non-unique SymbolID is for the JS Symbols.
@@ -3322,40 +3310,6 @@ const vm::PinnedHermesValue &NodeApiEnvironment::getUndefined() noexcept {
   return *runtime_.getUndefinedValue().unsafeGetPinnedHermesValue();
 }
 
-napi_status NodeApiEnvironment::createStringASCII(
-    const char *str,
-    size_t length,
-    napi_value *result) noexcept {
-  vm::CallResult<vm::HermesValue> res = vm::StringPrimitive::createEfficient(
-      runtime_, llvh::makeArrayRef(str, length));
-  CHECK_STATUS(checkExecutionStatus(res.getStatus()));
-  return makeResultValue(*res, result);
-}
-
-napi_status NodeApiEnvironment::convertUTF8ToUTF16(
-    const char *utf8,
-    size_t length,
-    std::u16string &out) noexcept {
-  // length is the number of input bytes
-  out.resize(length);
-  const llvh::UTF8 *sourceStart = reinterpret_cast<const llvh::UTF8 *>(utf8);
-  const llvh::UTF8 *sourceEnd = sourceStart + length;
-  llvh::UTF16 *targetStart = reinterpret_cast<llvh::UTF16 *>(&out[0]);
-  llvh::UTF16 *targetEnd = targetStart + out.size();
-  llvh::ConversionResult convRes = ConvertUTF8toUTF16(
-      &sourceStart,
-      sourceEnd,
-      &targetStart,
-      targetEnd,
-      llvh::lenientConversion);
-  RETURN_STATUS_IF_FALSE_WITH_MESSAGE(
-      convRes != llvh::ConversionResult::targetExhausted,
-      napi_generic_failure,
-      "not enough space allocated for UTF16 conversion");
-  out.resize(reinterpret_cast<char16_t *>(targetStart) - &out[0]);
-  return clearLastNativeError();
-}
-
 napi_status NodeApiEnvironment::getUniqueSymbolID(
     const char *utf8,
     size_t length,
@@ -5351,7 +5305,7 @@ napi_status NAPI_CDECL node_api_create_external_string_latin1(
     // TODO: we report here false to pass the Node-API tests.
     *copied = false;
   }
-  return napi_ok;
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL node_api_create_external_string_utf16(
@@ -5373,7 +5327,7 @@ napi_status NAPI_CDECL node_api_create_external_string_utf16(
     // TODO: we report here false to pass the Node-API tests.
     *copied = false;
   }
-  return napi_ok;
+  return env->clearLastNativeError();
 }
 
 napi_status NAPI_CDECL node_api_create_property_key_latin1(
@@ -5383,8 +5337,42 @@ napi_status NAPI_CDECL node_api_create_property_key_latin1(
     napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  // TODO: Use unique strings
-  return napi_create_string_latin1(env, str, length, result);
+  if (length > 0) {
+    CHECK_ARG(str);
+  }
+  CHECK_ARG(result);
+  if (length == NAPI_AUTO_LENGTH) {
+    length = std::char_traits<char>::length(str);
+  }
+  RETURN_STATUS_IF_FALSE(
+      length <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
+      napi_invalid_arg);
+
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> strRes =
+      ::hermes::isAllASCII(str, str + length)
+      ? vm::StringPrimitive::createEfficient(
+            env->runtime_, llvh::makeArrayRef(str, length))
+      : vm::StringPrimitive::createEfficient(
+            env->runtime_, latin1ToUtf16(str, length));
+  if (strRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  vm::CallResult<vm::Handle<vm::SymbolID>> symRes = vm::stringToSymbolID(
+      env->runtime_, vm::createPseudoHandle(strRes->getString()));
+  if (symRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  // Get uniqued string from the symbol.
+  vm::StringPrimitive *strPrim =
+      env->runtime_.getIdentifierTable().getStringPrim(
+          env->runtime_, symRes->get());
+
+  return env->makeResultValue(
+      vm::HermesValue::encodeStringValue(strPrim), result);
 }
 
 napi_status NAPI_CDECL node_api_create_property_key_utf8(
@@ -5394,8 +5382,40 @@ napi_status NAPI_CDECL node_api_create_property_key_utf8(
     napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  // TODO: Use unique strings
-  return napi_create_string_utf8(env, str, length, result);
+  if (length > 0) {
+    CHECK_ARG(str);
+  }
+  CHECK_ARG(result);
+  if (length == NAPI_AUTO_LENGTH) {
+    length = std::char_traits<char>::length(str);
+  }
+  RETURN_STATUS_IF_FALSE(
+      length <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
+      napi_invalid_arg);
+
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> strRes = vm::StringPrimitive::createEfficient(
+      env->runtime_,
+      llvh::makeArrayRef(reinterpret_cast<const uint8_t *>(str), length),
+      /*IgnoreInputErrors:*/ true);
+  if (strRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  vm::CallResult<vm::Handle<vm::SymbolID>> symRes = vm::stringToSymbolID(
+      env->runtime_, vm::createPseudoHandle(strRes->getString()));
+  if (symRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  // Get uniqued string from the symbol.
+  vm::StringPrimitive *strPrim =
+      env->runtime_.getIdentifierTable().getStringPrim(
+          env->runtime_, symRes->get());
+
+  return env->makeResultValue(
+      vm::HermesValue::encodeStringValue(strPrim), result);
 }
 
 napi_status NAPI_CDECL node_api_create_property_key_utf16(
@@ -5405,8 +5425,38 @@ napi_status NAPI_CDECL node_api_create_property_key_utf16(
     napi_value *result) {
   CHECK_STATUS(checkGCPreconditions(env));
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
-  // TODO: Use unique strings
-  return napi_create_string_utf16(env, str, length, result);
+  if (length > 0) {
+    CHECK_ARG(str);
+  }
+  CHECK_ARG(result);
+  if (length == NAPI_AUTO_LENGTH) {
+    length = std::char_traits<char16_t>::length(str);
+  }
+  RETURN_STATUS_IF_FALSE(
+      length <= static_cast<size_t>(std::numeric_limits<int32_t>::max()),
+      napi_invalid_arg);
+
+  vm::GCScope gcScope{env->runtime_};
+
+  vm::CallResult<vm::HermesValue> strRes = vm::StringPrimitive::createEfficient(
+      env->runtime_, llvh::makeArrayRef(str, length));
+  if (strRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  vm::CallResult<vm::Handle<vm::SymbolID>> symRes = vm::stringToSymbolID(
+      env->runtime_, vm::createPseudoHandle(strRes->getString()));
+  if (symRes.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+
+  // Get uniqued string from the symbol.
+  vm::StringPrimitive *strPrim =
+      env->runtime_.getIdentifierTable().getStringPrim(
+          env->runtime_, symRes->get());
+
+  return env->makeResultValue(
+      vm::HermesValue::encodeStringValue(strPrim), result);
 }
 
 napi_status NAPI_CDECL
