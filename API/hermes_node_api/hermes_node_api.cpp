@@ -1179,7 +1179,7 @@ class NodeApiEnvironment {
       vm::MutableHandle<vm::JSTypedArrayBase> *result) noexcept;
 
   // Internal function to get TypedArray name.
-  template <vm::CellKind CellKind>
+  template <vm::CellKind cellKind>
   static constexpr const char *getTypedArrayName() noexcept;
 
   //---------------------------------------------------------------------------
@@ -3999,17 +3999,17 @@ napi_status NodeApiEnvironment::createTypedArray(
   return clearLastNativeError();
 }
 
-template <vm::CellKind CellKind>
+template <vm::CellKind cellKind>
 /*static*/ constexpr const char *
 NodeApiEnvironment::getTypedArrayName() noexcept {
-  static constexpr const char *names[] = {
-
-#define TYPED_ARRAY(name, type) #name "Array",
+#define TYPED_ARRAY(name, type)                              \
+  if constexpr (cellKind == vm::CellKind::name##ArrayKind) { \
+    return #name "Array";                                    \
+  } else
 #include "hermes/VM/TypedArrays.def"
-  };
-  return names
-      [static_cast<int>(CellKind) -
-       static_cast<int>(vm::CellKind::TypedArrayBaseKind_first)];
+  {
+    static_assert(false, "Unexpected typed array");
+  }
 }
 
 napi_status NodeApiEnvironment::createPromise(
