@@ -883,11 +883,16 @@ class RuntimeWrapper {
     CHECK_ARG(preparedScript);
     const NodeApiScriptModel *hermesPrep =
         reinterpret_cast<NodeApiScriptModel *>(preparedScript);
-    return ::hermes::node_api::runBytecode(
+    return ::hermes::node_api::runInNodeApiContext(
         env_,
-        hermesPrep->bytecodeProvider(),
-        hermesPrep->runtimeFlags(),
-        hermesPrep->sourceURL(),
+        [this, hermesPrep]() {
+          return hermesVMRuntime_.runBytecode(
+              hermesPrep->bytecodeProvider(),
+              hermesPrep->runtimeFlags(),
+              hermesPrep->sourceURL(),
+              ::hermes::vm::Runtime::makeNullHandle<
+                  ::hermes::vm::Environment>());
+        },
         result);
   }
 

@@ -4027,23 +4027,20 @@ napi_status queueMicrotask(napi_env env, napi_value callback) noexcept {
   return env->clearLastNativeError();
 }
 
-napi_status runBytecode(
+napi_status runInNodeApiContext(
     napi_env env,
-    std::shared_ptr<hbc::BCProvider> bytecodeProvider,
-    vm::RuntimeModuleFlags runtimeFlags,
-    const std::string &sourceURL,
+    nodeApiCallback callback,
+    void *data,
     napi_value *result) noexcept {
   CHECK_STATUS(checkJSPreconditions(env));
-  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
+  CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ result == nullptr ? 0 : 1);
   NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
-  vm::CallResult<vm::HermesValue> res = env->runtime_.runBytecode(
-      std::move(bytecodeProvider),
-      runtimeFlags,
-      sourceURL,
-      vm::Runtime::makeNullHandle<vm::Environment>());
-  CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
-  return scope.escapeResult(*res, result);
+  vm::CallResult<vm::HermesValue> cr = callback(data);
+  if (cr.getStatus() == vm::ExecutionStatus::EXCEPTION) {
+    return env->setJSException();
+  }
+  return scope.escapeResult(*cr, result);
 }
 
 template <>

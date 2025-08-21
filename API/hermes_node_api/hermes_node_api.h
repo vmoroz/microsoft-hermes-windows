@@ -78,13 +78,29 @@ napi_status checkJSErrorStatus(
 // TODO: remove it
 napi_status queueMicrotask(napi_env env, napi_value callback) noexcept;
 
-// TODO: remove it
-napi_status runBytecode(
+using nodeApiCallback = hermes::vm::CallResult<hermes::vm::HermesValue>(void *);
+
+napi_status runInNodeApiContext(
     napi_env env,
-    std::shared_ptr<hbc::BCProvider> bytecodeProvider,
-    vm::RuntimeModuleFlags runtimeFlags,
-    const std::string &sourceURL,
+    nodeApiCallback callback,
+    void *data,
     napi_value *result) noexcept;
+
+template <typename TCallback>
+napi_status runInNodeApiContext(
+    napi_env env,
+    TCallback &&callback,
+    napi_value *result) noexcept {
+  return runInNodeApiContext(
+      env,
+      [](void *data) -> ::hermes::vm::CallResult<hermes::vm::HermesValue> {
+        std::remove_reference_t<TCallback> *cb =
+            reinterpret_cast<std::remove_reference_t<TCallback> *>(data);
+        return (*cb)();
+      },
+      &callback,
+      result);
+}
 
 // TODO: can we remove it?
 template <class... TArgs>
@@ -112,10 +128,10 @@ napi_status setLastNativeError(
 // TODO: can we remove it?
 napi_status clearLastNativeError(napi_env env) noexcept;
 
-// TODO: can we replace it with smething else?
+// TODO: can we replace it with something else?
 napi_status openNodeApiScope(napi_env env, void **scope) noexcept;
 
-// TODO: can we replace it with smething else?
+// TODO: can we replace it with something else?
 napi_status closeNodeApiScope(napi_env env, void *scope) noexcept;
 
 } // namespace hermes::node_api
