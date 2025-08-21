@@ -79,9 +79,6 @@ napi_status checkJSErrorStatus(
 napi_status queueMicrotask(napi_env env, napi_value callback) noexcept;
 
 // TODO: remove it
-napi_status collectGarbage(napi_env env) noexcept;
-
-// TODO: remove it
 napi_status runBytecode(
     napi_env env,
     std::shared_ptr<hbc::BCProvider> bytecodeProvider,

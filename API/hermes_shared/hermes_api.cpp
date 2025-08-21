@@ -905,6 +905,11 @@ class RuntimeWrapper {
         hermesVMRuntime_, register_module, api_version, exports);
   }
 
+  napi_status collectGarbage() noexcept {
+    hermesVMRuntime_.collect("test");
+    return napi_ok;
+  }
+
  private:
   std::shared_ptr<HermesRuntime> hermesJsiRuntime_;
   ::hermes::vm::Runtime &hermesVMRuntime_;
@@ -1089,7 +1094,7 @@ JSR_API jsr_config_set_script_cache(
 //=============================================================================
 
 JSR_API jsr_collect_garbage(napi_env env) {
-  return hermes::node_api::collectGarbage(env);
+  return CHECKED_ENV_RUNTIME(env)->collectGarbage();
 }
 
 JSR_API

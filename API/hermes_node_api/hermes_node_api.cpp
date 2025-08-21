@@ -4027,13 +4027,6 @@ napi_status queueMicrotask(napi_env env, napi_value callback) noexcept {
   return env->clearLastNativeError();
 }
 
-napi_status collectGarbage(napi_env env) noexcept {
-  CHECK_STATUS(checkGCPreconditions(env));
-  env->runtime_.collect("test");
-  CHECK_STATUS(env->processFinalizerQueueFromCode());
-  return env->clearLastNativeError();
-}
-
 napi_status runBytecode(
     napi_env env,
     std::shared_ptr<hbc::BCProvider> bytecodeProvider,
