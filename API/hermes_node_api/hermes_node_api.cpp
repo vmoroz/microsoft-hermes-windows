@@ -4111,6 +4111,7 @@ napi_status NAPI_CDECL napi_create_function(
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 1);
   CHECK_ARG(result);
   CHECK_ARG(callback);
+  NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
   vm::MutableHandle<vm::SymbolID> nameSymbolID{env->runtime_};
   if (utf8Name != nullptr) {
@@ -4121,7 +4122,7 @@ napi_status NAPI_CDECL napi_create_function(
   vm::MutableHandle<vm::Callable> func{env->runtime_};
   CHECK_STATUS(
       env->createFunction(nameSymbolID.get(), callback, callbackData, &func));
-  return env->makeResultValue(func.getHermesValue(), result);
+  return scope.escapeResult(func.getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL napi_define_class(
@@ -4141,6 +4142,7 @@ napi_status NAPI_CDECL napi_define_class(
     CHECK_ARG(properties);
   }
 
+  NodeApiEscapableValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
   vm::MutableHandle<vm::SymbolID> nameHandle{env->runtime_};
@@ -4204,7 +4206,7 @@ napi_status NAPI_CDECL napi_define_class(
     }
   }
 
-  return env->makeResultValue(classHandle.getHermesValue(), result);
+  return scope.escapeResult(classHandle.getHermesValue(), result);
 }
 
 napi_status NAPI_CDECL
@@ -4859,6 +4861,7 @@ napi_status NAPI_CDECL napi_define_properties(
     CHECK_ARG(properties);
   }
 
+  NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
   vm::CallResult<vm::HermesValue> objRes =
@@ -6068,6 +6071,7 @@ napi_status NAPI_CDECL napi_wrap(
   CHECK_POSTCONDITIONS(env, /*valueStackDelta:*/ 0);
   CHECK_ARG_IS_OBJECT(object);
 
+  NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
   // If we've already wrapped this object, we error out.
@@ -6161,6 +6165,7 @@ napi_status NAPI_CDECL napi_type_tag_object(
   CHECK_ARG(object);
   CHECK_ARG(typeTag);
 
+  NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
   vm::CallResult<vm::HermesValue> cr =
@@ -7064,6 +7069,7 @@ napi_status NAPI_CDECL napi_add_finalizer(
   CHECK_ARG_IS_OBJECT(object);
   CHECK_ARG(finalizeCallback);
 
+  NodeApiValueScope scope{*env};
   vm::GCScope gcScope{env->runtime_};
 
   // Create a self-deleting reference if the optional out-param result is not
