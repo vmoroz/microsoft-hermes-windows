@@ -4265,8 +4265,7 @@ napi_status NAPI_CDECL napi_get_all_property_names(
   }
 
   // The fast path used for the 'for..in' implementation.
-  if (keyFilter ==
-          (keyFilter & (napi_key_enumerable | napi_key_skip_symbols)) &&
+  if ((keyFilter == (napi_key_enumerable | napi_key_skip_symbols)) &&
       (keyMode == napi_key_include_prototypes || !hasParent)) {
     CHECK_STATUS(env->getForInPropertyNames(objValue, keyConversion, result));
     return scope.escapeResult(result);
