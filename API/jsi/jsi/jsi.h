@@ -370,6 +370,12 @@ class JSI_EXPORT Runtime : public ICast {
   /// which returns no metrics.
   virtual Instrumentation& instrumentation();
 
+  /// Creates a Node-API environment.
+  /// \throw a \c JSINativeException if the runtime does not support Node-API.
+  /// \param apiVersion the version of Node-API to use.
+  /// \return the newly created Node-API environment.
+  virtual void* createNodeApiEnv(int32_t apiVersion);
+
   /// Stores the pointer \p data with the \p uuid in the runtime. This can be
   /// used to store some custom data within the runtime. When the runtime is
   /// destroyed, or if an entry at an existing key is overwritten, the runtime
