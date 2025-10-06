@@ -59,10 +59,6 @@
 #include <jsi/instrumentation.h>
 #include <jsi/threadsafe.h>
 
-#ifndef HERMESVM_LEAN
-#include <hermes_node_api/hermes_node_api.h>
-#endif
-
 #ifdef HERMESVM_LLVM_PROFILE_DUMP
 extern "C" {
 int __llvm_profile_dump(void);
@@ -673,7 +669,6 @@ class HermesRuntimeImpl final : public HermesRuntime,
   std::string description() override;
   bool isInspectable() override;
   jsi::Instrumentation &instrumentation() override;
-  void *createNodeApiEnv(int32_t apiVersion) override;
 
   PointerValue *cloneSymbol(const Runtime::PointerValue *pv) override;
   PointerValue *cloneBigInt(const Runtime::PointerValue *pv) override;
@@ -2973,20 +2968,6 @@ void HermesRuntimeImpl::throwJSErrorWithMessage(Args &&...args) {
   // throwPendingError.
   (void)runtime_.raiseError(vm::TwineChar16(s));
   throwPendingError();
-}
-
-void *HermesRuntimeImpl::createNodeApiEnv(int32_t apiVersion) {
-#ifndef HERMESVM_LEAN
-  auto res = ::hermes::node_api::createModuleNodeApiEnvironment(
-      *static_cast<vm::Runtime*>(this->getVMRuntimeUnsafe()), apiVersion);
-  if (res.getStatus() == ::hermes::vm::ExecutionStatus::EXCEPTION) {
-    throw std::runtime_error("Failed to create Node API environment");
-  }
-  return res.getValue();
-#else
-  (void)apiVersion; // Unused
-  return nullptr;
-#endif
 }
 
 namespace {
