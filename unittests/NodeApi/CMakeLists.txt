@@ -3,6 +3,29 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+add_library(libshared SHARED
+  hermes_api.cpp
+)
+
+target_link_libraries(libshared
+  PUBLIC
+    jsi
+    nodeApi
+  PRIVATE
+    hermesNodeApi
+    hermesParser
+    compileJS
+    traceInterpreter
+    timerStats
+    hermesvm_a
+)
+target_link_options(libshared PRIVATE ${HERMES_EXTRA_LINKER_FLAGS})
+
+set_target_properties(libshared PROPERTIES
+  # To make sure that the resulting DLL name is hermes.dll
+  OUTPUT_NAME hermes
+)
+
 # Registers new test module.
 # The caller must provide a set of SOURCES files. It can also provide an
 # optional set of DEFINES as the macro definitions such as the "NAPI_VERSION=10"
@@ -33,6 +56,7 @@ function(add_node_api_module MODULE_TARGET)
     LIBRARY_OUTPUT_DIRECTORY ${MODULE_OUTPUT_DIR}
     RUNTIME_OUTPUT_DIRECTORY ${MODULE_OUTPUT_DIR}
     SUFFIX .node
+    PREFIX ""
   )
 endfunction()
 
@@ -45,47 +69,36 @@ set(HERMES_ENABLE_EH_RTTI ON)
 # we need to set this one.
 set(LLVM_ENABLE_RTTI ON)
 
-if (MSVC)
-  # Enable exception handling
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
+# add_executable(node_lite
+#   child_process.cpp
+#   child_process.h
+#   compat.h
+#   node_lite.cpp
+#   node_lite.h
+#   node_lite_hermes.cpp
+#   node_lite_windows.cpp
+#   string_utils.cpp
+#   string_utils.h
+# )
+# target_link_libraries(node_lite PRIVATE libshared)
+# target_include_directories(node_lite
+#   PRIVATE
+#     ../../API/hermes_node_api/node_api
+#     ../../API/hermes_shared
+# )
 
-  # Enable RTTI
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR")
-
-  # Generate PDBs
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zi")
-endif()
-
-add_executable(node_lite
-  child_process.cpp
-  child_process.h
-  compat.h
-  node_lite.cpp
-  node_lite.h
-  node_lite_hermes.cpp
-  node_lite_windows.cpp
-  string_utils.cpp
-  string_utils.h
-)
-target_link_libraries(node_lite PRIVATE libshared)
-target_include_directories(node_lite
-  PRIVATE
-    ../../API/hermes_node_api/node_api
-    ../../API/hermes_shared
-)
-
-target_include_directories(node_lite
-  PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/test
-)
+# target_include_directories(node_lite
+#   PRIVATE
+#     ${CMAKE_CURRENT_SOURCE_DIR}/test
+# )
 
 # copy hermes.dll next to the node_lite.exe
-add_custom_command(TARGET node_lite POST_BUILD
-  VERBATIM
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    $<TARGET_FILE:libshared>
-    $<TARGET_FILE_DIR:node_lite>
-)
+# add_custom_command(TARGET node_lite POST_BUILD
+#   VERBATIM
+#   COMMAND ${CMAKE_COMMAND} -E copy_if_different
+#     $<TARGET_FILE:libshared>
+#     $<TARGET_FILE_DIR:node_lite>
+# )
 
 add_hermes_unittest(NodeApiTests
   child_process.cpp
@@ -100,4 +113,4 @@ add_hermes_unittest(NodeApiTests
 target_link_libraries(NodeApiTests libshared)
 
 # transform test JS files to be Hermes-compatible
-add_dependencies(NodeApiTests transformJSFiles node_lite)
+# add_dependencies(NodeApiTests transformJSFiles node_lite)
