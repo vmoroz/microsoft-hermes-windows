@@ -494,16 +494,16 @@ class NodeApiStableAddressStack final {
  public:
   NodeApiStableAddressStack() noexcept {
     // There is always at least one chunk in the storage
-    storage_.emplace_back(new T[chunkSize_]);
+    storage_.emplace_back(new T[ChunkSize]);
   }
 
   template <class... TArgs>
   void emplace(TArgs &&...args) noexcept {
     size_t newIndex = size_;
-    size_t chunkIndex = newIndex / chunkSize_;
-    size_t chunkOffset = newIndex % chunkSize_;
+    size_t chunkIndex = newIndex / ChunkSize;
+    size_t chunkOffset = newIndex % ChunkSize;
     if (chunkOffset == 0 && chunkIndex == storage_.size()) {
-      storage_.emplace_back(new T[chunkSize_]);
+      storage_.emplace_back(new T[ChunkSize]);
     }
     new (std::addressof(storage_[chunkIndex][chunkOffset]))
         T(std::forward<TArgs>(args)...);
@@ -535,19 +535,19 @@ class NodeApiStableAddressStack final {
   T &top() noexcept {
     ABORT_IF_FALSE(size_ > 0 && "Size must be non zero.");
     size_t lastIndex = size_ - 1;
-    return storage_[lastIndex / chunkSize_][lastIndex % chunkSize_];
+    return storage_[lastIndex / ChunkSize][lastIndex % ChunkSize];
   }
 
   T &operator[](size_t index) noexcept {
     ABORT_IF_FALSE(index < size_ && "Index must be less than size.");
-    return storage_[index / chunkSize_][index % chunkSize_];
+    return storage_[index / ChunkSize][index % ChunkSize];
   }
 
   template <class F>
   void forEach(const F &f) noexcept {
     size_t remaining = size_;
     for (std::unique_ptr<T[]> &chunk : storage_) {
-      size_t chunkSize = std::min(chunkSize_, remaining);
+      size_t chunkSize = std::min(ChunkSize, remaining);
       for (size_t i = 0; i < chunkSize; ++i) {
         f(chunk[i]);
       }
@@ -561,7 +561,7 @@ class NodeApiStableAddressStack final {
     // To reduce number of allocations/deallocations the last chunk must be half
     // full before we delete the next empty chunk.
     size_t requiredChunkCount = std::max<size_t>(
-        1, (size_ + chunkSize_ / 2 + chunkSize_ - 1) / chunkSize_);
+        1, (size_ + ChunkSize / 2 + ChunkSize - 1) / ChunkSize);
     if (requiredChunkCount < storage_.size()) {
       storage_.resize(requiredChunkCount);
     }
@@ -570,9 +570,9 @@ class NodeApiStableAddressStack final {
  private:
   // The size of 64 entries per chunk is arbitrary at this point.
   // It can be adjusted depending on perf data.
-  static constexpr size_t chunkSize_ = 64;
+  static constexpr size_t ChunkSize = 64;
 
-  llvh::SmallVector<std::unique_ptr<T[]>, chunkSize_> storage_;
+  llvh::SmallVector<std::unique_ptr<T[]>, ChunkSize> storage_;
   size_t size_{0};
 };
 
