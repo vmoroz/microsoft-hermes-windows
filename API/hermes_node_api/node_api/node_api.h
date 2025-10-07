@@ -80,9 +80,7 @@ typedef struct napi_module {
   napi_value NAPI_MODULE_INITIALIZER(napi_env env, napi_value exports)
 
 #define NAPI_MODULE(modname, regfunc)                                          \
-  NAPI_MODULE_INIT() {                                                         \
-    return regfunc(env, exports);                                              \
-  }
+  NAPI_MODULE_INIT() { return regfunc(env, exports); }
 
 // Deprecated. Use NAPI_MODULE.
 #define NAPI_MODULE_X(modname, regfunc, priv, flags)                           \
@@ -92,7 +90,8 @@ EXTERN_C_START
 
 // Deprecated. Replaced by symbol-based registration defined by NAPI_MODULE
 // and NAPI_MODULE_INIT macros.
-NAPI_EXTERN void NAPI_CDECL napi_module_register(napi_module* mod);
+NAPI_EXTERN void NAPI_CDECL
+napi_module_register(napi_module* mod);
 
 NAPI_EXTERN NAPI_NO_RETURN void NAPI_CDECL
 napi_fatal_error(const char* location,
