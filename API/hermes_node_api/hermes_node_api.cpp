@@ -76,8 +76,6 @@
 
 #include "hermes_node_api.h"
 
-#include "hermes/SourceMap/SourceMapParser.h"
-#include "hermes/Support/SimpleDiagHandler.h"
 #include "hermes/VM/Callable.h"
 #include "hermes/VM/HostModel.h"
 #include "hermes/VM/JSArray.h"
@@ -85,9 +83,7 @@
 #include "hermes/VM/JSDataView.h"
 #include "hermes/VM/JSDate.h"
 #include "hermes/VM/JSError.h"
-#include "hermes/VM/JSProxy.h"
 #include "hermes/VM/JSTypedArray.h"
-#include "hermes/VM/PrimitiveBox.h"
 #include "hermes/VM/PropertyAccessor.h"
 #include "llvh/ADT/SmallVector.h"
 #include "llvh/Support/ConvertUTF.h"
@@ -1187,7 +1183,7 @@ class NodeApiEnvironment {
 
   // This method ensures all finalizers are drained before environment
   // destruction
-  void DeleteMe() noexcept;
+  void deleteMe() noexcept;
 
   // Thread-local storage for current environment
   static thread_local NodeApiEnvironment *tlsCurrentEnvironment_;
@@ -2881,13 +2877,13 @@ napi_status NodeApiEnvironment::incRefCount() noexcept {
 
 napi_status NodeApiEnvironment::decRefCount() noexcept {
   if (--refCount_ == 0) {
-    DeleteMe();
+    deleteMe();
   }
   return napi_status::napi_ok;
 }
 
 // Node.js-style controlled shutdown with finalizer drainage
-void NodeApiEnvironment::DeleteMe() noexcept {
+void NodeApiEnvironment::deleteMe() noexcept {
   // Set shutdown flag to prevent task runner scheduling BEFORE processing
   // finalizers
   isShuttingDown_ = true;
