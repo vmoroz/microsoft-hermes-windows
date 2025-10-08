@@ -52,18 +52,6 @@
 
 namespace facebook::hermes {
 
-union HermesBuildVersionInfo {
-  struct {
-    uint16_t major;
-    uint16_t minor;
-    uint16_t patch;
-    uint16_t revision;
-  };
-  uint64_t version;
-};
-
-constexpr HermesBuildVersionInfo HermesBuildVersion = {HERMES_FILE_VERSION_BIN};
-
 ::hermes::vm::Runtime *getVMRuntime(HermesRuntime &runtime) noexcept {
   ::facebook::hermes::IHermes *hermes =
       facebook::jsi::castInterface<::facebook::hermes::IHermes>(&runtime);
