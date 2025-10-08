@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "node_lite.h"
-#include <js_runtime_api.h>
+#include "js_runtime_api.h"
 #include <algorithm>
 #include <array>
 #include <cstdarg>

@@ -110,6 +110,11 @@ target_include_directories(node_lite
     ../../API/hermes_node_api/node_api
 )
 
+target_compile_definitions(node_lite
+  PRIVATE
+    NODE_API_EXPERIMENTAL_NO_WARNING
+)
+
 target_include_directories(node_lite
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/test
