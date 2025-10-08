@@ -293,8 +293,8 @@ NodeLiteRuntime::NodeLiteRuntime(
     std::shared_ptr<NodeLiteTaskRunner> task_runner,
     std::string js_root,
     std::vector<std::string> args)
-    : js_root_(std::move(js_root)),
-      task_runner_(std::move(task_runner)),
+    : task_runner_(std::move(task_runner)),
+      js_root_(std::move(js_root)),
       args_(std::move(args)) {}
 
 void NodeLiteRuntime::Initialize() {

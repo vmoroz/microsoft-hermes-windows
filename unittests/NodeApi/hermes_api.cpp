@@ -148,79 +148,6 @@ class ScriptBuffer : public facebook::jsi::Buffer {
   jsr_data_delete_cb deleteCallback_{};
   void *deleterData_{};
 };
-
-class ScriptCache : public facebook::jsi::PreparedScriptStore {
- public:
-  ScriptCache(
-      void *data,
-      jsr_script_cache_load_cb loadCallback,
-      jsr_script_cache_store_cb storeCallback,
-      jsr_data_delete_cb deleteCallback,
-      void *deleterData)
-      : data_(data),
-        loadCallback_(loadCallback),
-        storeCallback_(storeCallback),
-        deleteCallback_(deleteCallback),
-        deleterData_(deleterData) {}
-
-  ~ScriptCache() {
-    if (deleteCallback_ != nullptr) {
-      deleteCallback_(data_, deleterData_);
-    }
-  }
-
-  std::shared_ptr<const facebook::jsi::Buffer> tryGetPreparedScript(
-      const facebook::jsi::ScriptSignature &scriptSignature,
-      const facebook::jsi::JSRuntimeSignature &runtimeMetadata,
-      const char *prepareTag) noexcept override {
-    const uint8_t *buffer{};
-    size_t bufferSize{};
-    jsr_data_delete_cb bufferDeleteCallback{};
-    void *bufferDeleterData{};
-    loadCallback_(
-        data_,
-        scriptSignature.url.c_str(),
-        scriptSignature.version,
-        runtimeMetadata.runtimeName.c_str(),
-        runtimeMetadata.version,
-        prepareTag,
-        &buffer,
-        &bufferSize,
-        &bufferDeleteCallback,
-        &bufferDeleterData);
-    return std::make_shared<ScriptBuffer>(
-        buffer, bufferSize, bufferDeleteCallback, bufferDeleterData);
-  }
-
-  void persistPreparedScript(
-      std::shared_ptr<const facebook::jsi::Buffer> preparedScript,
-      const facebook::jsi::ScriptSignature &scriptSignature,
-      const facebook::jsi::JSRuntimeSignature &runtimeMetadata,
-      const char *prepareTag) noexcept override {
-    storeCallback_(
-        data_,
-        scriptSignature.url.c_str(),
-        scriptSignature.version,
-        runtimeMetadata.runtimeName.c_str(),
-        runtimeMetadata.version,
-        prepareTag,
-        preparedScript->data(),
-        preparedScript->size(),
-        [](void * /*data*/, void *deleterData) {
-          delete reinterpret_cast<
-              std::shared_ptr<const facebook::jsi::Buffer> *>(deleterData);
-        },
-        new std::shared_ptr<const facebook::jsi::Buffer>(preparedScript));
-  }
-
- private:
-  void *data_{};
-  jsr_script_cache_load_cb loadCallback_{};
-  jsr_script_cache_store_cb storeCallback_{};
-  jsr_data_delete_cb deleteCallback_{};
-  void *deleterData_{};
-};
-
 class ConfigWrapper {
  public:
   napi_status enableDefaultCrashHandler(bool value) {
@@ -304,16 +231,11 @@ class ConfigWrapper {
 
   ::hermes::vm::RuntimeConfig getRuntimeConfig() const {
     ::hermes::vm::RuntimeConfig::Builder config;
-    if (enableDefaultCrashHandler_) {
-      auto crashManager = std::make_shared<CrashManagerImpl>();
-      config.withCrashMgr(crashManager);
-    }
     config.withMicrotaskQueue(explicitMicrotasks_);
     return config.build();
   }
 
  private:
-  bool enableDefaultCrashHandler_{};
   bool enableInspector_{};
   std::string inspectorRuntimeName_;
   uint16_t inspectorPort_{};
@@ -321,26 +243,9 @@ class ConfigWrapper {
   bool explicitMicrotasks_{};
   std::function<void(napi_env env, napi_value value)> unhandledErrorCallback_{};
   std::shared_ptr<TaskRunner> taskRunner_;
-  std::shared_ptr<ScriptCache> scriptCache_;
 };
 
 class HermesRuntime;
-
-class HermesExecutorRuntimeAdapter final
-    : public facebook::hermes::inspector::RuntimeAdapter {
- public:
-  HermesExecutorRuntimeAdapter(
-      std::shared_ptr<facebook::hermes::HermesRuntime> hermesRuntime,
-      std::shared_ptr<TaskRunner> taskRunner);
-
-  virtual ~HermesExecutorRuntimeAdapter() = default;
-  HermesRuntime &getRuntime() override;
-  void tickleJs() override;
-
- private:
-  std::shared_ptr<facebook::hermes::HermesRuntime> hermesJsiRuntime_;
-  std::shared_ptr<TaskRunner> taskRunner_;
-};
 
 // An implementation of PreparedJavaScript that wraps a BytecodeProvider.
 class NodeApiScriptModel final {
@@ -474,17 +379,6 @@ class RuntimeWrapper {
     env_ = envRes.getValue();
     ::hermes::node_api::setNodeApiEnvironmentData(
         env_, kRuntimeWrapperTag, this);
-
-    if (config.enableInspector()) {
-      auto adapter = std::make_unique<HermesExecutorRuntimeAdapter>(
-          hermesJsiRuntime_, config.taskRunner());
-      std::string inspectorRuntimeName = config.inspectorRuntimeName();
-      if (inspectorRuntimeName.empty()) {
-        inspectorRuntimeName = "Hermes";
-      }
-      facebook::hermes::inspector::chrome::enableDebugging(
-          std::move(adapter), inspectorRuntimeName);
-    }
   }
 
   static facebook::hermes::RuntimeWrapper *from(napi_env env) {
@@ -496,11 +390,6 @@ class RuntimeWrapper {
     ::hermes::node_api::getNodeApiEnvironmentData(
         env, kRuntimeWrapperTag, &data);
     return reinterpret_cast<facebook::hermes::RuntimeWrapper *>(data);
-  }
-
-  napi_status dumpCrashData(int32_t fd) {
-    hermesCrashHandler(*hermesJsiRuntime_, fd);
-    return napi_ok;
   }
 
   napi_status addToProfiler() {
