@@ -116,8 +116,14 @@ set(LLVM_ENABLE_RTTI ON)
 #     $<TARGET_FILE_DIR:node_lite>
 # )
 
+if(APPLE)
+  set(CHILD_PROCESS_SRC child_process_mac.cpp)
+else()
+  set(CHILD_PROCESS_SRC child_process.cpp)
+endif()
+
 add_hermes_unittest(NodeApiTests
-  child_process.cpp
+  ${CHILD_PROCESS_SRC}
   child_process.h
   string_utils.cpp
   string_utils.h
