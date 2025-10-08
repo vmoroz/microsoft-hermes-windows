@@ -21,6 +21,22 @@ target_link_libraries(libshared
 )
 target_link_options(libshared PRIVATE ${HERMES_EXTRA_LINKER_FLAGS})
 
+# Force the linker to pull every object from hermesNodeApi.a so the exported
+# napi_* entry points remain visible from the shared hermes library.
+if(APPLE)
+  target_link_options(libshared PRIVATE
+    "LINKER:-force_load,$<TARGET_FILE:hermesNodeApi>"
+  )
+elseif(MSVC)
+  target_link_options(libshared PRIVATE
+    "LINKER:/WHOLEARCHIVE:$<TARGET_FILE:hermesNodeApi>"
+  )
+else()
+  target_link_options(libshared PRIVATE
+    "LINKER:--whole-archive,$<TARGET_FILE:hermesNodeApi>,--no-whole-archive"
+  )
+endif()
+
 set_target_properties(libshared PROPERTIES
   # To make sure that the resulting DLL name is hermes.dll
   OUTPUT_NAME hermes
