@@ -1,5 +1,5 @@
-#ifndef HERMES_NODE_API_H
-#define HERMES_NODE_API_H
+#ifndef HERMES_JS_RUNTIME_API_H
+#define HERMES_JS_RUNTIME_API_H
 
 #include "node_api.h"
 
@@ -216,4 +216,4 @@ JSR_API jsr_initialize_native_module(
 
 EXTERN_C_END
 
-#endif // HERMES_NODE_API_H
+#endif // HERMES_JS_RUNTIME_API_H
