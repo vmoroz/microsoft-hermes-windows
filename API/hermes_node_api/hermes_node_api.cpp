@@ -1570,7 +1570,8 @@ class NodeApiCallbackInfo final {
   }
 
   napi_value thisArg() noexcept {
-    return napiValue(&nativeArgs_.getThisArg());
+    const vm::PinnedHermesValue &newTarget = nativeArgs_.getNewTarget();
+    return napiValue(newTarget.isUndefined() ? &nativeArgs_.getThisArg() : &newTarget);
   }
 
   void *nativeData() noexcept {
@@ -4152,7 +4153,7 @@ napi_status NAPI_CDECL napi_define_class(
           parentHandle,
           context.get(),
           &NodeApiHostFunctionContext::func,
-          /*paramCount:*/ 0);
+          /*paramCount:*/ 1);
   vm::Handle<vm::NativeConstructor> classHandle =
       env->runtime_.makeHandle(std::move(ctorRes));
 
