@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug node_lite (test_constructor)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/unittests/NodeApi/node_lite",
+      "args": [
+        "js-native-api/test_constructor/test.js"
+      ],
+      "cwd": "${workspaceFolder}/build/unittests/NodeApi",
+      "environment": [
+        {
+          "name": "DYLD_LIBRARY_PATH",
+          "value": "${workspaceFolder}/build/unittests/NodeApi"
+        }
+      ],
+    "MIMode": "lldb",
+    "preLaunchTask": "build node_lite",
+    "stopAtEntry": false,
+    "externalConsole": false
+    }
+  ]
+}
