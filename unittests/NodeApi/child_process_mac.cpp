@@ -1,5 +1,6 @@
 #include "child_process.h"
 
+#include <cerrno>
 #include <fcntl.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -7,7 +8,6 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -92,9 +92,20 @@ ProcessResult SpawnSync(std::string_view command,
   close(stderr_pipe[1]);
 
   int wait_status;
-  VerifyElseExit(waitpid(pid, &wait_status, 0) == pid);
+  pid_t waited_pid;
+  do {
+    waited_pid = waitpid(pid, &wait_status, 0);
+  } while (waited_pid == -1 && errno == EINTR);
 
-  result.status = WIFEXITED(wait_status) ? WEXITSTATUS(wait_status) : 1;
+  VerifyElseExit(waited_pid == pid);
+
+  if (WIFEXITED(wait_status)) {
+    result.status = WEXITSTATUS(wait_status);
+  } else if (WIFSIGNALED(wait_status)) {
+    result.status = 128 + WTERMSIG(wait_status);
+  } else {
+    result.status = 1;
+  }
   result.std_output = ReadFromFd(stdout_pipe[0]);
   result.std_error = ReadFromFd(stderr_pipe[0]);
 
@@ -116,8 +127,22 @@ std::string ReadFromFd(int fd) {
   constexpr size_t bufferSize = 4096;
   char buffer[bufferSize];
   ssize_t bytesRead;
-  while ((bytesRead = read(fd, buffer, bufferSize)) > 0) {
-    result.append(buffer, bytesRead);
+  while (true) {
+    bytesRead = read(fd, buffer, bufferSize);
+    if (bytesRead > 0) {
+      result.append(buffer, bytesRead);
+      continue;
+    }
+
+    if (bytesRead == 0) {
+      break;
+    }
+
+    if (errno == EINTR) {
+      continue;
+    }
+
+    ExitOnError("read", nullptr);
   }
   return result;
 }
