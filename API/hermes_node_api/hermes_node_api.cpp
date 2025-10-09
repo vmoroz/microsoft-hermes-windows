@@ -1570,8 +1570,7 @@ class NodeApiCallbackInfo final {
   }
 
   napi_value thisArg() noexcept {
-    const vm::PinnedHermesValue &newTarget = nativeArgs_.getNewTarget();
-    return napiValue(newTarget.isUndefined() ? &nativeArgs_.getThisArg() : &newTarget);
+    return napiValue(&nativeArgs_.getThisArg());
   }
 
   void *nativeData() noexcept {
@@ -4147,43 +4146,23 @@ napi_status NAPI_CDECL napi_define_class(
   std::unique_ptr<NodeApiHostFunctionContext> context =
       std::make_unique<NodeApiHostFunctionContext>(
           *env, constructor, callbackData);
-  vm::PseudoHandle<vm::NativeConstructor> ctorRes =
-      vm::NativeConstructor::create(
-          env->runtime(),
-          parentHandle,
-          context.get(),
-          &NodeApiHostFunctionContext::func,
-          /*paramCount:*/ 1);
-  vm::Handle<vm::NativeConstructor> classHandle =
-      env->runtime_.makeHandle(std::move(ctorRes));
-
-  vm::Handle<vm::NativeState> nsHanle =
-      env->runtime_.makeHandle(vm::NativeState::create(
-          env->runtime_,
-          context.release(),
-          &NodeApiHostFunctionContext::finalizeNS));
-
-  vm::CallResult<bool> res = vm::JSObject::defineOwnProperty(
-      classHandle,
-      env->runtime_,
-      vm::Predefined::getSymbolID(
-          vm::Predefined::InternalPropertyArrayBufferExternalFinalizer),
-      vm::DefinePropertyFlags::getDefaultNewPropertyFlags(),
-      nsHanle);
-  CHECK_STATUS(env->checkExecutionStatus(res.getStatus()));
-  RETURN_STATUS_IF_FALSE_WITH_MESSAGE(
-      *res, napi_generic_failure, "Cannot set external finalizer for a class");
 
   vm::Handle<vm::JSObject> prototypeHandle{
       env->runtime_.makeHandle(vm::JSObject::create(env->runtime_))};
-  vm::ExecutionStatus st = vm::Callable::defineNameLengthAndPrototype(
-      vm::Handle<vm::Callable>::vmcast(classHandle),
-      env->runtime(),
-      nameHandle.get(),
-      /*paramCount:*/ 0,
-      prototypeHandle,
-      vm::Callable::WritablePrototype::Yes);
-  CHECK_STATUS(env->checkExecutionStatus(st));
+
+  vm::CallResult<vm::HermesValue> ctorRes =
+      vm::FinalizableNativeFunction::create(
+          env->runtime(),
+          context.get(),
+          &NodeApiHostFunctionContext::func,
+          &NodeApiHostFunctionContext::finalize,
+          nameHandle.get(),
+          /*paramCount:*/ 0,
+          prototypeHandle);
+  CHECK_STATUS(env->checkExecutionStatus(ctorRes.getStatus()));
+  context.release(); // the context is now owned by the func.
+
+  vm::Handle<> classHandle = env->runtime_.makeHandle(*ctorRes);
 
   for (size_t i = 0; i < propertyCount; ++i) {
     const napi_property_descriptor &propDesc = properties[i];
