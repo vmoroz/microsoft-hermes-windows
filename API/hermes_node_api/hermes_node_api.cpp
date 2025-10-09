@@ -3285,6 +3285,10 @@ napi_status NodeApiEnvironment::convertKeyStorageToArray(
       key = runtime_.makeHandle(keyStorage->at(startIndex + i).toHV(runtime_));
       if (key->isNumber()) {
         CHECK_STATUS(convertIndexToString(key->getNumber(), &key));
+      } else if (key->isSymbol() && key->getSymbol().isUniqued()) {
+        vm::StringPrimitive *str =
+            runtime_.getStringPrimFromSymbolID(key->getSymbol());
+        key = vm::HermesValue::encodeStringValue(str);
       }
       vm::ExecutionStatus status =
           vm::JSArray::setElementAt(array, runtime_, i, key);
@@ -3296,8 +3300,18 @@ napi_status NodeApiEnvironment::convertKeyStorageToArray(
     vm::NoAllocScope noAlloc{runtime_};
     vm::JSArray *arrPtr = array.get();
     for (uint32_t i = 0; i < length; ++i) {
-      vm::JSArray::unsafeSetExistingElementAt(
-          arrPtr, runtime_, i, keyStorage->at(startIndex + i));
+      vm::SmallHermesValue key = keyStorage->at(startIndex + i);
+      if (key.isSymbol() && key.getSymbol().isUniqued()) {
+        vm::StringPrimitive *str =
+            runtime_.getStringPrimFromSymbolID(key.getSymbol());
+        vm::JSArray::unsafeSetExistingElementAt(
+            arrPtr,
+            runtime_,
+            i,
+            vm::SmallHermesValue::encodeStringValue(str, runtime_));
+      } else {
+        vm::JSArray::unsafeSetExistingElementAt(arrPtr, runtime_, i, key);
+      }
     }
   }
   return makeResultValue(array.getHermesValue(), result);

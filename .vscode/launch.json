@@ -7,7 +7,7 @@
       "request": "launch",
       "program": "${workspaceFolder}/build/unittests/NodeApi/node_lite",
       "args": [
-        "js-native-api/test_constructor/test.js"
+        "js-native-api/test_object/test.js"
       ],
       "cwd": "${workspaceFolder}/build/unittests/NodeApi",
       "environment": [
