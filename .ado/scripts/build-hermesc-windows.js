@@ -13,6 +13,8 @@ const ICU_DIR = path.join(BASE_DIR, 'icu');
 const DEPS_DIR = path.join(BASE_DIR, 'deps');
 const WIN64_BIN_DIR = path.join(BASE_DIR, 'win64-bin');
 const CMAKE_BUILD_DIR = path.join(BASE_DIR, 'build_release');
+const DEFAULT_BOOST_CONTEXT = process.env.HERMES_ALLOW_BOOST_CONTEXT ?? (process.platform === 'win32' ? '0' : undefined);
+const DEFAULT_NATIVE_STACK = process.env.HERMES_CHECK_NATIVE_STACK ?? (process.platform === 'win32' ? 'OFF' : undefined);
 
 const PATH_KEY = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') || 'PATH';
 const extraPath = [process.env.CMAKE_DIR, process.env.MSBUILD_DIR].filter(Boolean);
@@ -132,6 +134,14 @@ function ensureCMakeBuild() {
     '-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=True',
     '-DHERMES_ENABLE_WIN10_ICU_FALLBACK=OFF',
   ];
+  if (DEFAULT_BOOST_CONTEXT !== undefined) {
+    configureArgs.push(`-DHERMES_ALLOW_BOOST_CONTEXT=${DEFAULT_BOOST_CONTEXT}`);
+    log(`Using HERMES_ALLOW_BOOST_CONTEXT=${DEFAULT_BOOST_CONTEXT}`);
+  }
+  if (DEFAULT_NATIVE_STACK !== undefined) {
+    configureArgs.push(`-DHERMES_CHECK_NATIVE_STACK=${DEFAULT_NATIVE_STACK}`);
+    log(`Using HERMES_CHECK_NATIVE_STACK=${DEFAULT_NATIVE_STACK}`);
+  }
   run('cmake', configureArgs, {
     env: {
       ...process.env,
