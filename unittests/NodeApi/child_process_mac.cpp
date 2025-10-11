@@ -1,3 +1,6 @@
+// Copyright (c) Jamie Birch.
+// Licensed under the MIT License.
+
 #include "child_process.h"
 
 #include <cerrno>
