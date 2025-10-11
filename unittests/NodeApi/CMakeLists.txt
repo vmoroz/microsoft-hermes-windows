@@ -86,7 +86,7 @@ set(HERMES_ENABLE_EH_RTTI ON)
 set(LLVM_ENABLE_RTTI ON)
 
 if(WIN32)
-  set(CHILD_PROCESS_SRC child_process.cpp)
+  set(CHILD_PROCESS_SRC child_process_windows.cpp)
   set(NODE_LITE_PLATFORM_SRC node_lite_windows.cpp)
 else()
   set(CHILD_PROCESS_SRC child_process_posix.cpp)
