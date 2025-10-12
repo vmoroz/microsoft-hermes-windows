@@ -193,8 +193,13 @@ if(BOOST_CONTEXT_IMPLEMENTATION STREQUAL "fcontext")
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_property(SOURCE ${ASM_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-cpp")
   endif()
+elseif(BOOST_CONTEXT_IMPLEMENTATION STREQUAL "winfib")
+  set(IMPL_SOURCES
+    src/fiber.cpp
+  )
 else()
   set(IMPL_SOURCES
+    src/continuation.cpp
     src/fiber.cpp
   )
 endif()
