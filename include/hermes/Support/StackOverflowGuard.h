@@ -70,9 +70,9 @@ class StackOverflowGuard {
     // We know that nativeStackSize_ <= nativeStackHigh_
     // (because otherwise the stack wouldn't fit in the memory),
     // so the overflowed difference will be greater than nativeStackSize_.
-    if (LLVM_LIKELY(!(
-      (uintptr_t)nativeStackHigh - (uintptr_t)framePointer >
-            nativeStackSize))) {
+    if (LLVM_LIKELY(
+            !((uintptr_t)nativeStackHigh - (uintptr_t)framePointer >
+              nativeStackSize))) {
       // Fast path: quickly check the stored stack bounds.
       // NOTE: It is possible to have a false negative here (highly unlikely).
       // If the program creates many threads and destroys them, a new
@@ -92,6 +92,7 @@ class StackOverflowGuard {
   }
 
  private:
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
   static inline const void *currentFramePointer() {
 #if defined(_MSC_VER)
     return _AddressOfReturnAddress();
