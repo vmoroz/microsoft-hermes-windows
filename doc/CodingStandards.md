@@ -23,7 +23,8 @@ such code creates ongoing work for maintainers.
 
 ### Language Features
 
-Hermes uses C++14.
+Hermes uses C++17 as the baseline standard. Builds that target MSVC require
+C++20 to support designated initializers used in the codebase.
 
 Exceptions or RTTI are prohibited, except where needed for
 interfacing with other software that requires them.

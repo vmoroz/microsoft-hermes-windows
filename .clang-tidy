@@ -17,4 +17,21 @@ CheckOptions:
   - { key: readability-identifier-naming.MemberSuffix, value: '_' }
   - { key: readability-identifier-naming.PublicMemberCase, value: camelBack }
   - { key: readability-identifier-naming.PublicMemberSuffix, value: '' }
+  - { key: readability-identifier-naming.FunctionCase, value: camelBack }
+  - { key: readability-identifier-naming.GlobalFunctionCase, value: camelBack }
+  - { key: readability-identifier-naming.ParameterCase, value: camelBack }
+  - { key: readability-identifier-naming.VariableCase, value: camelBack }
+  - { key: readability-identifier-naming.GlobalVariableCase, value: camelBack }
+  - { key: readability-identifier-naming.LocalVariableCase, value: camelBack }
+  - { key: readability-identifier-naming.VariableIgnoredRegexp, value: '^[A-Z][A-Z0-9]*$' }
+  - { key: readability-identifier-naming.ConstantCase, value: UPPER_CASE }
+  - { key: readability-identifier-naming.ConstantIgnoredRegexp, value: '^k[A-Z].*' }
+  - { key: readability-identifier-naming.GlobalConstantCase, value: UPPER_CASE }
+  - { key: readability-identifier-naming.GlobalConstantIgnoredRegexp, value: '^k[A-Z].*' }
+  - { key: readability-identifier-naming.ClassConstantCase, value: UPPER_CASE }
+  - { key: readability-identifier-naming.ClassConstantIgnoredRegexp, value: '^k[A-Z].*' }
+  - { key: readability-identifier-naming.ConstexprVariableCase, value: UPPER_CASE }
+  - { key: readability-identifier-naming.ConstexprVariableIgnoredRegexp, value: '^k[A-Z].*' }
+  - { key: readability-identifier-naming.LocalConstantCase, value: UPPER_CASE }
+  - { key: readability-identifier-naming.LocalConstantIgnoredRegexp, value: '^k[A-Z].*' }
   - { key: readability-braces-around-statements.ShortStatementLines, value: 3 }
