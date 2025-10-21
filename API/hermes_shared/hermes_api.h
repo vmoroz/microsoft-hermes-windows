@@ -83,6 +83,101 @@ JSR_API hermes_local_connection_send_message(
 JSR_API hermes_local_connection_disconnect(
     hermes_local_connection local_connection);
 
+#define HERMES_CDECL __cdecl
+
+typedef struct hermes_runtime_s *hermes_runtime;
+typedef struct hermes_cdp_debugger_s *hermes_cdp_debugger;
+typedef struct hermes_cdp_agent_s *hermes_cdp_agent;
+typedef struct hermes_cdp_state_s *hermes_cdp_state;
+typedef struct hermes_stack_trace_s *hermes_stack_trace;
+
+typedef enum {
+  hermes_status_ok = 0,
+  hermes_status_error = 1,
+} hermes_status;
+
+typedef enum {
+  hermes_console_api_type_log,
+  hermes_console_api_type_debug,
+  hermes_console_api_type_info,
+  hermes_console_api_type_error,
+  hermes_console_api_type_warning,
+  hermes_console_api_type_dir,
+  hermes_console_api_type_dir_xml,
+  hermes_console_api_type_table,
+  hermes_console_api_type_trace,
+  hermes_console_api_type_start_group,
+  hermes_console_api_type_start_group_collapsed,
+  hermes_console_api_type_end_group,
+  hermes_console_api_type_clear,
+  hermes_console_api_type_assert,
+  hermes_console_api_type_time_end,
+  hermes_console_api_type_count,
+} hermes_console_api_type;
+
+typedef void(HERMES_CDECL *hermes_release_callback)(void *data_to_release);
+typedef void(HERMES_CDECL *hermes_runtime_task_callback)(void *cb_data, hermes_runtime runtime);
+
+typedef struct {
+  void *data;
+  hermes_runtime_task_callback invoke;
+  hermes_release_callback release;
+} hermes_runtime_task_functor;
+
+typedef void(
+    HERMES_CDECL *hermes_enqueue_runtime_task_callback)(void *cb_data, hermes_runtime_task_functor runtime_task);
+
+typedef struct {
+  void *data;
+  hermes_enqueue_runtime_task_callback invoke;
+  hermes_release_callback release;
+} hermes_enqueue_runtime_task_functor;
+
+typedef void(
+    HERMES_CDECL *hermes_enqueue_frontend_message_callback)(void *cb_data, const char *json_utf8, size_t json_size);
+
+typedef struct {
+  void *data;
+  hermes_enqueue_frontend_message_callback invoke;
+  hermes_release_callback release;
+} hermes_enqueue_frontend_message_functor;
+
+typedef hermes_status(HERMES_CDECL *hermes_create_cdp_debugger)(hermes_runtime runtime, hermes_cdp_debugger *result);
+typedef hermes_status(HERMES_CDECL *hermes_create_cdp_agent)(
+    hermes_cdp_debugger cdp_debugger,
+    int32_t execition_context_id,
+    hermes_enqueue_runtime_task_functor enqueue_runtime_task_callback,
+    hermes_enqueue_frontend_message_functor enqueue_frontend_message_callback,
+    hermes_cdp_state cdp_state,
+    hermes_cdp_agent *result);
+typedef hermes_status(HERMES_CDECL *hermes_get_cdp_state)(hermes_cdp_agent cdp_agent, hermes_cdp_state *result);
+typedef hermes_status(HERMES_CDECL *hermes_capture_stack_trace)(hermes_runtime runtime, hermes_stack_trace *result);
+typedef hermes_status(HERMES_CDECL *hermes_release_cdp_debugger)(hermes_cdp_debugger cdp_debugger);
+typedef hermes_status(HERMES_CDECL *hermes_release_cdp_agent)(hermes_cdp_agent cdp_agent);
+typedef hermes_status(HERMES_CDECL *hermes_release_cdp_state)(hermes_cdp_state cdp_state);
+typedef hermes_status(HERMES_CDECL *hermes_release_stack_trace)(hermes_stack_trace stack_trace);
+typedef hermes_status(
+    HERMES_CDECL *hermes_cdp_agent_handle_command)(hermes_cdp_agent cdp_agent, const char *json_utf8, size_t json_size);
+typedef hermes_status(HERMES_CDECL *hermes_cdp_agent_enable_runtime_domain)(hermes_cdp_agent cdp_agent);
+typedef hermes_status(HERMES_CDECL *hermes_cdp_agent_enable_debugger_domain)(hermes_cdp_agent cdp_agent);
+
+typedef struct {
+  void *reserved[3];
+  hermes_create_cdp_debugger create_cdp_debugger;
+  hermes_create_cdp_agent create_cdp_agent;
+  hermes_get_cdp_state get_cdp_state;
+  hermes_capture_stack_trace capture_stack_trace;
+  hermes_release_cdp_debugger release_cdp_debugger;
+  hermes_release_cdp_agent release_cdp_agent;
+  hermes_release_cdp_state release_cdp_state;
+  hermes_release_stack_trace release_stack_trace;
+  hermes_cdp_agent_handle_command cdp_agent_handle_command;
+  hermes_cdp_agent_enable_runtime_domain cdp_agent_enable_runtime_domain;
+  hermes_cdp_agent_enable_debugger_domain cdp_agent_enable_debugger_domain;
+} *hermes_api_vtable;
+
+JSR_API hermes_get_cdp_vtable(hermes_api_vtable *vtable);
+
 EXTERN_C_END
 
 #endif // !HERMES_HERMES_API_H
