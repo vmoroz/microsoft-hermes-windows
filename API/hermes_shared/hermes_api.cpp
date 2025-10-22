@@ -922,13 +922,6 @@ class RuntimeWrapper {
   }
 
  public:
-  cdp::CDPDebugAPI *createCDPDebugAPI() {
-    if (!cdpDebugAPI_) {
-      cdpDebugAPI_ = cdp::CDPDebugAPI::create(*hermesJsiRuntime_);
-    }
-    return cdpDebugAPI_.get();
-  }
-
   HermesRuntime &getHermesRuntime() {
     return *hermesJsiRuntime_;
   }
@@ -948,8 +941,6 @@ class RuntimeWrapper {
   ::hermes::hbc::CompileFlags compileFlags_{};
 
   facebook::hermes::inspector::chrome::DebugSessionToken debugSessionToken_{};
-
-  std::unique_ptr<cdp::CDPDebugAPI> cdpDebugAPI_;
 
   static constexpr napi_type_tag kRuntimeWrapperTag{
       0xfa327a491b4b4d20,
@@ -1283,7 +1274,11 @@ hermes_status NAPI_CDECL
 create_cdp_debugger(hermes_runtime runtime, hermes_cdp_debugger *result) {
   facebook::hermes::RuntimeWrapper *wrapper =
       reinterpret_cast<facebook::hermes::RuntimeWrapper *>(runtime);
-  *result = reinterpret_cast<hermes_cdp_debugger>(wrapper->createCDPDebugAPI());
+
+  std::unique_ptr<facebook::hermes::cdp::CDPDebugAPI> cdpDebugAPI =
+      facebook::hermes::cdp::CDPDebugAPI::create(wrapper->getHermesRuntime());
+
+  *result = reinterpret_cast<hermes_cdp_debugger>(cdpDebugAPI.release());
   return hermes_status_ok;
 }
 
@@ -1300,7 +1295,9 @@ hermes_status NAPI_CDECL create_cdp_agent(
           *reinterpret_cast<facebook::hermes::cdp::CDPDebugAPI *>(cdp_debugger),
           toEnqueueRuntimeTaskFunctor(enqueue_runtime_task_callback),
           toOutboundMessageFunc(enqueue_frontend_message_callback),
-          std::move(*reinterpret_cast<facebook::hermes::cdp::State *>(cdp_state)));
+          std::move(
+              *reinterpret_cast<facebook::hermes::cdp::State *>(cdp_state)));
+  *result = reinterpret_cast<hermes_cdp_agent>(agent.release());
   return hermes_status_ok;
 }
 
@@ -1316,14 +1313,17 @@ capture_stack_trace(hermes_runtime runtime, hermes_stack_trace *result) {
 
 hermes_status NAPI_CDECL
 release_cdp_debugger(hermes_cdp_debugger cdp_debugger) {
+  delete reinterpret_cast<facebook::hermes::cdp::CDPDebugAPI *>(cdp_debugger);
   return hermes_status_ok;
 }
 
 hermes_status NAPI_CDECL release_cdp_agent(hermes_cdp_agent cdp_agent) {
+  delete reinterpret_cast<facebook::hermes::cdp::CDPAgent *>(cdp_agent);
   return hermes_status_ok;
 }
 
 hermes_status NAPI_CDECL release_cdp_state(hermes_cdp_state cdp_state) {
+  delete reinterpret_cast<facebook::hermes::cdp::State *>(cdp_state);
   return hermes_status_ok;
 }
 
