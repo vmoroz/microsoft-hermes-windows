@@ -1303,6 +1303,11 @@ hermes_status NAPI_CDECL create_cdp_agent(
 
 hermes_status NAPI_CDECL
 get_cdp_state(hermes_cdp_agent cdp_agent, hermes_cdp_state *result) {
+  std::unique_ptr<facebook::hermes::cdp::State> state =
+      std::make_unique<facebook::hermes::cdp::State>(
+          reinterpret_cast<facebook::hermes::cdp::CDPAgent *>(cdp_agent)
+              ->getState());
+  *result = reinterpret_cast<hermes_cdp_state>(state.release());
   return hermes_status_ok;
 }
 
@@ -1335,16 +1340,23 @@ hermes_status NAPI_CDECL cdp_agent_handle_command(
     hermes_cdp_agent cdp_agent,
     const char *json_utf8,
     size_t json_size) {
+  reinterpret_cast<facebook::hermes::cdp::CDPAgent *>(cdp_agent)
+      ->handleCommand(
+          std::string(json_utf8, json_size));
   return hermes_status_ok;
 }
 
 hermes_status NAPI_CDECL
 cdp_agent_enable_runtime_domain(hermes_cdp_agent cdp_agent) {
+  reinterpret_cast<facebook::hermes::cdp::CDPAgent *>(cdp_agent)
+      ->enableRuntimeDomain();
   return hermes_status_ok;
 }
 
 hermes_status NAPI_CDECL
 cdp_agent_enable_debugger_domain(hermes_cdp_agent cdp_agent) {
+  reinterpret_cast<facebook::hermes::cdp::CDPAgent *>(cdp_agent)
+      ->enableDebuggerDomain();
   return hermes_status_ok;
 }
 
