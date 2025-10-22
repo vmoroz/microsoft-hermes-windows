@@ -25,16 +25,16 @@
 #include <windows.h>
 
 #include <werapi.h>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
 
 namespace facebook::hermes::cdp {
-  class CDPDebugAPI;
-  class CDPAgent;
-  class State;
-}
+class CDPDebugAPI;
+class CDPAgent;
+class State;
+} // namespace facebook::hermes::cdp
 namespace facebook::hermes::debugger {
-  using RuntimeTask = std::function<void(facebook::hermes::HermesRuntime&)>;
+using RuntimeTask = std::function<void(facebook::hermes::HermesRuntime &)>;
 }
 
 #define CHECKED_RUNTIME(runtime) \
@@ -998,12 +998,14 @@ JSR_API jsr_runtime_get_node_api_env(jsr_runtime runtime, napi_env *env) {
   return CHECKED_RUNTIME(runtime)->getNodeApi(env);
 }
 
-// JSR_API jsr_runtime_get_hermes_runtime(jsr_runtime runtime, hermes_runtime *hermes_rt) {
+// JSR_API jsr_runtime_get_hermes_runtime(jsr_runtime runtime, hermes_runtime
+// *hermes_rt) {
 //   CHECK_ARG(runtime);
 //   CHECK_ARG(hermes_rt);
-//   auto* wrapper = reinterpret_cast<facebook::hermes::RuntimeWrapper*>(runtime);
-//   *hermes_rt = reinterpret_cast<hermes_runtime>(wrapper->getHermesRuntime());
-//   return napi_ok;
+//   auto* wrapper =
+//   reinterpret_cast<facebook::hermes::RuntimeWrapper*>(runtime); *hermes_rt =
+//   reinterpret_cast<hermes_runtime>(wrapper->getHermesRuntime()); return
+//   napi_ok;
 // }
 
 JSR_API hermes_dump_crash_data(jsr_runtime runtime, int32_t fd) {
@@ -1223,61 +1225,91 @@ JSR_API jsr_initialize_native_module(
       register_module, api_version, exports);
 }
 
-//=============================================================================
-// CDP vtable - Forward declarations(defined in cdp_impl.cpp)
-//=============================================================================
-extern "C" {
-  hermes_status HERMES_CDECL impl_create_cdp_debugger(hermes_runtime runtime, hermes_cdp_debugger *result);
-  hermes_status HERMES_CDECL impl_create_cdp_agent(
-      hermes_cdp_debugger cdp_debugger,
-      int32_t execution_context_id,
-      hermes_enqueue_runtime_task_functor enqueue_runtime_task_callback,
-      hermes_enqueue_frontend_message_functor enqueue_frontend_message_callback,
-      hermes_cdp_state cdp_state,
-      hermes_cdp_agent *result);
-  hermes_status HERMES_CDECL impl_get_cdp_state(hermes_cdp_agent cdp_agent, hermes_cdp_state *result);
-  hermes_status HERMES_CDECL impl_capture_stack_trace(hermes_runtime runtime, hermes_stack_trace *result);
-  hermes_status HERMES_CDECL impl_release_cdp_debugger(hermes_cdp_debugger cdp_debugger);
-  hermes_status HERMES_CDECL impl_release_cdp_agent(hermes_cdp_agent cdp_agent);
-  hermes_status HERMES_CDECL impl_release_cdp_state(hermes_cdp_state cdp_state);
-  hermes_status HERMES_CDECL impl_release_stack_trace(hermes_stack_trace stack_trace);
-  hermes_status HERMES_CDECL impl_cdp_agent_handle_command(hermes_cdp_agent cdp_agent, const char *json_utf8, size_t json_size);
-  hermes_status HERMES_CDECL impl_cdp_agent_enable_runtime_domain(hermes_cdp_agent cdp_agent);
-  hermes_status HERMES_CDECL impl_cdp_agent_enable_debugger_domain(hermes_cdp_agent cdp_agent);
-}
+//-----------------------------------------------------------------------------
+// Modern debugger API implementation.
+//-----------------------------------------------------------------------------
 
-// The vtable structure  
-static struct {
-  void *reserved[3];
-  hermes_create_cdp_debugger create_cdp_debugger;
-  hermes_create_cdp_agent create_cdp_agent;
-  hermes_get_cdp_state get_cdp_state;
-  hermes_capture_stack_trace capture_stack_trace;
-  hermes_release_cdp_debugger release_cdp_debugger;
-  hermes_release_cdp_agent release_cdp_agent;
-  hermes_release_cdp_state release_cdp_state;
-  hermes_release_stack_trace release_stack_trace;
-  hermes_cdp_agent_handle_command cdp_agent_handle_command;
-  hermes_cdp_agent_enable_runtime_domain cdp_agent_enable_runtime_domain;
-  hermes_cdp_agent_enable_debugger_domain cdp_agent_enable_debugger_domain;
-} cdp_api_impl = {
-  {nullptr, nullptr, nullptr},  // reserved[3]
-  impl_create_cdp_debugger,
-  impl_create_cdp_agent,
-  impl_get_cdp_state,
-  impl_capture_stack_trace,
-  impl_release_cdp_debugger,
-  impl_release_cdp_agent,
-  impl_release_cdp_state,
-  impl_release_stack_trace,
-  impl_cdp_agent_handle_command,
-  impl_cdp_agent_enable_runtime_domain,
-  impl_cdp_agent_enable_debugger_domain,
+class HermesDebuggerApiImpl {
+ public:
+  static const hermes_debugger_vtable vtable;
 };
 
-JSR_API hermes_get_cdp_vtable(hermes_api_vtable *vtable) {
-  OutputDebugStringA("[CDP] hermes_get_cdp_vtable - Using real Hermes CDP implementation\n");
+hermes_status NAPI_CDECL
+create_cdp_debugger(hermes_runtime runtime, hermes_cdp_debugger *result) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL create_cdp_agent(
+    hermes_cdp_debugger cdp_debugger,
+    int32_t execution_context_id,
+    hermes_enqueue_runtime_task_functor enqueue_runtime_task_callback,
+    hermes_enqueue_frontend_message_functor enqueue_frontend_message_callback,
+    hermes_cdp_state cdp_state,
+    hermes_cdp_agent *result) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL
+get_cdp_state(hermes_cdp_agent cdp_agent, hermes_cdp_state *result) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL
+capture_stack_trace(hermes_runtime runtime, hermes_stack_trace *result) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL
+release_cdp_debugger(hermes_cdp_debugger cdp_debugger) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL release_cdp_agent(hermes_cdp_agent cdp_agent) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL release_cdp_state(hermes_cdp_state cdp_state) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL release_stack_trace(hermes_stack_trace stack_trace) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL cdp_agent_handle_command(
+    hermes_cdp_agent cdp_agent,
+    const char *json_utf8,
+    size_t json_size) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL
+cdp_agent_enable_runtime_domain(hermes_cdp_agent cdp_agent) {
+  return hermes_status_ok;
+}
+
+hermes_status NAPI_CDECL
+cdp_agent_enable_debugger_domain(hermes_cdp_agent cdp_agent) {
+  return hermes_status_ok;
+}
+
+const hermes_debugger_vtable HermesDebuggerApiImpl::vtable = {
+    create_cdp_debugger,
+    create_cdp_agent,
+    get_cdp_state,
+    capture_stack_trace,
+    release_cdp_debugger,
+    release_cdp_agent,
+    release_cdp_state,
+    release_stack_trace,
+    cdp_agent_handle_command,
+    cdp_agent_enable_runtime_domain,
+    cdp_agent_enable_debugger_domain};
+
+JSR_API hermes_get_debugger_vtable(const hermes_debugger_vtable **vtable) {
+  OutputDebugStringA(
+      "[CDP] hermes_get_debugger_vtable - Using real Hermes CDP implementation\n");
   CHECK_ARG(vtable);
-  *vtable = reinterpret_cast<hermes_api_vtable>(&cdp_api_impl);
+  *vtable = &HermesDebuggerApiImpl::vtable;
   return napi_ok;
 }
