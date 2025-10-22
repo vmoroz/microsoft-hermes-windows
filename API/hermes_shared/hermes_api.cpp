@@ -14,6 +14,8 @@
 #include "hermes/BCGen/HBC/BytecodeProviderFromSrc.h"
 #include "hermes/VM/Callable.h"
 #include "hermes/VM/Runtime.h"
+#include "hermes/cdp/CDPAgent.h"
+#include "hermes/cdp/CDPDebugAPI.h"
 #include "hermes/hermes.h"
 #include "hermes/inspector/RuntimeAdapter.h"
 #include "hermes/inspector/chrome/Registration.h"
@@ -25,17 +27,6 @@
 #include <windows.h>
 
 #include <werapi.h>
-#include <cstdlib>
-#include <cstring>
-
-namespace facebook::hermes::cdp {
-class CDPDebugAPI;
-class CDPAgent;
-class State;
-} // namespace facebook::hermes::cdp
-namespace facebook::hermes::debugger {
-using RuntimeTask = std::function<void(facebook::hermes::HermesRuntime &)>;
-}
 
 #define CHECKED_RUNTIME(runtime) \
   (runtime == nullptr)           \
@@ -712,11 +703,6 @@ class RuntimeWrapper {
     return napi_ok;
   }
 
-  // // Get the underlying HermesRuntime pointer for CDP debugger
-  // facebook::hermes::HermesRuntime* getHermesRuntime() noexcept {
-  //   return hermesJsiRuntime_.get();
-  // }
-
   napi_status drainMicrotasks(int32_t maxCountHint, bool *result) noexcept {
     CHECK_ARG(result);
     if (hermesVMRuntime_.hasMicrotaskQueue()) {
@@ -935,6 +921,18 @@ class RuntimeWrapper {
     return napi_ok;
   }
 
+ public:
+  cdp::CDPDebugAPI *createCDPDebugAPI() {
+    if (!cdpDebugAPI_) {
+      cdpDebugAPI_ = cdp::CDPDebugAPI::create(*hermesJsiRuntime_);
+    }
+    return cdpDebugAPI_.get();
+  }
+
+  HermesRuntime &getHermesRuntime() {
+    return *hermesJsiRuntime_;
+  }
+
  private:
   std::shared_ptr<HermesRuntime> hermesJsiRuntime_;
   ::hermes::vm::Runtime &hermesVMRuntime_;
@@ -950,6 +948,8 @@ class RuntimeWrapper {
   ::hermes::hbc::CompileFlags compileFlags_{};
 
   facebook::hermes::inspector::chrome::DebugSessionToken debugSessionToken_{};
+
+  std::unique_ptr<cdp::CDPDebugAPI> cdpDebugAPI_;
 
   static constexpr napi_type_tag kRuntimeWrapperTag{
       0xfa327a491b4b4d20,
@@ -997,16 +997,6 @@ JSR_API jsr_delete_runtime(jsr_runtime runtime) {
 JSR_API jsr_runtime_get_node_api_env(jsr_runtime runtime, napi_env *env) {
   return CHECKED_RUNTIME(runtime)->getNodeApi(env);
 }
-
-// JSR_API jsr_runtime_get_hermes_runtime(jsr_runtime runtime, hermes_runtime
-// *hermes_rt) {
-//   CHECK_ARG(runtime);
-//   CHECK_ARG(hermes_rt);
-//   auto* wrapper =
-//   reinterpret_cast<facebook::hermes::RuntimeWrapper*>(runtime); *hermes_rt =
-//   reinterpret_cast<hermes_runtime>(wrapper->getHermesRuntime()); return
-//   napi_ok;
-// }
 
 JSR_API hermes_dump_crash_data(jsr_runtime runtime, int32_t fd) {
   return CHECKED_RUNTIME(runtime)->dumpCrashData(fd);
@@ -1234,8 +1224,66 @@ class HermesDebuggerApiImpl {
   static const hermes_debugger_vtable vtable;
 };
 
+template <typename TLambda, typename TFunctor>
+struct FunctorAdapter {
+  static_assert(sizeof(TLambda) == -1, "Unsupported signature");
+};
+
+template <typename TLambda, typename TResult, typename... TArgs>
+struct FunctorAdapter<TLambda, TResult(void *, TArgs...)> {
+  static TResult Invoke(void *data, TArgs... args) {
+    return reinterpret_cast<TLambda *>(data)->operator()(args...);
+  }
+};
+
+template <typename TFunctor, typename TLambda>
+inline TFunctor AsFunctor(TLambda &&lambda) {
+  using TLambdaType = std::remove_reference_t<TLambda>;
+  using TAdapter = FunctorAdapter<
+      TLambdaType,
+      std::remove_pointer_t<
+          decltype(std::remove_reference_t<TFunctor>::invoke)>>;
+  return TFunctor{
+      static_cast<void *>(new TLambdaType(std::forward<TLambdaType>(lambda))),
+      &TAdapter::Invoke,
+      [](void *data) { delete static_cast<TLambdaType *>(data); }};
+}
+
+facebook::hermes::debugger::EnqueueRuntimeTaskFunc toEnqueueRuntimeTaskFunctor(
+    const hermes_enqueue_runtime_task_functor &func) {
+  std::shared_ptr<void> sharedFuncData(
+      func.data, [release = func.release](void *data) { release(data); });
+
+  return [sharedFuncData = std::move(sharedFuncData),
+          invoke = func.invoke](facebook::hermes::debugger::RuntimeTask task) {
+    invoke(
+        sharedFuncData.get(),
+        AsFunctor<hermes_runtime_task_functor>([task](hermes_runtime runtime) {
+          facebook::hermes::RuntimeWrapper *wrapper =
+              reinterpret_cast<facebook::hermes::RuntimeWrapper *>(runtime);
+          task(wrapper->getHermesRuntime());
+        }));
+  };
+}
+
+// using OutboundMessageFunc = std::function<void(const std::string &)>;
+
+facebook::hermes::cdp::OutboundMessageFunc toOutboundMessageFunc(
+    const hermes_enqueue_frontend_message_functor &func) {
+  std::shared_ptr<void> sharedFuncData(
+      func.data, [release = func.release](void *data) { release(data); });
+
+  return [sharedFuncData = std::move(sharedFuncData),
+          invoke = func.invoke](const std::string &message) {
+    invoke(sharedFuncData.get(), message.c_str(), message.size());
+  };
+}
+
 hermes_status NAPI_CDECL
 create_cdp_debugger(hermes_runtime runtime, hermes_cdp_debugger *result) {
+  facebook::hermes::RuntimeWrapper *wrapper =
+      reinterpret_cast<facebook::hermes::RuntimeWrapper *>(runtime);
+  *result = reinterpret_cast<hermes_cdp_debugger>(wrapper->createCDPDebugAPI());
   return hermes_status_ok;
 }
 
@@ -1246,6 +1294,13 @@ hermes_status NAPI_CDECL create_cdp_agent(
     hermes_enqueue_frontend_message_functor enqueue_frontend_message_callback,
     hermes_cdp_state cdp_state,
     hermes_cdp_agent *result) {
+  std::unique_ptr<facebook::hermes::cdp::CDPAgent> agent =
+      facebook::hermes::cdp::CDPAgent::create(
+          execution_context_id,
+          *reinterpret_cast<facebook::hermes::cdp::CDPDebugAPI *>(cdp_debugger),
+          toEnqueueRuntimeTaskFunctor(enqueue_runtime_task_callback),
+          toOutboundMessageFunc(enqueue_frontend_message_callback),
+          std::move(*reinterpret_cast<facebook::hermes::cdp::State *>(cdp_state)));
   return hermes_status_ok;
 }
 
