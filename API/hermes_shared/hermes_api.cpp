@@ -1313,6 +1313,12 @@ get_cdp_state(hermes_cdp_agent cdp_agent, hermes_cdp_state *result) {
 
 hermes_status NAPI_CDECL
 capture_stack_trace(hermes_runtime runtime, hermes_stack_trace *result) {
+  facebook::hermes::RuntimeWrapper *wrapper =
+      reinterpret_cast<facebook::hermes::RuntimeWrapper *>(runtime);
+  std::unique_ptr<facebook::hermes::debugger::StackTrace> stackTrace =
+      std::make_unique<facebook::hermes::debugger::StackTrace>(
+          wrapper->getHermesRuntime().getDebugger().captureStackTrace());
+  *result = reinterpret_cast<hermes_stack_trace>(stackTrace.release());
   return hermes_status_ok;
 }
 
@@ -1333,6 +1339,8 @@ hermes_status NAPI_CDECL release_cdp_state(hermes_cdp_state cdp_state) {
 }
 
 hermes_status NAPI_CDECL release_stack_trace(hermes_stack_trace stack_trace) {
+  delete reinterpret_cast<facebook::hermes::debugger::StackTrace *>(
+      stack_trace);
   return hermes_status_ok;
 }
 
