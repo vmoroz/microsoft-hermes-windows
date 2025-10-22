@@ -1222,13 +1222,13 @@ struct FunctorAdapter {
 
 template <typename TLambda, typename TResult, typename... TArgs>
 struct FunctorAdapter<TLambda, TResult(void *, TArgs...)> {
-  static TResult Invoke(void *data, TArgs... args) {
+  static TResult invoke(void *data, TArgs... args) {
     return reinterpret_cast<TLambda *>(data)->operator()(args...);
   }
 };
 
 template <typename TFunctor, typename TLambda>
-inline TFunctor AsFunctor(TLambda &&lambda) {
+inline TFunctor toFunctor(TLambda &&lambda) {
   using TLambdaType = std::remove_reference_t<TLambda>;
   using TAdapter = FunctorAdapter<
       TLambdaType,
@@ -1236,20 +1236,25 @@ inline TFunctor AsFunctor(TLambda &&lambda) {
           decltype(std::remove_reference_t<TFunctor>::invoke)>>;
   return TFunctor{
       static_cast<void *>(new TLambdaType(std::forward<TLambdaType>(lambda))),
-      &TAdapter::Invoke,
+      &TAdapter::invoke,
       [](void *data) { delete static_cast<TLambdaType *>(data); }};
+}
+
+// We use shared_ptr to ensure proper release of functor data even if
+// std::function is copied.
+template <typename TFunctor>
+std::shared_ptr<void> toSharedFuncData(const TFunctor &func) {
+  return std::shared_ptr<void>(
+      func.data, [release = func.release](void *data) { release(data); });
 }
 
 facebook::hermes::debugger::EnqueueRuntimeTaskFunc toEnqueueRuntimeTaskFunctor(
     const hermes_enqueue_runtime_task_functor &func) {
-  std::shared_ptr<void> sharedFuncData(
-      func.data, [release = func.release](void *data) { release(data); });
-
-  return [sharedFuncData = std::move(sharedFuncData),
+  return [sharedFuncData = toSharedFuncData(func),
           invoke = func.invoke](facebook::hermes::debugger::RuntimeTask task) {
     invoke(
         sharedFuncData.get(),
-        AsFunctor<hermes_runtime_task_functor>([task](hermes_runtime runtime) {
+        toFunctor<hermes_runtime_task_functor>([task](hermes_runtime runtime) {
           facebook::hermes::RuntimeWrapper *wrapper =
               reinterpret_cast<facebook::hermes::RuntimeWrapper *>(runtime);
           task(wrapper->getHermesRuntime());
@@ -1257,14 +1262,9 @@ facebook::hermes::debugger::EnqueueRuntimeTaskFunc toEnqueueRuntimeTaskFunctor(
   };
 }
 
-// using OutboundMessageFunc = std::function<void(const std::string &)>;
-
 facebook::hermes::cdp::OutboundMessageFunc toOutboundMessageFunc(
     const hermes_enqueue_frontend_message_functor &func) {
-  std::shared_ptr<void> sharedFuncData(
-      func.data, [release = func.release](void *data) { release(data); });
-
-  return [sharedFuncData = std::move(sharedFuncData),
+  return [sharedFuncData = toSharedFuncData(func),
           invoke = func.invoke](const std::string &message) {
     invoke(sharedFuncData.get(), message.c_str(), message.size());
   };
@@ -1340,9 +1340,8 @@ hermes_status NAPI_CDECL cdp_agent_handle_command(
     hermes_cdp_agent cdp_agent,
     const char *json_utf8,
     size_t json_size) {
-  reinterpret_cast<facebook::hermes::cdp::CDPAgent *>(cdp_agent)
-      ->handleCommand(
-          std::string(json_utf8, json_size));
+  reinterpret_cast<facebook::hermes::cdp::CDPAgent *>(cdp_agent)->handleCommand(
+      std::string(json_utf8, json_size));
   return hermes_status_ok;
 }
 
