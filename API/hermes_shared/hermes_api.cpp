@@ -1295,8 +1295,10 @@ hermes_status NAPI_CDECL create_cdp_agent(
           *reinterpret_cast<facebook::hermes::cdp::CDPDebugAPI *>(cdp_debugger),
           toEnqueueRuntimeTaskFunctor(enqueue_runtime_task_callback),
           toOutboundMessageFunc(enqueue_frontend_message_callback),
-          std::move(
-              *reinterpret_cast<facebook::hermes::cdp::State *>(cdp_state)));
+          cdp_state != nullptr ?
+              std::move(
+                  *reinterpret_cast<facebook::hermes::cdp::State *>(cdp_state))
+              : facebook::hermes::cdp::State{});
   *result = reinterpret_cast<hermes_cdp_agent>(agent.release());
   return hermes_status_ok;
 }
