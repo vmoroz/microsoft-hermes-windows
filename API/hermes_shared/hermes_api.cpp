@@ -644,20 +644,20 @@ class RuntimeWrapper {
     ::hermes::node_api::setNodeApiEnvironmentData(
         env_, kRuntimeWrapperTag, this);
 
-    if (config.enableInspector()) {
-      auto adapter = std::make_unique<HermesExecutorRuntimeAdapter>(
-          hermesJsiRuntime_, config.taskRunner());
-      std::string inspectorRuntimeName = config.inspectorRuntimeName();
-      if (inspectorRuntimeName.empty()) {
-        inspectorRuntimeName = "Hermes";
-      }
-      debugSessionToken_ = facebook::hermes::inspector::chrome::enableDebugging(
-          std::move(adapter), inspectorRuntimeName);
-    }
+    // if (config.enableInspector()) {
+    //   auto adapter = std::make_unique<HermesExecutorRuntimeAdapter>(
+    //       hermesJsiRuntime_, config.taskRunner());
+    //   std::string inspectorRuntimeName = config.inspectorRuntimeName();
+    //   if (inspectorRuntimeName.empty()) {
+    //     inspectorRuntimeName = "Hermes";
+    //   }
+    //   debugSessionToken_ = facebook::hermes::inspector::chrome::enableDebugging(
+    //       std::move(adapter), inspectorRuntimeName);
+    // }
   }
 
   ~RuntimeWrapper() {
-    facebook::hermes::inspector::chrome::disableDebugging(debugSessionToken_);
+    // facebook::hermes::inspector::chrome::disableDebugging(debugSessionToken_);
   }
 
   static facebook::hermes::RuntimeWrapper *from(napi_env env) {
@@ -940,7 +940,7 @@ class RuntimeWrapper {
   // Flags used by byte code compiler.
   ::hermes::hbc::CompileFlags compileFlags_{};
 
-  facebook::hermes::inspector::chrome::DebugSessionToken debugSessionToken_{};
+  // facebook::hermes::inspector::chrome::DebugSessionToken debugSessionToken_{};
 
   static constexpr napi_type_tag kRuntimeWrapperTag{
       0xfa327a491b4b4d20,
