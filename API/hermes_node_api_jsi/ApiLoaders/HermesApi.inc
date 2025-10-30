@@ -25,8 +25,7 @@ HERMES_INSPECTOR_FUNC(hermes_delete_local_connection)
 HERMES_INSPECTOR_FUNC(hermes_local_connection_send_message)
 HERMES_INSPECTOR_FUNC(hermes_local_connection_disconnect)
 
-// vtable for Debugger
-HERMES_INSPECTOR_FUNC(hermes_get_debugger_vtable)
+HERMES_INSPECTOR_FUNC(hermes_get_inspector_vtable)
 
 #undef HERMES_FUNC
 #undef HERMES_INSPECTOR_FUNC
