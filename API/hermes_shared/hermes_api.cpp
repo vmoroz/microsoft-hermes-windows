@@ -1369,6 +1369,111 @@ cdp_agent_enable_debugger_domain(hermes_cdp_agent cdp_agent) {
   return hermes_status_ok;
 }
 
+hermes_status NAPI_CDECL cdp_agent_add_console_message(
+    hermes_cdp_debugger cdp_debugger,
+    double timestamp,
+    hermes_console_api_type type,
+    const char *args_property_name,
+    hermes_stack_trace stack_trace) {
+  try {
+    // Get the CDPDebugAPI instance
+    auto *cdpDebugAPI = reinterpret_cast<facebook::hermes::cdp::CDPDebugAPI *>(cdp_debugger);
+    facebook::jsi::Runtime &runtime = cdpDebugAPI->runtime();
+    
+    // Retrieve the arguments array from the global property
+    facebook::jsi::Value argsValue = runtime.global().getProperty(runtime, args_property_name);
+    
+    // Convert jsi::Array back to std::vector<jsi::Value>
+    std::vector<facebook::jsi::Value> args;
+    if (argsValue.isObject()) {
+      facebook::jsi::Array argsArray = argsValue.asObject(runtime).asArray(runtime);
+      size_t length = argsArray.length(runtime);
+      args.reserve(length);
+      
+      for (size_t i = 0; i < length; ++i) {
+        args.push_back(argsArray.getValueAtIndex(runtime, i));
+      }
+    }
+    
+    // Delete the temporary property immediately
+    runtime.global().setProperty(runtime, args_property_name, facebook::jsi::Value::undefined());
+    
+    // Convert hermes_console_api_type to ConsoleAPIType
+    facebook::hermes::cdp::ConsoleAPIType consoleType;
+    switch (type) {
+      case hermes_console_api_type_log:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kLog;
+        break;
+      case hermes_console_api_type_debug:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kDebug;
+        break;
+      case hermes_console_api_type_info:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kInfo;
+        break;
+      case hermes_console_api_type_error:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kError;
+        break;
+      case hermes_console_api_type_warning:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kWarning;
+        break;
+      case hermes_console_api_type_dir:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kDir;
+        break;
+      case hermes_console_api_type_dir_xml:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kDirXML;
+        break;
+      case hermes_console_api_type_table:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kTable;
+        break;
+      case hermes_console_api_type_trace:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kTrace;
+        break;
+      case hermes_console_api_type_start_group:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kStartGroup;
+        break;
+      case hermes_console_api_type_start_group_collapsed:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kStartGroupCollapsed;
+        break;
+      case hermes_console_api_type_end_group:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kEndGroup;
+        break;
+      case hermes_console_api_type_clear:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kClear;
+        break;
+      case hermes_console_api_type_assert:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kAssert;
+        break;
+      case hermes_console_api_type_time_end:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kTimeEnd;
+        break;
+      case hermes_console_api_type_count:
+        consoleType = facebook::hermes::cdp::ConsoleAPIType::kCount;
+        break;
+      default:
+        return hermes_status_error;
+    }
+    
+    // Get the stack trace if provided
+    facebook::hermes::debugger::StackTrace hermesStackTrace;
+    if (stack_trace != nullptr) {
+      hermesStackTrace = *reinterpret_cast<facebook::hermes::debugger::StackTrace *>(stack_trace);
+    }
+    
+    // Create ConsoleMessage and add to CDP
+    facebook::hermes::cdp::ConsoleMessage message(
+        timestamp,
+        consoleType,
+        std::move(args),
+        std::move(hermesStackTrace));
+    
+    cdpDebugAPI->addConsoleMessage(std::move(message));
+    return hermes_status_ok;
+    
+  } catch (...) {
+    return hermes_status_error;
+  }
+}
+
 const hermes_debugger_vtable HermesDebuggerApiImpl::vtable = {
     create_cdp_debugger,
     create_cdp_agent,
@@ -1380,7 +1485,8 @@ const hermes_debugger_vtable HermesDebuggerApiImpl::vtable = {
     release_stack_trace,
     cdp_agent_handle_command,
     cdp_agent_enable_runtime_domain,
-    cdp_agent_enable_debugger_domain};
+    cdp_agent_enable_debugger_domain,
+    cdp_agent_add_console_message};
 
 JSR_API hermes_get_debugger_vtable(const hermes_debugger_vtable **vtable) {
   OutputDebugStringA(

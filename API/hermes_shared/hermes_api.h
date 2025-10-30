@@ -162,6 +162,12 @@ typedef hermes_status(
     NAPI_CDECL *hermes_cdp_agent_handle_command)(hermes_cdp_agent cdp_agent, const char *json_utf8, size_t json_size);
 typedef hermes_status(NAPI_CDECL *hermes_cdp_agent_enable_runtime_domain)(hermes_cdp_agent cdp_agent);
 typedef hermes_status(NAPI_CDECL *hermes_cdp_agent_enable_debugger_domain)(hermes_cdp_agent cdp_agent);
+typedef hermes_status(NAPI_CDECL *hermes_cdp_agent_add_console_message)(
+    hermes_cdp_debugger cdp_debugger,
+    double timestamp,
+    hermes_console_api_type type,
+    const char *args_property_name,
+    hermes_stack_trace stack_trace);
 
 typedef struct {
   hermes_create_cdp_debugger create_cdp_debugger;
@@ -175,6 +181,7 @@ typedef struct {
   hermes_cdp_agent_handle_command cdp_agent_handle_command;
   hermes_cdp_agent_enable_runtime_domain cdp_agent_enable_runtime_domain;
   hermes_cdp_agent_enable_debugger_domain cdp_agent_enable_debugger_domain;
+  hermes_cdp_agent_add_console_message cdp_agent_add_console_message;
 } hermes_debugger_vtable;
 
 JSR_API hermes_get_debugger_vtable(const hermes_debugger_vtable **vtable);
