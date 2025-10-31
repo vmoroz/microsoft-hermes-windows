@@ -49,6 +49,12 @@ if (HERMES_MSVC_USE_PLATFORM_UNICODE_WINGLOB)
   add_definitions(-DUSE_PLATFORM_UNICODE_WINGLOB)
 endif()
 
+# Configure Hybrid CRT for Windows builds (must be before any targets)
+# Uses static C++ runtime with dynamic Universal CRT to avoid MSVCP140.dll dependency
+if(WIN32)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # Enable source linking
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "MSVC")
   # NOTE: Dependencies are not properly setup here.

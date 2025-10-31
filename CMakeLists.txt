@@ -25,11 +25,6 @@ if (POLICY CMP0054)
   cmake_policy(SET CMP0054 NEW)
 endif()
 
-# Enable MSVC_RUNTIME_LIBRARY target property (CMake 3.15+)
-if (POLICY CMP0091)
-  cmake_policy(SET CMP0091 NEW)
-endif()
-
 # Pick up a workaround for a CMake problem from LLVM r282552.
 if(POLICY CMP0057)
   cmake_policy(SET CMP0057 NEW)
@@ -38,6 +33,11 @@ endif()
 # Enable transitive library dependencies
 if(POLICY CMP0022)
   cmake_policy(SET CMP0022 NEW)
+endif()
+
+# Enable CMAKE_MSVC_RUNTIME_LIBRARY variable (CMake 3.15+)
+if (POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW)
 endif()
 
 # Has to be set before `project` as per documentation
@@ -64,12 +64,6 @@ project(Hermes
         LANGUAGES C CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/")
-
-# Configure Hybrid CRT for Windows builds (must be before any targets)
-# Uses static C++ runtime with dynamic Universal CRT to avoid MSVCP140.dll dependency
-if(WIN32)
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
 
 # Include Windows-specific build configuration
 if(WIN32)
