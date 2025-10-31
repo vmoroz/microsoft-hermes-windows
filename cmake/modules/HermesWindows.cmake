@@ -89,7 +89,10 @@ function(hermes_windows_configure_msvc_flags)
     set(MSVC_CXX_FLAGS "/Zi")
 
     # Security flags
-    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /GS /DYNAMICBASE /guard:cf /Qspectre /sdl /ZH:SHA_256")    
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /GS /DYNAMICBASE /guard:cf /Qspectre /sdl /ZH:SHA_256")
+    
+    # Downgrade C4146 from error to warning level 3 (promoted to error by /sdl)
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w34146")
 
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MSVC_CXX_FLAGS}" PARENT_SCOPE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MSVC_CXX_FLAGS}" PARENT_SCOPE)
