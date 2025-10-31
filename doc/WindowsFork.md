@@ -35,6 +35,22 @@ To reduce the pain of maintaining this fork, we're consolidating all Windows-spe
 - CRT (C Runtime) configuration (Hybrid CRT for deployment)
 - Windows platform detection and configuration
 
+#### Overriding Upstream Warning Suppressions
+
+A key challenge is that upstream facebook/hermes disables certain warnings (C4244, C4267) that Microsoft's security requirements mandate must be enabled. The solution uses MSVC's flag precedence where **the last flag wins**:
+
+**Execution order:**
+1. `Hermes.cmake` (upstream) runs first: `-wd4244 -wd4267` (disables warnings)
+2. `HermesWindows.cmake` runs later: `/w34244 /w34267` (re-enables at warning level 3)
+3. MSVC uses the last flag → warnings are enabled ✅
+
+This allows us to maintain security compliance without modifying upstream files.
+
+**Example flags that are overridden:**
+- `C4146`: Downgraded from error to warning (promoted by `/sdl`)
+- `C4244`: Re-enabled despite upstream suppression (SDL requirement)
+- `C4267`: Re-enabled despite upstream suppression (SDL requirement)
+
 #### What Stays in Upstream Files
 
 - Minimal hooks to include HermesWindows.cmake
@@ -81,6 +97,7 @@ The `HermesWindows.cmake` module provides:
 - ✅ **Hybrid CRT Configuration**: Moved static C++ runtime + dynamic UCRT configuration to eliminate MSVCP140.dll dependencies
 - ✅ **Security Flags**: Centralized /sdl, /guard:cf, /Qspectre, /ZH:SHA_256, /CETCOMPAT in HermesWindows.cmake
 - ✅ **Warning C4146**: Consolidated handling of "unary minus on unsigned" warning (required after /sdl)
+- ✅ **SDL Warning Requirements**: Override upstream suppressions to re-enable C4244 and C4267 (security compliance)
 - ✅ **Linker Flags**: Separated debug vs. release linker flags with proper generator expressions
 - ✅ **DLL Warning Suppressions**: Moved C4251, C4275, C4646, C4312 from CMakeLists.txt to HermesWindows.cmake
 

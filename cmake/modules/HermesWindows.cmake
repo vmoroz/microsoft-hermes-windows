@@ -91,10 +91,20 @@ function(hermes_windows_configure_msvc_flags)
     # Security flags
     set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /GS /DYNAMICBASE /guard:cf /Qspectre /sdl /ZH:SHA_256")
     
-    # Downgrade C4146 from error to warning level 3 (promoted to error by /sdl)
+    # SDL (Security Development Lifecycle) requires these warnings enabled:
+    # Note: Upstream Hermes.cmake disables these with -wd flags, but we override them here
+    # for Windows security compliance. Last flag wins in MSVC.
+    
+    # C4146: Re-enable 'unary minus operator applied to unsigned type, result still unsigned'
+    # Downgrade from error to warning level 3 (promoted to error by /sdl)
     set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w34146")
+    # C4244: Re-enable 'conversion from type1 to type2, possible loss of data' 
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w4244")
+    # C4267: Re-enable 'conversion from size_t to type, possible loss of data'
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w4267")
     
     # Windows-specific warning suppressions for DLL builds
+
     # C4251: class X needs to have dll-interface to be used by clients of class Y
     set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /wd4251")
     # C4275: non dll-interface class X used as base for dll-interface class Y
@@ -104,6 +114,7 @@ function(hermes_windows_configure_msvc_flags)
     # C4312: 'reinterpret_cast': conversion from 'X' to 'hermes::vm::GCCell *' of greater size
     set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /wd4312")
 
+    # Apply flags to both C and C++
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MSVC_CXX_FLAGS}" PARENT_SCOPE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MSVC_CXX_FLAGS}" PARENT_SCOPE)
 endfunction()
