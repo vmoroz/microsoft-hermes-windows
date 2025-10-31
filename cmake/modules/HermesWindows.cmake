@@ -85,8 +85,13 @@ endfunction()
 
 # Configure MSVC compiler flags
 function(hermes_windows_configure_msvc_flags)
+    set(MSVC_CXX_FLAGS "")
+
+    # Enable function-level linking (enables /OPT:REF linker optimization)
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /Gy")
+    
     # Debug information
-    set(MSVC_CXX_FLAGS "/Zi")
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /Zi")
 
     # Security flags
     set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /GS /DYNAMICBASE /guard:cf /Qspectre /sdl /ZH:SHA_256")
@@ -99,9 +104,9 @@ function(hermes_windows_configure_msvc_flags)
     # Downgrade from error to warning level 3 (promoted to error by /sdl)
     set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w34146")
     # C4244: Re-enable 'conversion from type1 to type2, possible loss of data' 
-    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w4244")
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w44244")
     # C4267: Re-enable 'conversion from size_t to type, possible loss of data'
-    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w4267")
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w44267")
     
     # Windows-specific warning suppressions for DLL builds
 

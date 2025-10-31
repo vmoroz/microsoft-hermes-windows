@@ -76,14 +76,6 @@ function(hermes_update_compile_flags name)
 
   set(flags "")
 
-  if (MSVC)
-    # enable function-level linking
-    set(flags "${flags} /Gy")
-    
-    # Ensure debug symbols are generated for all sources.
-    set(flags "${flags} /Zi")
-  endif ()
-
   if (NOT HERMES_ENABLE_EH_RTTI)
     if (GCC_COMPATIBLE)
       set(flags "${flags} -fno-exceptions -fno-rtti")
@@ -95,8 +87,7 @@ function(hermes_update_compile_flags name)
   if (update_src_props)
     foreach (fn ${sources})
       get_filename_component(suf ${fn} EXT)
-      # TODO: (vmoroz) It seems that we must remove the ".c" extension from here.
-      if ("${suf}" STREQUAL ".cpp" OR "${suf}" STREQUAL ".c")
+      if ("${suf}" STREQUAL ".cpp")
         set_property(SOURCE ${fn} APPEND_STRING PROPERTY
           COMPILE_FLAGS "${flags}")
       endif ()
@@ -105,12 +96,6 @@ function(hermes_update_compile_flags name)
     # Update target props, since all sources are C++.
     set_property(TARGET ${name} APPEND_STRING PROPERTY
       COMPILE_FLAGS "${flags}")
-  endif ()
-
-  if (MSVC)
-    # Temporary avoid the auto-vectorization optimization since VS 17.14.0 produces incorrect code.
-    # Set /O1 only for Release configs using modern CMake target_compile_options.
-    target_compile_options(${name} PRIVATE $<$<CONFIG:Release>:/O1>)
   endif ()
 endfunction()
 
