@@ -65,6 +65,12 @@ project(Hermes
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/")
 
+# Configure Hybrid CRT for Windows builds (must be before any targets)
+# Uses static C++ runtime with dynamic Universal CRT to avoid MSVCP140.dll dependency
+if(WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # Include Windows-specific build configuration
 if(WIN32)
   include(HermesWindows)

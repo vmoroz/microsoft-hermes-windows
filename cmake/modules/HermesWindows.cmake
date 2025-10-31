@@ -78,8 +78,6 @@ function(hermes_windows_configure_clang_flags)
     
     # Security flags
     set(CLANG_CXX_FLAGS "${CLANG_CXX_FLAGS} -fstack-protector-all")
-
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" PARENT_SCOPE)
    
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CLANG_CXX_FLAGS}" PARENT_SCOPE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CLANG_CXX_FLAGS}" PARENT_SCOPE)
@@ -90,7 +88,8 @@ function(hermes_windows_configure_msvc_flags)
     # Debug information
     set(MSVC_CXX_FLAGS "/Zi")
 
-    set(MSVC_CXX_FLAGS $<IF:$<CONFIG:Debug>,/MTd,/MT>)
+    # Static CRT runtime
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} $<IF:$<CONFIG:Debug>,/MTd,/MT>")
 
     # Security flags
     set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /GS /DYNAMICBASE /guard:cf /Qspectre /sdl /ZH:SHA_256")
@@ -120,9 +119,9 @@ function(hermes_windows_configure_lld_flags)
     # Deterministic builds
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/BREPRO")
 
+    # Hybrid CRT: Remove static UCRT, add dynamic UCRT
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrt.lib")
-    list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:msvcrt.lib")
-    list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:ucrt.lib")
+    list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrt.lib")
   else()
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrtd.lib")
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:msvcrtd.lib")
