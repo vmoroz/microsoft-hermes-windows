@@ -25,8 +25,7 @@ if (POLICY CMP0054)
   cmake_policy(SET CMP0054 NEW)
 endif()
 
-# MSVC runtime library flags are selected by an abstraction (CMP0091)
-# This enables CMAKE_MSVC_RUNTIME_LIBRARY to control CRT linkage
+# Enable MSVC_RUNTIME_LIBRARY target property (CMake 3.15+)
 if (POLICY CMP0091)
   cmake_policy(SET CMP0091 NEW)
 endif()
@@ -65,6 +64,12 @@ project(Hermes
         LANGUAGES C CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/")
+
+# Configure Hybrid CRT for Windows Clang builds (must be before any targets)
+# Uses static C++ runtime with dynamic Universal CRT to avoid MSVCP140.dll dependency
+if(WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 # Include Windows-specific build configuration
 if(WIN32)
@@ -310,15 +315,6 @@ endif()
 
 # Configure Windows-specific build settings
 if(WIN32)
-  # Set up Hybrid CRT for Clang builds
-  # This must be set before any targets are created
-  if("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-    # Remove CMake's automatic CRT flags for Clang
-    set(_CMAKE_MSVC_RUNTIME_LIBRARY_DEFAULT "")
-    message(STATUS "Set CMAKE_MSVC_RUNTIME_LIBRARY for Hybrid CRT: MultiThreaded$<$<CONFIG:Debug>:Debug>")
-  endif()
-  
   hermes_windows_configure_build()
   hermes_windows_show_configuration()
 endif()
