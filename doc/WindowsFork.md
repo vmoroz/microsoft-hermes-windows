@@ -1,163 +1,144 @@
 # Windows Fork Maintenance Strategy
 
-## Background
+This document outlines the purpose, principles, and build process for the
+`hermes-windows` fork.
 
-This repository is a fork of [facebook/hermes](https://github.com/facebook/hermes), the JavaScript engine for React Native. The original Hermes repository primarily targets non-Windows platforms (iOS, Android, macOS, Linux). This Microsoft fork exists to enable and maintain Windows platform support with security compliance requirements.
+## Purpose
 
-## Challenge
+This repository is a fork of
+[facebook/hermes](https://github.com/facebook/hermes) that exists to provide
+robust, production-ready Windows support for the Hermes JavaScript engine. Our
+goal is to enable first-class Windows integration, including features and
+security requirements not present in the upstream repository, while closely
+tracking upstream development.
 
-Maintaining a fork presents ongoing challenges when syncing with upstream changes:
+## Guiding Principles
 
-- **Merge Conflicts**: Windows-specific changes scattered throughout the codebase cause conflicts when merging upstream updates
-- **Code Review Overhead**: Difficult to distinguish between upstream changes and Windows-specific modifications
-- **Maintenance Burden**: Every upstream merge requires careful review and re-application of Windows-specific patches
-- **Knowledge Transfer**: New team members must learn which modifications are Windows-specific vs. upstream
+To ensure long-term maintainability and simplify the process of merging upstream
+changes, we adhere to the following principles:
 
-## Strategy: Consolidation in HermesWindows.cmake
+### 1. Minimize Upstream Diff
 
-To reduce the pain of maintaining this fork, we're consolidating all Windows-specific build configuration into a single file: [`cmake/modules/HermesWindows.cmake`](../cmake/modules/HermesWindows.cmake).
+The primary goal is to keep this fork as close to `facebook/hermes` as possible.
+All changes should be made with the intention of minimizing merge conflicts
+during upstream pulls. Before making a change, consider if it can be implemented
+without modifying an upstream file.
 
-### Goals
+### 2. Isolate Windows-Specific Code
 
-1. **Minimize Upstream File Changes**: Keep modifications to upstream files (CMakeLists.txt, Hermes.cmake, etc.) to an absolute minimum
-2. **Centralize Windows Logic**: Move all Windows-specific compiler flags, linker flags, and build settings to HermesWindows.cmake
-3. **Simplify Merges**: Reduce merge conflicts by isolating Windows-specific changes
-4. **Improve Maintainability**: Make it clear what's Windows-specific vs. upstream behavior
+All Windows-specific build logic, compiler flags, and linker settings **MUST**
+be placed in the central configuration file:
+[`cmake/modules/HermesWindows.cmake`](../cmake/modules/HermesWindows.cmake).
 
-### Implementation Approach
+**Do not add Windows-specific code to upstream files** like `CMakeLists.txt` or
+`cmake/modules/Hermes.cmake`. This separation is critical for reducing merge
+conflicts and clearly delineating our additions from the upstream codebase.
 
-#### What Goes in HermesWindows.cmake
+## Build System Strategy
 
-- Windows compiler flags (MSVC and Clang on Windows)
-- Windows linker flags (link.exe and lld-link)
-- Windows security requirements (/sdl, /guard:cf, /Qspectre, etc.)
-- Windows-specific build options
-- CRT (C Runtime) configuration (Hybrid CRT for deployment)
-- Windows platform detection and configuration
+Our build system is designed to be clean, maintainable, and easy to debug.
 
-#### Overriding Upstream Warning Suppressions
+### The Role of `HermesWindows.cmake`
 
-A key challenge is that upstream facebook/hermes disables certain warnings (C4244, C4267) that Microsoft's security requirements mandate must be enabled. The solution uses MSVC's flag precedence where **the last flag wins**:
+This file is the single source of truth for all Windows-specific build
+configurations. It is included from the root `CMakeLists.txt` and provides
+functions to configure compiler and linker flags for both MSVC and Clang on
+Windows.
 
-**Execution order:**
-1. `Hermes.cmake` (upstream) runs first: `-wd4244 -wd4267` (disables warnings)
-2. `HermesWindows.cmake` runs later: `/w34244 /w34267` (re-enables at warning level 3)
-3. MSVC uses the last flag → warnings are enabled ✅
+### The Override Pattern
 
-This allows us to maintain security compliance without modifying upstream files.
+A key challenge is that upstream `Hermes.cmake` disables certain warnings (e.g.,
+C4244, C4267) that are required for Microsoft's security compliance. To solve
+this without modifying the upstream file, we use an "override pattern" that
+relies on MSVC's flag precedence, where **the last flag applied wins**.
 
-**Example flags that are overridden:**
-- `C4146`: Downgraded from error to warning (promoted by `/sdl`)
-- `C4244`: Re-enabled despite upstream suppression (SDL requirement)
-- `C4267`: Re-enabled despite upstream suppression (SDL requirement)
+1.  **Upstream (`Hermes.cmake`)**: Applies `-wd4244` (disables warning).
+2.  **Our Fork (`HermesWindows.cmake`)**: Later applies `/w44244` (re-enables
+    warning at level 4).
 
-#### What Stays in Upstream Files
+This powerful pattern allows us to enforce our requirements without creating a
+diff in the upstream file, dramatically simplifying merges.
 
-- Minimal hooks to include HermesWindows.cmake
-- Cross-platform logic that already exists upstream
-- Changes that should be contributed back to facebook/hermes
+### Hybrid CRT Configuration
 
-### Current Implementation
+A major feature of this fork is the **Hybrid CRT configuration**, which ensures
+that `hermes.dll` and related binaries do not have a dependency on
+`msvcp140.dll` or `vcruntime140.dll`. Instead, they link against the Universal C
+Runtime (UCRT), which is available on all modern Windows systems.
 
-The Windows-specific configuration is invoked in CMakeLists.txt:
+This is achieved by setting `CMAKE_MSVC_RUNTIME_LIBRARY` to `MultiThreaded`
+(static) and then using linker flags to replace the static UCRT with the dynamic
+(system) version. This simplifies deployment and eliminates the need for
+consumers to install the Visual C++ Redistributable.
 
-```cmake
-# Configure Hybrid CRT for Windows builds (must be before any targets)
-if(WIN32)
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
+## Build Process
 
-# Include Windows-specific build configuration
-if(WIN32)
-  include(HermesWindows)
-endif()
+The repository uses `CMakePresets.json` to define the four primary build
+configurations for Windows.
 
-# ... later in the file ...
+### Supported Presets
 
-# Configure Windows-specific build settings
-if(WIN32)
-  hermes_windows_configure_build()
-  hermes_windows_show_configuration()
-endif()
-```
+- `ninja-clang-debug`
+- `ninja-clang-release`
+- `ninja-msvc-debug`
+- `ninja-msvc-release`
 
-The `HermesWindows.cmake` module provides:
+### Building Hermes
 
-- `hermes_windows_configure_clang_flags()` - Clang compiler flags for Windows
-- `hermes_windows_configure_msvc_flags()` - MSVC compiler flags
-- `hermes_windows_configure_lld_flags()` - lld-link (Clang's linker) flags
-- `hermes_windows_configure_msvc_linker_flags()` - link.exe (MSVC linker) flags
-- `hermes_windows_configure_build()` - Main configuration function
-- `hermes_windows_show_configuration()` - Debug output for verification
+There are two primary ways to build the project:
 
-## Cleanup Progress
+#### Official Build Script (CI/CD)
 
-### Completed
-
-- ✅ **Hybrid CRT Configuration**: Moved static C++ runtime + dynamic UCRT configuration to eliminate MSVCP140.dll dependencies
-- ✅ **Security Flags**: Centralized /sdl, /guard:cf, /Qspectre, /ZH:SHA_256, /CETCOMPAT in HermesWindows.cmake
-- ✅ **Warning C4146**: Consolidated handling of "unary minus on unsigned" warning (required after /sdl)
-- ✅ **SDL Warning Requirements**: Override upstream suppressions to re-enable C4244 and C4267 (security compliance)
-- ✅ **Linker Flags**: Separated debug vs. release linker flags with proper generator expressions
-- ✅ **DLL Warning Suppressions**: Moved C4251, C4275, C4646, C4312 from CMakeLists.txt to HermesWindows.cmake
-
-### In Progress / TODO
-
-Items to clean up from upstream files and move to HermesWindows.cmake:
-
-- [ ] Additional MSVC warning suppressions in CMakeLists.txt (C4068, C4200, C4201, C4530) - These appear to be from upstream
-- [ ] Stack size configuration (/STACK:10485760) - Windows-specific for deep recursion tests
-- [ ] MSVC_MP parallelization flag - Windows-specific build optimization
-- [ ] Any other Windows-specific patches discovered during upstream merges
-
-## How to Contribute Cleanup
-
-When you identify Windows-specific code in upstream files that should be moved:
-
-1. **Identify the Code**: Find Windows-specific modifications in CMakeLists.txt, Hermes.cmake, or other upstream files
-2. **Move to HermesWindows.cmake**: Add the configuration to the appropriate function in HermesWindows.cmake
-3. **Remove from Upstream File**: Delete or comment out the Windows-specific code, adding a note pointing to HermesWindows.cmake
-4. **Test All Configurations**: Verify ninja-clang-debug, ninja-clang-release, ninja-msvc-debug, ninja-msvc-release all build correctly
-5. **Document**: Update this file's "Cleanup Progress" section
-
-## Testing Windows Builds
-
-After making changes, verify all four build configurations:
+The official method for building, used by our CI, is the `build.js` script:
 
 ```powershell
-# Configure and build Clang Debug
-cmake --preset ninja-clang-debug
-cmake --build build/ninja-clang-debug --target libshared
+# Example: Build all configurations
+node .ado\scripts\build.js
+```
 
-# Configure and build Clang Release  
-cmake --preset ninja-clang-release
-cmake --build build/ninja-clang-release --target libshared
+This script handles all configurations and ensures a complete, validated build.
 
-# Configure and build MSVC Debug
-cmake --preset ninja-msvc-debug
-cmake --build build/ninja-msvc-debug --target libshared
+#### Developer Builds
 
-# Configure and build MSVC Release
+For development, a more lightweight approach is to use CMake presets directly.
+This is ideal for quick builds within VS Code or for use by developer tools.
+
+To configure and build a specific preset, use the following commands:
+
+```powershell
+# Example: Configure and build MSVC Release
 cmake --preset ninja-msvc-release
-cmake --build build/ninja-msvc-release --target libshared
+cmake --build build/ninja-msvc-release
 ```
 
-Verify DLL dependencies (should only have UCRT, no MSVCP/VCRUNTIME):
+### Verifying Dependencies
+
+After a build, you can verify that the Hybrid CRT is working correctly by
+checking the dependencies of `hermes.dll`. It should **not** link to
+`msvcp140.dll`.
 
 ```powershell
-# Debug builds should depend on ucrtbased.dll
-dumpbin /dependents build/ninja-msvc-debug/API/hermes_shared/hermes.dll
-
 # Release builds should depend on api-ms-win-crt-*.dll
 dumpbin /dependents build/ninja-msvc-release/API/hermes_shared/hermes.dll
 ```
 
-## Resources
+## How to Contribute
+
+When adding or modifying Windows-specific features:
+
+1.  **Isolate Changes**: Place all build-related logic in
+    `cmake/modules/HermesWindows.cmake`.
+2.  **Maintain Upstream Files**: Do not add Windows-specific code to upstream
+    CMake files. Use the override pattern where possible.
+3.  **Test All Configurations**: Ensure your changes build successfully across
+    all four supported presets.
+4.  **Document**: If you introduce a new high-level strategy, update this
+    document.
+
+## References
 
 - **Upstream Hermes**: https://github.com/facebook/hermes
-- **Windows Hybrid CRT**: https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#runtime-downloads
-- **MSVC Security Features**: https://learn.microsoft.com/en-us/cpp/build/reference/sdl-enable-additional-security-checks
-
-## Contact
-
-For questions about Windows fork maintenance, consult the team members who work on the hermes-windows repository.
+- **Windows Hybrid CRT**:
+  https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#runtime-downloads
+- **MSVC Security Features**:
+  https://learn.microsoft.com/en-us/cpp/build/reference/sdl-enable-additional-security-checks

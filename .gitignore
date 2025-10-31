@@ -39,3 +39,7 @@ android/intltest/java/com/facebook/hermes/test/assets/**
 
 # clangd cache
 .cache/
+
+# Node.js / npm
+/node_modules
+package-lock.json
