@@ -123,9 +123,9 @@ function(hermes_windows_configure_lld_flags)
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrt.lib")
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrt.lib")
   else()
+    # Debug: Remove static debug UCRT, add dynamic debug UCRT
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrtd.lib")
-    list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:msvcrtd.lib")
-    list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrt.lib")
+    list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrtd.lib")
   endif()
 
   set(HERMES_EXTRA_LINKER_FLAGS "${HERMES_EXTRA_LINKER_FLAGS}" PARENT_SCOPE)
@@ -140,10 +140,10 @@ function(hermes_windows_configure_msvc_linker_flags)
 
   # Ignore the static Universal CRT library and link against the dynamic one instead
   list(APPEND MSVC_DEBUG_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrtd.lib")
-  list(APPEND MSVC_DEBUG_LINKER_FLAGS "LINKER:/NODEFAULTLIB:ucrtd.lib")
+  list(APPEND MSVC_DEBUG_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrtd.lib")
 
   list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrt.lib")
-  list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/NODEFAULTLIB:ucrt.lib")
+  list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrt.lib")
 
   # Security flags
   list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/ZH:SHA_256")
