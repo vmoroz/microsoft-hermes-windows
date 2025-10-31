@@ -3,11 +3,6 @@
 
 # This file centralizes all Windows-specific build configuration logic.
 
-# Configure Hybrid CRT for Windows builds (must be before any targets)
-# Uses static C++ runtime with dynamic Universal CRT to avoid MSVCP140.dll dependency
-# See for details: https://github.com/microsoft/WindowsAppSDK/blob/main/docs/Coding-Guidelines/HybridCRT.md
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-
 # Detect if lld-link is being used as the linker
 set(HERMES_USING_LLD_LINK OFF)
 if(DEFINED CMAKE_LINKER AND CMAKE_LINKER MATCHES "lld-link")
@@ -56,9 +51,8 @@ endif()
 
 # Configure Hybrid CRT for Windows builds (must be before any targets)
 # Uses static C++ runtime with dynamic Universal CRT to avoid MSVCP140.dll dependency
-if(WIN32)
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
+# See for details: https://github.com/microsoft/WindowsAppSDK/blob/main/docs/Coding-Guidelines/HybridCRT.md
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # Enable source linking
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "MSVC")
