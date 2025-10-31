@@ -88,12 +88,9 @@ function(hermes_windows_configure_msvc_flags)
     # Debug information
     set(MSVC_CXX_FLAGS "/Zi")
 
-    # Static CRT runtime
-    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} $<IF:$<CONFIG:Debug>,/MTd,/MT>")
-
     # Security flags
-    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /GS /DYNAMICBASE /guard:cf /Qspectre /sdl /ZH:SHA_256")
-    
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /GS /DYNAMICBASE /guard:cf /Qspectre /sdl /ZH:SHA_256")    
+
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MSVC_CXX_FLAGS}" PARENT_SCOPE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MSVC_CXX_FLAGS}" PARENT_SCOPE)
 endfunction()
@@ -133,18 +130,19 @@ endfunction()
 
 # Configure MSVC linker flags
 function(hermes_windows_configure_msvc_linker_flags)
-  # Debug information
-  list(APPEND MSVC_DEBUG_LINKER_FLAGS "LINKER:/DEBUG:FULL")
+  # Debug information (common to both)
+  list(APPEND MSVC_COMMON_LINKER_FLAGS "LINKER:/DEBUG:FULL")
 
-  list(APPEND MSVC_RELEASE_LINKER_FLAGS "${MSVC_DEBUG_LINKER_FLAGS}")
-
-  # Ignore the static Universal CRT library and link against the dynamic one instead
+  # Debug-specific flags
+  set(MSVC_DEBUG_LINKER_FLAGS "${MSVC_COMMON_LINKER_FLAGS}")
   list(APPEND MSVC_DEBUG_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrtd.lib")
   list(APPEND MSVC_DEBUG_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrtd.lib")
 
+  # Release-specific flags
+  set(MSVC_RELEASE_LINKER_FLAGS "${MSVC_COMMON_LINKER_FLAGS}")
   list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrt.lib")
   list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrt.lib")
-
+  
   # Security flags
   list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/ZH:SHA_256")
   list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/guard:cf")
@@ -160,7 +158,11 @@ function(hermes_windows_configure_msvc_linker_flags)
   # Deterministic builds
   list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/BREPRO")
 
-  set(HERMES_EXTRA_LINKER_FLAGS "$<IF:$<CONFIG:Release>,${MSVC_RELEASE_LINKER_FLAGS},${MSVC_DEBUG_LINKER_FLAGS}>" PARENT_SCOPE)
+  set(HERMES_EXTRA_LINKER_FLAGS 
+    "$<$<CONFIG:Debug>:${MSVC_DEBUG_LINKER_FLAGS}>"
+    "$<$<CONFIG:Release>:${MSVC_RELEASE_LINKER_FLAGS}>"
+    PARENT_SCOPE
+  )
 endfunction()
 
 # Main configuration function
