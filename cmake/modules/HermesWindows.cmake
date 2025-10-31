@@ -93,6 +93,16 @@ function(hermes_windows_configure_msvc_flags)
     
     # Downgrade C4146 from error to warning level 3 (promoted to error by /sdl)
     set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /w34146")
+    
+    # Windows-specific warning suppressions for DLL builds
+    # C4251: class X needs to have dll-interface to be used by clients of class Y
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /wd4251")
+    # C4275: non dll-interface class X used as base for dll-interface class Y
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /wd4275")
+    # C4646: function declared with 'noreturn' has non-void return type
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /wd4646")
+    # C4312: 'reinterpret_cast': conversion from 'X' to 'hermes::vm::GCCell *' of greater size
+    set(MSVC_CXX_FLAGS "${MSVC_CXX_FLAGS} /wd4312")
 
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MSVC_CXX_FLAGS}" PARENT_SCOPE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MSVC_CXX_FLAGS}" PARENT_SCOPE)

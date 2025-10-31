@@ -82,14 +82,15 @@ The `HermesWindows.cmake` module provides:
 - ✅ **Security Flags**: Centralized /sdl, /guard:cf, /Qspectre, /ZH:SHA_256, /CETCOMPAT in HermesWindows.cmake
 - ✅ **Warning C4146**: Consolidated handling of "unary minus on unsigned" warning (required after /sdl)
 - ✅ **Linker Flags**: Separated debug vs. release linker flags with proper generator expressions
+- ✅ **DLL Warning Suppressions**: Moved C4251, C4275, C4646, C4312 from CMakeLists.txt to HermesWindows.cmake
 
 ### In Progress / TODO
 
 Items to clean up from upstream files and move to HermesWindows.cmake:
 
-- [ ] Additional MSVC warning suppressions (C4068, C4200, C4201, C4530, C4251, C4275, C4646, C4312)
-- [ ] Stack size configuration (/STACK:10485760)
-- [ ] MSVC-specific compilation options in CMakeLists.txt around line 510-530
+- [ ] Additional MSVC warning suppressions in CMakeLists.txt (C4068, C4200, C4201, C4530) - These appear to be from upstream
+- [ ] Stack size configuration (/STACK:10485760) - Windows-specific for deep recursion tests
+- [ ] MSVC_MP parallelization flag - Windows-specific build optimization
 - [ ] Any other Windows-specific patches discovered during upstream merges
 
 ## How to Contribute Cleanup
