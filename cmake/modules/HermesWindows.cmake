@@ -3,6 +3,11 @@
 
 # This file centralizes all Windows-specific build configuration logic.
 
+# Configure Hybrid CRT for Windows builds (must be before any targets)
+# Uses static C++ runtime with dynamic Universal CRT to avoid MSVCP140.dll dependency
+# See for details: https://github.com/microsoft/WindowsAppSDK/blob/main/docs/Coding-Guidelines/HybridCRT.md
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 # Detect if lld-link is being used as the linker
 set(HERMES_USING_LLD_LINK OFF)
 if(DEFINED CMAKE_LINKER AND CMAKE_LINKER MATCHES "lld-link")
@@ -155,7 +160,7 @@ function(hermes_windows_configure_lld_flags)
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrt.lib")
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrt.lib")
   else()
-    # Debug: Remove static debug UCRT, add dynamic debug UCRT
+    # Hybrid CRT Debug: Remove static debug UCRT, add dynamic debug UCRT
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrtd.lib")
     list(APPEND HERMES_EXTRA_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrtd.lib")
   endif()
@@ -165,16 +170,20 @@ endfunction()
 
 # Configure MSVC linker flags
 function(hermes_windows_configure_msvc_linker_flags)
-  # Debug information (common to both)
+  # Debug information (common to debug and release)
   list(APPEND MSVC_COMMON_LINKER_FLAGS "LINKER:/DEBUG:FULL")
 
   # Debug-specific flags
   set(MSVC_DEBUG_LINKER_FLAGS "${MSVC_COMMON_LINKER_FLAGS}")
+
+  # Hybrid CRT: Remove static UCRT, add dynamic UCRT
   list(APPEND MSVC_DEBUG_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrtd.lib")
   list(APPEND MSVC_DEBUG_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrtd.lib")
 
   # Release-specific flags
   set(MSVC_RELEASE_LINKER_FLAGS "${MSVC_COMMON_LINKER_FLAGS}")
+
+  # Hybrid CRT: Remove static UCRT, add dynamic UCRT
   list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/NODEFAULTLIB:libucrt.lib")
   list(APPEND MSVC_RELEASE_LINKER_FLAGS "LINKER:/DEFAULTLIB:ucrt.lib")
   
