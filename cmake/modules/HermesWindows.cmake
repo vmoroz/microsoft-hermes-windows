@@ -95,6 +95,53 @@ function(hermes_windows_configure_msvc_flags)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MSVC_CXX_FLAGS}" PARENT_SCOPE)
 endfunction()
 
+# Configure Hybrid CRT settings for MSVC and Clang
+# This avoids dependencies on VCRUNTIME140D.dll and MSVCP140D.dll by:
+# 1. Using static CRT (MSVC: /MT or /MTd, Clang: libcmt.lib or libcmtd.lib)
+# 2. Ignoring the static Universal CRT library (libucrt.lib or libucrtd.lib)
+# 3. Linking dynamically against the Universal CRT (ucrt.lib or ucrtd.lib)
+# The Universal CRT is always present on Windows 10+, so this reduces dependencies
+# without requiring full static linking of the CRT (which would increase binary size).
+function(hermes_windows_configure_hybrid_crt target)
+  if(MSVC)
+    # MSVC compiler: Use /MT and /MTd flags
+    # For Debug builds: Use MultiThreadedDebug static runtime
+    target_compile_options(${target} PRIVATE
+      $<$<CONFIG:Debug>:/MTd>
+    )
+    
+    # For Release builds: Use MultiThreaded static runtime
+    target_compile_options(${target} PRIVATE
+      $<$<CONFIG:Release>:/MT>
+    )
+    
+    # Ignore the static Universal CRT library and link against the dynamic one instead
+    target_link_options(${target} PRIVATE
+      $<$<CONFIG:Debug>:/NODEFAULTLIB:libucrtd.lib>
+      $<$<CONFIG:Debug>:/DEFAULTLIB:ucrtd.lib>
+      $<$<CONFIG:Release>:/NODEFAULTLIB:libucrt.lib>
+      $<$<CONFIG:Release>:/DEFAULTLIB:ucrt.lib>
+    )
+    
+    message(STATUS "Configured Hybrid CRT for target: ${target} (MSVC compiler)")
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND WIN32)
+    # Clang compiler (GCC-style): Use LINKER: prefix for linker flags
+    # Link against the static CRT runtime (libcmt.lib or libcmtd.lib)
+    # but ignore the static Universal CRT and use the dynamic RELEASE version instead
+    # Note: We use ucrt.lib (release) even for debug builds to avoid ucrtbased.dll dependency
+    target_link_options(${target} PRIVATE
+      $<$<CONFIG:Debug>:LINKER:/NODEFAULTLIB:libucrtd.lib>
+      $<$<CONFIG:Debug>:LINKER:/NODEFAULTLIB:msvcrtd.lib>
+      $<$<CONFIG:Debug>:LINKER:/DEFAULTLIB:ucrt.lib>
+      $<$<CONFIG:Release>:LINKER:/NODEFAULTLIB:libucrt.lib>
+      $<$<CONFIG:Release>:LINKER:/NODEFAULTLIB:msvcrt.lib>
+      $<$<CONFIG:Release>:LINKER:/DEFAULTLIB:ucrt.lib>
+    )
+    
+    message(STATUS "Configured Hybrid CRT for target: ${target} (Clang compiler)")
+  endif()
+endfunction()
+
 # Configure lld-link (Clang) linker flags
 function(hermes_windows_configure_lld_flags)
   # Debug information

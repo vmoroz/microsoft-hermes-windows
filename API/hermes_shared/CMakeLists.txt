@@ -67,6 +67,13 @@ if(MSVC)
   set(compile_flags "${compile_flags} /Zi")
 endif()
 
+# Configure Hybrid CRT to avoid VCRUNTIME140D.dll and MSVCP140D.dll dependencies
+# This works for both MSVC and Clang (clang-cl) compilers on Windows
+# This must be done after the target is created
+if(WIN32 AND COMMAND hermes_windows_configure_hybrid_crt)
+  hermes_windows_configure_hybrid_crt(libshared)
+endif()
+
 target_link_options(libshared PRIVATE ${HERMES_EXTRA_LINKER_FLAGS})
 
 set_target_properties(libshared PROPERTIES
