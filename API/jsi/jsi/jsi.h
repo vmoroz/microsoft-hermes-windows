@@ -31,22 +31,28 @@
 #define JSI_VERSION 21
 #endif
 
+#ifndef JSI_NO_CONST_3
 #if JSI_VERSION >= 3
 #define JSI_NO_CONST_3
 #else
 #define JSI_NO_CONST_3 const
 #endif
+#endif
 
+#ifndef JSI_CONST_10
 #if JSI_VERSION >= 10
 #define JSI_CONST_10 const
 #else
 #define JSI_CONST_10
 #endif
+#endif
 
+#ifndef JSI_NOEXCEPT_15
 #if JSI_VERSION >= 15
 #define JSI_NOEXCEPT_15 noexcept
 #else
 #define JSI_NOEXCEPT_15
+#endif
 #endif
 
 #ifndef JSI_EXPORT
