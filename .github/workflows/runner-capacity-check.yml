@@ -1,0 +1,44 @@
+name: runner-capacity-check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  control-linux-x64:
+    name: Control Linux x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Show runner details
+        shell: bash
+        run: |
+          echo "Runner: ${RUNNER_NAME}"
+          echo "OS: ${RUNNER_OS}"
+          echo "Arch: ${RUNNER_ARCH}"
+          uname -a
+
+  probe-linux-arm64:
+    name: Probe Linux ARM64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - name: Show runner details
+        shell: bash
+        run: |
+          echo "Runner: ${RUNNER_NAME}"
+          echo "OS: ${RUNNER_OS}"
+          echo "Arch: ${RUNNER_ARCH}"
+          uname -a
+
+  probe-windows-arm64:
+    name: Probe Windows ARM64
+    runs-on: windows-11-arm
+    timeout-minutes: 10
+    steps:
+      - name: Show runner details
+        shell: pwsh
+        run: |
+          Write-Output "Runner: $env:RUNNER_NAME"
+          Write-Output "OS: $env:RUNNER_OS"
+          Write-Output "Arch: $env:RUNNER_ARCH"
+          systeminfo | Select-String "OS Name|OS Version|System Type"
