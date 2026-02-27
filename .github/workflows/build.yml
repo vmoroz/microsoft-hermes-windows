@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - static_h
+      - local_hermes_h
 jobs:
   macos:
     runs-on: macos-15
