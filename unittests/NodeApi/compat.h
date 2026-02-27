@@ -29,6 +29,8 @@ struct span {
   constexpr span(std::initializer_list<T> il) noexcept
       : data_{const_cast<T*>(il.begin())}, size_{il.size()} {}
   constexpr span(T* data, size_t size) noexcept : data_{data}, size_{size} {}
+  template <size_t N>
+  constexpr span(T (&array)[N]) noexcept : data_{array}, size_{N} {}
 
   [[nodiscard]] constexpr T* data() const noexcept { return data_; }
 
