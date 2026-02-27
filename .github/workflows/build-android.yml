@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-android:
-    runs-on: 8-core-ubuntu
+    runs-on: ubuntu-24.04
     env:
       HERMES_WS_DIR: /home/runner/work/hermes/hermes
     container:

@@ -10,7 +10,7 @@ on:
 
 jobs:
   publish:
-    runs-on: 8-core-ubuntu
+    runs-on: ubuntu-24.04
     container:
       image: reactnativecommunity/react-native-android:latest
       env:
