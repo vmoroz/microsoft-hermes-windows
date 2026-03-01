@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - static_h
+      - local_hermes_h
 jobs:
   macos:
     runs-on: macos-15
@@ -79,7 +80,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [4-core-ubuntu, ubuntu-24.04-arm]
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
         cmake_flags: [""]
         lit_flags: [""]
         test_runner_flags: [""]
@@ -129,22 +130,21 @@ jobs:
         run: |-
             apt update
             apt install -y git openssh-client cmake clang-16 build-essential \
-                libreadline-dev libicu-dev zip python3 ninja-build
+                libreadline-dev libicu-dev zip python3 ninja-build nodejs npm
             # Check out test262 at a pinned revision to reduce flakiness
-            cd ..
-            git clone https://github.com/tc39/test262
+            git clone https://github.com/tc39/test262 "$GITHUB_WORKSPACE/test262"
             cd test262
             git checkout c9aa6126e8f6fe2c6f668c65bfba771ffc8a6096
       - name: Run tests on ARMv7
         run: |-
-          cd ..
+          cd "$GITHUB_WORKSPACE"
           export CC=clang-16
           export CXX=clang++-16
-          cmake -S hermes -GNinja -B build -DCMAKE_BUILD_TYPE=Debug \
+          cmake -S . -GNinja -B build -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_SYSTEM_PROCESSOR=arm -DCMAKE_SYSTEM_NAME=Linux
           cmake --build build --target check-hermes all
 
-          cmake -S hermes -GNinja -B build_intl -DHERMES_ENABLE_INTL=ON \
+          cmake -S . -GNinja -B build_intl -DHERMES_ENABLE_INTL=ON \
             -DCMAKE_CXX_FLAGS=-O2 -DCMAKE_C_FLAGS=-O2 -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_SYSTEM_PROCESSOR=arm -DCMAKE_SYSTEM_NAME=Linux
           cmake --build ./build_intl
@@ -152,7 +152,7 @@ jobs:
           # Intl is built out: toLocaleLowerCase and toLocaleUpperCase are the two
           # main ones.
           # cmake --build ./build_intl --target check-hermes
-          python3 hermes/utils/test_runner.py --test-intl test262/test -b build_intl/bin
+          python3 utils/test_runner.py --test-intl test262/test -b build_intl/bin
 
   test-windows-test262:
     strategy:

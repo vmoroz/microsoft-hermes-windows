@@ -8,6 +8,7 @@ add_hermes_library(cdpInternal
   ConsoleMessage.cpp
   DomainState.cpp
   JSONValueInterfaces.cpp
+  MessageConverters.cpp
   MessageTypes.cpp
   RemoteObjectConverters.cpp
   RemoteObjectsTable.cpp
