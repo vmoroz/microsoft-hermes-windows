@@ -3,3 +3,8 @@
 test/**/*.js text eol=lf
 test/**/*.js.txt text eol=lf
 test/**/*.sh text eol=lf
+
+# Generated wasm2c output of the sandboxed VM (see API/hermes_sandbox/README.md).
+# Each upstream sync regenerates these ~200 MB; treat them as binary so diffs
+# and pull requests stay reviewable.
+API/hermes_sandbox/external/hermes_sandbox_impl_*_compiled* -diff linguist-generated
